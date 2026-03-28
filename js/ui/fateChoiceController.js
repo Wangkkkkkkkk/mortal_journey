@@ -38,6 +38,44 @@
     return document.getElementById(id);
   }
 
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  /**
+   * 出身 location：兼容旧版字符串，或新版 { "地名": { desc } }（取 Object 首键）。
+   */
+  function resolveBirthLocationNameFromDef(bd) {
+    if (!bd || bd.location == null) return "";
+    var loc = bd.location;
+    if (typeof loc === "string") return String(loc).trim();
+    if (typeof loc === "object" && !Array.isArray(loc)) {
+      var keys = Object.keys(loc);
+      return keys.length ? String(keys[0]).trim() : "";
+    }
+    return "";
+  }
+
+  function resolveBirthLocationDescFromDef(bd) {
+    if (!bd || bd.location == null) return "";
+    var loc = bd.location;
+    if (typeof loc === "object" && !Array.isArray(loc)) {
+      var keys = Object.keys(loc);
+      if (!keys.length) return "";
+      var entry = loc[keys[0]];
+      if (entry && entry.desc != null) return String(entry.desc).trim();
+      return "";
+    }
+    if (typeof loc === "string") {
+      return bd.desc != null ? String(bd.desc).trim() : "";
+    }
+    return bd.desc != null ? String(bd.desc).trim() : "";
+  }
+
   function resetState() {
     state.selectedDifficulty = null;
     state.selectedBirth = null;
@@ -194,9 +232,8 @@
     state.customBirth = null;
     var c = cfg();
     var fm = c && c.BIRTHS && c.BIRTHS.凡人;
-    if (fm && fm.location != null && String(fm.location).trim() !== "") {
-      state.birthLocation = String(fm.location).trim();
-    }
+    var mortalLoc = fm ? resolveBirthLocationNameFromDef(fm) : "";
+    if (mortalLoc) state.birthLocation = mortalLoc;
     state.selectedRace = "人族";
     state.customRace = null;
     state.currentTraitOptions = [];
@@ -320,10 +357,98 @@
     renderPage();
   }
 
+  function formatTraitBonusLine(b) {
+    if (!b || typeof b !== "object") return "";
+    var keys = Object.keys(b);
+    if (!keys.length) return "";
+    return keys
+      .map(function (k) {
+        var v = b[k];
+        if (typeof v === "number" && isFinite(v)) {
+          return v >= 0 ? k + " +" + v : k + " " + v;
+        }
+        return k + " " + String(v);
+      })
+      .join("；");
+  }
+
+  function appendFateTraitModalSection(bodyEl, label, text) {
+    if (!bodyEl || text == null || String(text).trim() === "") return;
+    var sec = document.createElement("div");
+    sec.className = "mj-trait-modal-section";
+    var k = document.createElement("span");
+    k.className = "mj-trait-modal-k";
+    k.textContent = label;
+    var v = document.createElement("div");
+    v.className = "mj-trait-modal-v";
+    v.textContent = String(text);
+    sec.appendChild(k);
+    sec.appendChild(v);
+    bodyEl.appendChild(sec);
+  }
+
+  function closeFateTraitDetailModal() {
+    var root = getEl("mj-trait-detail-root");
+    if (!root) return;
+    var modalPanel = root.querySelector(".mj-trait-modal");
+    if (modalPanel) modalPanel.removeAttribute("data-rarity");
+    root.classList.add("hidden");
+    root.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  function openFateTraitDetailModal(trait) {
+    var root = getEl("mj-trait-detail-root");
+    var titleEl = getEl("mj-trait-modal-title");
+    var rarityEl = getEl("mj-trait-modal-rarity");
+    var bodyEl = getEl("mj-trait-modal-body");
+    if (!root || !titleEl || !rarityEl || !bodyEl || !trait || !trait.name) return;
+    titleEl.textContent = trait.name;
+    rarityEl.textContent = trait.rarity ? "品质：" + trait.rarity : "";
+    bodyEl.textContent = "";
+    appendFateTraitModalSection(bodyEl, "简述", trait.desc);
+    appendFateTraitModalSection(bodyEl, "效果", trait.effects);
+    var bonusLine = formatTraitBonusLine(trait.bonus);
+    if (bonusLine) appendFateTraitModalSection(bodyEl, "属性加成", bonusLine);
+    if (trait.item != null && String(trait.item).trim() !== "" && String(trait.item) !== "无") {
+      appendFateTraitModalSection(bodyEl, "关联物品", trait.item);
+    }
+    var modalPanel = root.querySelector(".mj-trait-modal");
+    if (modalPanel) {
+      modalPanel.removeAttribute("data-rarity");
+      if (trait.rarity) modalPanel.setAttribute("data-rarity", String(trait.rarity));
+    }
+    root.classList.remove("hidden");
+    root.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    var closeBtn = root.querySelector(".mj-trait-modal-close");
+    if (closeBtn) closeBtn.focus();
+  }
+
   function showTraitDetail(trait) {
-    if (!trait) return;
-    var msg = (trait.name || "") + "\n品质: " + (trait.rarity || "") + "\n" + (trait.desc || "") + "\n效果: " + (trait.effects || "");
-    window.alert(msg);
+    openFateTraitDetailModal(trait);
+  }
+
+  var _fateTraitModalBound = false;
+
+  function bindFateTraitDetailModal() {
+    if (_fateTraitModalBound) return;
+    var root = getEl("mj-trait-detail-root");
+    if (!root) return;
+    _fateTraitModalBound = true;
+    root.querySelectorAll("[data-mj-trait-modal-close]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        closeFateTraitDetailModal();
+      });
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Escape") return;
+      var r = getEl("mj-trait-detail-root");
+      if (r && !r.classList.contains("hidden")) {
+        closeFateTraitDetailModal();
+        ev.preventDefault();
+      }
+    });
   }
 
   function renderPage() {
@@ -335,15 +460,25 @@
 
     if (indicatorEl) indicatorEl.innerHTML = "";
 
-    var birthLocationText = state.birthLocation ? String(state.birthLocation).split("|")[0] : "尚未选择";
-    var selectedWorldFactors = state.selectedWorldFactors || [];
+    var bdSel = state.selectedBirth && c.BIRTHS && c.BIRTHS[state.selectedBirth];
+    var birthPlaceName = "";
+    if (state.birthLocation != null && String(state.birthLocation).trim() !== "") {
+      birthPlaceName = String(state.birthLocation).split("|")[0].trim();
+    } else if (bdSel) {
+      birthPlaceName = resolveBirthLocationNameFromDef(bdSel);
+    }
+    if (!birthPlaceName && state.selectedBirth === "自定义" && state.customBirth) {
+      birthPlaceName = String(state.customBirth.tag || state.customBirth.name || "自定义").trim();
+    }
+    if (!birthPlaceName) birthPlaceName = "尚未选择";
+
+    var birthPlaceDesc = bdSel ? resolveBirthLocationDescFromDef(bdSel) : "";
+    state.selectedWorldFactors = (state.selectedWorldFactors || []).filter(function (f) {
+      return !f.isCustom;
+    });
+    var selectedWorldFactors = state.selectedWorldFactors;
     var mortal = isMortalMode();
     var diffReady = !!state.selectedDifficulty;
-    var modeHint = !diffReady
-      ? "请先选择难度：简单（自由）或凡人（固定出身/种族；灵根每次选凡人时自动随机，不可手动再刷；天赋不可刷新）"
-      : mortal
-        ? "凡人模式：以真正的凡人开始游戏，有额外气运加成。"
-        : "简单模式：可自由选择，灵根与天赋可无限次刷新。";
     var isReady =
       !!state.selectedDifficulty &&
       !!state.selectedBirth &&
@@ -403,12 +538,6 @@
       "<span>命运抉择</span>" +
       "</div>" +
       '<div class="creation-step-subtitle">按顺序完成配置后，直接开始人生</div>' +
-      "</div>" +
-      '<div id="mode-hint-banner" class="mode-hint-banner">' +
-      '<i class="fas fa-info-circle"></i>' +
-      "<span>" +
-      modeHint +
-      "</span>" +
       "</div>" +
       "</div>" +
       '<div class="creation-section-title"><i class="fas fa-mountain"></i> 选择难度</div>' +
@@ -594,63 +723,21 @@
           );
         })
         .join("") +
-      '<div class="creation-card" data-factor-name="__custom__">' +
-      "<h4><span>自定义</span></h4>" +
-      "<p>" +
-      (selectedWorldFactors.filter(function (f) {
-        return f.isCustom;
-      }).length
-        ? "已选 " +
-          selectedWorldFactors.filter(function (f) {
-            return f.isCustom;
-          }).length +
-          " 个自定义世界因子"
-        : "点击填写自定义世界因子") +
-      "</p>" +
       "</div>" +
-      "</div>" +
-      (selectedWorldFactors.filter(function (f) {
-        return f.isCustom;
-      }).length
-        ? '<ul id="custom-world-factors-inline-list" style="padding-left:0; margin:12px 0 18px;">' +
-          selectedWorldFactors
-            .filter(function (f) {
-              return f.isCustom;
-            })
-            .map(function (f) {
-              return (
-                '<li style="list-style:none; background: rgba(255,255,255,0.05); padding:8px 10px; border-radius:10px; margin-bottom:8px;">' +
-                '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">' +
-                '<strong style="color:#ffb74d;">' +
-                f.name +
-                '</strong><button class="major-action-button small-font-btn" type="button" data-remove-custom-factor="' +
-                f.name +
-                '" style="width:auto; padding:4px 10px;">移除</button>' +
-                "</div>" +
-                '<div style="color:#ccc; font-size:0.92em; margin-top:4px;">' +
-                (f.desc || "") +
-                "</div>" +
-                '<div style="color:#aaa; font-size:0.88em; margin-top:3px;">效果：' +
-                (f.effect || "") +
-                "</div>" +
-                "</li>"
-              );
-            })
-            .join("") +
-          "</ul>"
-        : "") +
       '<div class="creation-section-title"><i class="fas fa-map-marked-alt"></i> 出生地</div>' +
-      '<div class="panel-card" style="max-width: 820px;">' +
-      '<p style="margin:0; color:#ddd;">出生地：<strong style="color:#ffd700;">' +
-      birthLocationText +
+      '<div class="panel-card creation-birthplace-card">' +
+      '<p class="creation-birthplace-line">出生地：<strong>' +
+      escapeHtml(birthPlaceName) +
       "</strong></p>" +
-      '<div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">' +
-      '<button id="select-birth-location-btn" class="major-action-button" type="button">' +
-      '<i class="fas fa-map-signs"></i> 选择出生地' +
-      "</button>" +
+      (birthPlaceDesc
+        ? '<p class="creation-birthplace-desc">' + escapeHtml(birthPlaceDesc) + "</p>"
+        : !state.selectedBirth
+          ? '<p class="creation-birthplace-desc creation-birthplace-desc--hint">请先选择出身以查看地点描述。</p>'
+          : state.selectedBirth === "自定义"
+            ? '<p class="creation-birthplace-desc creation-birthplace-desc--hint">自定义出身暂无预设地点文案，将由剧情扩展。</p>'
+            : "") +
       "</div>" +
-      "</div>" +
-      '<div id="start-game-status" style="max-width:820px; margin: 10px auto 0; font-size: 13px; opacity: 0.95;"></div>';
+      '<div id="start-game-status" style="margin: 10px 0 0; font-size: 13px; opacity: 0.95;"></div>';
 
     navEl.innerHTML =
       '<div class="creation-nav-enhanced">' +
@@ -698,15 +785,16 @@
           }
           state.selectedBirth = "自定义";
           state.customBirth = { tag: tag, name: tag };
+          state.birthLocation = tag;
           renderPage();
           return;
         }
         state.selectedBirth = birthName;
         state.customBirth = null;
         var bd = c.BIRTHS && c.BIRTHS[birthName];
-        if (bd && bd.location != null && String(bd.location).trim() !== "") {
-          state.birthLocation = String(bd.location).trim();
-        }
+        var locName = bd ? resolveBirthLocationNameFromDef(bd) : "";
+        if (locName) state.birthLocation = locName;
+        else state.birthLocation = null;
         renderPage();
       });
     });
@@ -767,21 +855,8 @@
     contentEl.querySelectorAll("#world-factor-grid .creation-card").forEach(function (card) {
       card.addEventListener("click", function () {
         var name = card.getAttribute("data-factor-name");
-        if (name === "__custom__") {
-          var n = window.prompt("自定义世界因子名称:", "");
-          if (n === null || !String(n).trim()) return;
-          var desc = window.prompt("背景描述（可空）:", "") || "";
-          var effect = window.prompt("具体效果（可空）:", "") || "";
-          state.selectedWorldFactors.push({
-            name: String(n).trim(),
-            desc: desc,
-            effect: effect,
-            isCustom: true,
-          });
-          renderPage();
-          return;
-        }
-        var factorData = c.WORLD_FACTORS[name];
+        var factorData = name && c.WORLD_FACTORS ? c.WORLD_FACTORS[name] : null;
+        if (!factorData) return;
         var idx = state.selectedWorldFactors.findIndex(function (f) {
           return f.name === name && !f.isCustom;
         });
@@ -796,31 +871,6 @@
         renderPage();
       });
     });
-
-    contentEl.querySelectorAll("[data-remove-custom-factor]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var name = btn.getAttribute("data-remove-custom-factor");
-        var idx = state.selectedWorldFactors.findIndex(function (f) {
-          return f.isCustom && f.name === name;
-        });
-        if (idx > -1) {
-          state.selectedWorldFactors.splice(idx, 1);
-          renderPage();
-        }
-      });
-    });
-
-    var birthBtn = getEl("select-birth-location-btn");
-    if (birthBtn) {
-      birthBtn.addEventListener("click", function () {
-        var def = "天南 · 青牛镇";
-        var v = window.prompt("出生地（可填写地区名）:", state.birthLocation || def);
-        if (v === null) return;
-        v = String(v).trim();
-        state.birthLocation = v || def;
-        renderPage();
-      });
-    }
 
     var backBtn = navEl.querySelector("#creation-back-to-splash-btn");
     if (backBtn) {
@@ -848,13 +898,13 @@
     var statusEl = getEl("start-game-status");
     var c = cfg();
     if (state.selectedBirth && c && c.BIRTHS && c.BIRTHS[state.selectedBirth]) {
-      var bl = c.BIRTHS[state.selectedBirth].location;
+      var bdStart = c.BIRTHS[state.selectedBirth];
+      var defaultLocName = resolveBirthLocationNameFromDef(bdStart);
       if (
         (state.birthLocation == null || String(state.birthLocation).trim() === "") &&
-        bl != null &&
-        String(bl).trim() !== ""
+        defaultLocName
       ) {
-        state.birthLocation = String(bl).trim();
+        state.birthLocation = defaultLocName;
       }
     }
     var payload = {
@@ -935,6 +985,7 @@
       window.alert("MjCreationConfig 未加载。");
       return;
     }
+    bindFateTraitDetailModal();
     resetState();
     var screen = getEl("character-creation-screen");
     var splash = getEl("splash-screen");
@@ -947,6 +998,7 @@
   }
 
   function hideFateChoice() {
+    closeFateTraitDetailModal();
     var screen = getEl("character-creation-screen");
     var splash = getEl("splash-screen");
     if (screen) {
@@ -979,4 +1031,6 @@
       return global.MortalJourneyGame;
     },
   };
+
+  bindFateTraitDetailModal();
 })(typeof window !== "undefined" ? window : globalThis);

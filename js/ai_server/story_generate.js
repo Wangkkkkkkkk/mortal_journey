@@ -136,46 +136,68 @@
     }
   }
 
+  /** system 内各大块之间的分隔（便于模型与人类阅读日志） */
+  var SYSTEM_BLOCK_SEPARATOR = "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+
   /**
-   * 供关键词扫描与 system 摘要
+   * 供关键词扫描与 system 摘要（分块排版：角色概要 / 面板 / 世界因子 / 天赋 / 装备行囊）
    */
   function buildRuntimeStateBlock(G, fc) {
     if (!G && !fc) return "";
-    var lines = [];
-    if (G && G.worldTimeString) lines.push("世界时间：" + G.worldTimeString);
-    if (fc || G) lines.push("境界：" + formatRealmLine(fc, G));
-    if (fc && fc.gender) lines.push("性别：" + String(fc.gender));
-    if (G && G.age != null) lines.push("年龄：" + String(G.age));
-    if (G && G.shouyuan != null) lines.push("寿元：" + String(G.shouyuan));
-    if (fc && fc.birthLocation) lines.push("出生地：" + String(fc.birthLocation));
+    var profile = [];
+    if (G && G.worldTimeString) profile.push("世界时间：" + G.worldTimeString);
+    if (fc || G) profile.push("境界：" + formatRealmLine(fc, G));
+    if (fc && fc.gender) profile.push("性别：" + String(fc.gender));
+    if (G && G.age != null) profile.push("年龄：" + String(G.age));
+    if (G && G.shouyuan != null) profile.push("寿元：" + String(G.shouyuan));
+    if (fc && fc.birthLocation) profile.push("出生地：" + String(fc.birthLocation));
+    var curLoc =
+      G && G.currentLocation != null && String(G.currentLocation).trim() !== ""
+        ? String(G.currentLocation).trim()
+        : "";
+    if (curLoc) profile.push("当前地点：" + curLoc);
     if (fc && fc.linggen) {
       var lgRaw = String(fc.linggen).trim();
-      lines.push("灵根：" + lgRaw + "（五行：" + linggenElementsText(fc.linggen) + "）");
+      profile.push("灵根：" + lgRaw + "（五行：" + linggenElementsText(fc.linggen) + "）");
     }
-    if (fc && fc.difficulty) lines.push("难度模式：" + String(fc.difficulty));
+    if (fc && fc.difficulty) profile.push("难度模式：" + String(fc.difficulty));
     if (fc && fc.birth) {
       var b = "出身：" + fc.birth;
       if (fc.birth === "自定义" && fc.customBirth) {
         b += "（" + String(fc.customBirth.name || fc.customBirth.tag || "").trim() + "）";
       }
-      lines.push(b);
+      profile.push(b);
     }
     if (fc && fc.race) {
       var r = "种族：" + fc.race;
       if (fc.race === "自定义" && fc.customRace) {
         r += "（" + String(fc.customRace.name || fc.customRace.tag || "").trim() + "）";
       }
-      lines.push(r);
+      profile.push(r);
     }
 
-    appendPlayerBaseLines(lines, G, fc);
-    appendWorldFactorLines(lines, fc);
-    appendTraitsLines(lines, fc);
-    appendEquippedLines(lines, G);
-    appendBagAndGongfaLines(lines, G);
+    var attr = [];
+    appendPlayerBaseLines(attr, G, fc);
 
-    if (!lines.length) return "";
-    return "【当前存档摘要】\n" + lines.join("\n");
+    var wf = [];
+    appendWorldFactorLines(wf, fc);
+
+    var traits = [];
+    appendTraitsLines(traits, fc);
+
+    var loadout = [];
+    appendEquippedLines(loadout, G);
+    appendBagAndGongfaLines(loadout, G);
+
+    var sections = [];
+    if (profile.length) sections.push("【角色概要】\n" + profile.join("\n"));
+    if (attr.length) sections.push(attr.join("\n"));
+    if (wf.length) sections.push(wf.join("\n"));
+    if (traits.length) sections.push(traits.join("\n"));
+    if (loadout.length) sections.push(loadout.join("\n"));
+
+    if (!sections.length) return "";
+    return "【当前存档摘要】\n\n" + sections.join("\n\n");
   }
 
   function buildScanText(userText, priorHistory, stateBlock) {
@@ -225,7 +247,7 @@
       if (wbBlock) systemParts.push(wbBlock);
     }
 
-    var systemContent = systemParts.filter(Boolean).join("\n\n");
+    var systemContent = systemParts.filter(Boolean).join(SYSTEM_BLOCK_SEPARATOR);
 
     var messages = [];
     if (systemContent) messages.push({ role: "system", content: systemContent });
@@ -242,6 +264,25 @@
     messages.push({ role: "user", content: userBody });
 
     return messages;
+  }
+
+  /**
+   * 将 messages 格式化为易读文本（调试用日志，非 API 载荷）
+   */
+  function formatMessagesForHumanLog(messages) {
+    if (!Array.isArray(messages)) return String(messages);
+    var out = [];
+    out.push("[共 " + messages.length + " 条 message，按发送顺序]");
+    for (var i = 0; i < messages.length; i++) {
+      var m = messages[i];
+      if (!m) continue;
+      var role = m.role != null ? String(m.role) : "?";
+      out.push("");
+      out.push("┌── #" + (i + 1) + " · role: " + role + " ─────────────────────────────");
+      out.push(String(m.content != null ? m.content : ""));
+      out.push("└──────────────────────────────────────────────────────────");
+    }
+    return out.join("\n");
   }
 
   /**
@@ -272,6 +313,7 @@
   global.MortalJourneyStoryChat = {
     buildMessages: buildMessages,
     buildRuntimeStateBlock: buildRuntimeStateBlock,
+    formatMessagesForHumanLog: formatMessagesForHumanLog,
     sendTurn: sendTurn,
   };
 })(typeof window !== "undefined" ? window : globalThis);

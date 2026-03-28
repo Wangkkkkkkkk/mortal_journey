@@ -187,8 +187,11 @@
         </div>
       </section>
 
-      <!-- 右侧：周围人物 -->
-      <aside class="mj-pane" aria-label="周围人物">
+      <!-- 右侧：周围人物（顶条与左侧世界时间对齐） -->
+      <aside class="mj-pane mj-pane--npc" aria-label="周围人物">
+        <div class="mj-npc-location-fixed" aria-label="当前地点">
+          <div class="mj-world-time" id="mj-current-location">—</div>
+        </div>
         <div class="mj-pane-header">周围人物</div>
         <div class="mj-pane-body" id="mj-npc-panel">
           <div class="mj-npc-card">

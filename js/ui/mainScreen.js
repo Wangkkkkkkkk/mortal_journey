@@ -105,6 +105,12 @@
       if (G.currentMp == null) G.currentMp = pb.mp;
     }
     if (!Array.isArray(G.chatHistory)) G.chatHistory = [];
+    if (G.currentLocation == null || String(G.currentLocation).trim() === "") {
+      var fc0 = G.fateChoice;
+      if (fc0 && fc0.birthLocation != null && String(fc0.birthLocation).trim() !== "") {
+        G.currentLocation = String(fc0.birthLocation).split("|")[0].trim();
+      }
+    }
     ensureEquippedSlots(G);
     ensureGongfaSlots(G);
     ensureInventorySlots(G);
@@ -344,8 +350,16 @@
         : null;
     if (messages && global.GameLog && typeof global.GameLog.info === "function") {
       try {
+        var human =
+          typeof SC.formatMessagesForHumanLog === "function"
+            ? SC.formatMessagesForHumanLog(messages)
+            : "";
+        var jsonStr = JSON.stringify(messages, null, 2);
         global.GameLog.info(
-          "[剧情→AI] 本次发送的 messages（含 system / 历史 / 用户）：\n" + JSON.stringify(messages, null, 2),
+          "[剧情→AI] 本次请求\n\n—— 易读排版 ——\n" +
+            (human || jsonStr) +
+            "\n\n—— 原始 JSON（可复制） ——\n" +
+            jsonStr,
         );
       } catch (logErr) {
         global.GameLog.info("[剧情→AI] 用户输入（messages 无法序列化）：" + text.slice(0, 800));
@@ -1362,6 +1376,17 @@
     var worldEl = document.getElementById("mj-world-time");
     if (worldEl) worldEl.textContent = (G && G.worldTimeString) || DEFAULT_WORLD_TIME;
 
+    var locEl = document.getElementById("mj-current-location");
+    if (locEl) {
+      var locStr = "";
+      if (G && G.currentLocation != null && String(G.currentLocation).trim() !== "") {
+        locStr = String(G.currentLocation).trim();
+      } else if (fc && fc.birthLocation != null && String(fc.birthLocation).trim() !== "") {
+        locStr = String(fc.birthLocation).split("|")[0].trim();
+      }
+      locEl.textContent = locStr || "—";
+    }
+
     var realmEl = document.getElementById("mj-realm-line");
     if (realmEl) realmEl.textContent = formatRealmLine(fc, G);
 
@@ -1493,6 +1518,23 @@
       var fc = global.MortalJourneyGame && global.MortalJourneyGame.fateChoice;
       ensureGameRuntimeDefaults(global.MortalJourneyGame);
       renderLeftPanel(fc, global.MortalJourneyGame);
+    },
+    /**
+     * 右栏顶条「当前地点」；开局默认来自命运抉择 birthLocation，剧情可改写。
+     * @param {string|null|undefined} label 传空字符串则回退显示 fateChoice.birthLocation
+     * @returns {boolean}
+     */
+    setCurrentLocation: function (label) {
+      var G = global.MortalJourneyGame;
+      if (!G) return false;
+      ensureGameRuntimeDefaults(G);
+      if (label == null || String(label).trim() === "") {
+        G.currentLocation = "";
+      } else {
+        G.currentLocation = String(label).trim();
+      }
+      renderLeftPanel(G.fateChoice, G);
+      return true;
     },
     /** 佩戴栏槽位数（固定 3） */
     EQUIP_SLOT_COUNT: EQUIP_SLOT_COUNT,

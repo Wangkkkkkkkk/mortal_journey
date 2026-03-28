@@ -97,8 +97,17 @@ body.mj-main-body {
   position: relative;
 }
 
-/** 世界时间：在「角色信息」标题之上，不参与下方滚动，始终可见 */
-.mj-player-world-fixed {
+/* 右栏 · 周围人物（与左栏同构顶条） */
+.mj-pane--npc {
+  position: relative;
+}
+
+/**
+ * 世界时间 / 当前地点：在分栏标题之上，不参与下方滚动，始终可见。
+ * 左用 .mj-player-world-fixed，右用 .mj-npc-location-fixed，样式一致。
+ */
+.mj-player-world-fixed,
+.mj-npc-location-fixed {
   flex-shrink: 0;
   z-index: 3;
   padding: 10px 14px 10px;

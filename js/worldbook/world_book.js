@@ -138,7 +138,7 @@
       parts.push("【" + title + "】\n" + String(e.content).trim());
     }
     if (!parts.length) return "";
-    return "【世界书摘录】\n" + parts.join("\n\n");
+    return "【世界书摘录】\n\n" + parts.join("\n\n· · · 条目分隔 · · ·\n\n");
   }
 
   function getAllEntries() {
