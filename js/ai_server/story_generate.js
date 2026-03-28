@@ -27,6 +27,80 @@
     return els.length ? els.join("、") : raw;
   }
 
+  function numOrEmpty(n) {
+    return typeof n === "number" && isFinite(n) ? String(Math.round(n)) : "";
+  }
+
+  /**
+   * 左侧面板同源：战斗八维 + 魅力/气运；血蓝优先当前值/上限（与 UI 一致）
+   */
+  function appendPlayerBaseLines(lines, G, fc) {
+    var pb = (G && G.playerBase) || (fc && fc.playerBase);
+    if (!pb || typeof pb !== "object") return;
+    lines.push("【面板属性】");
+    var hpMax = typeof pb.hp === "number" && isFinite(pb.hp) ? pb.hp : null;
+    var mpMax = typeof pb.mp === "number" && isFinite(pb.mp) ? pb.mp : null;
+    var curH = G && typeof G.currentHp === "number" && isFinite(G.currentHp) ? G.currentHp : hpMax;
+    var curM = G && typeof G.currentMp === "number" && isFinite(G.currentMp) ? G.currentMp : mpMax;
+    if (hpMax != null) {
+      lines.push(
+        "血量：" +
+          (curH != null && hpMax != null ? Math.round(curH) + " / " + Math.round(hpMax) : Math.round(hpMax)),
+      );
+    }
+    if (mpMax != null) {
+      lines.push(
+        "法力：" +
+          (curM != null && mpMax != null ? Math.round(curM) + " / " + Math.round(mpMax) : Math.round(mpMax)),
+      );
+    }
+    var pairs = [
+      ["物攻", pb.patk],
+      ["物防", pb.pdef],
+      ["法攻", pb.matk],
+      ["法防", pb.mdef],
+      ["神识", pb.sense],
+      ["脚力", pb.foot],
+      ["魅力", pb.charm],
+      ["气运", pb.luck],
+    ];
+    for (var i = 0; i < pairs.length; i++) {
+      var s = numOrEmpty(pairs[i][1]);
+      if (s !== "") lines.push(pairs[i][0] + "：" + s);
+    }
+  }
+
+  function appendWorldFactorLines(lines, fc) {
+    if (!fc || !Array.isArray(fc.worldFactors) || !fc.worldFactors.length) return;
+    lines.push("【世界因子】");
+    for (var i = 0; i < fc.worldFactors.length; i++) {
+      var f = fc.worldFactors[i];
+      if (!f || !f.name) continue;
+      var head = "· " + f.name + (f.isCustom ? "（自定义）" : "");
+      lines.push(head);
+      if (f.desc) lines.push("  背景：" + String(f.desc));
+      if (f.effect) lines.push("  效果：" + String(f.effect));
+    }
+  }
+
+  function appendTraitsLines(lines, fc) {
+    if (!fc || !Array.isArray(fc.traits) || !fc.traits.length) {
+      if (fc && fc.difficulty === "凡人") lines.push("【逆天改命】凡人模式：无天赋词条。");
+      else if (fc && fc.difficulty === "简单") lines.push("【逆天改命】未选择任何词条。");
+      return;
+    }
+    lines.push("【逆天改命】");
+    for (var i = 0; i < fc.traits.length; i++) {
+      var t = fc.traits[i];
+      if (!t || !t.name) continue;
+      var bits = [t.name];
+      if (t.rarity) bits.push("（" + t.rarity + "）");
+      lines.push("· " + bits.join(""));
+      if (t.desc) lines.push("  简述：" + String(t.desc));
+      if (t.effects != null && String(t.effects) !== "") lines.push("  效果：" + String(t.effects));
+    }
+  }
+
   /**
    * 供关键词扫描与 system 摘要
    */
@@ -35,16 +109,34 @@
     var lines = [];
     if (G && G.worldTimeString) lines.push("世界时间：" + G.worldTimeString);
     if (fc || G) lines.push("境界：" + formatRealmLine(fc, G));
+    if (fc && fc.gender) lines.push("性别：" + String(fc.gender));
+    if (G && G.age != null) lines.push("年龄：" + String(G.age));
+    if (G && G.shouyuan != null) lines.push("寿元：" + String(G.shouyuan));
     if (fc && fc.birthLocation) lines.push("出生地：" + String(fc.birthLocation));
-    if (fc && fc.linggen) lines.push("灵根（五行）：" + linggenElementsText(fc.linggen));
-    if (fc && Array.isArray(fc.worldFactors) && fc.worldFactors.length) {
-      var names = fc.worldFactors
-        .map(function (f) {
-          return f && f.name;
-        })
-        .filter(Boolean);
-      if (names.length) lines.push("世界因子：" + names.join("、"));
+    if (fc && fc.linggen) {
+      var lgRaw = String(fc.linggen).trim();
+      lines.push("灵根：" + lgRaw + "（五行：" + linggenElementsText(fc.linggen) + "）");
     }
+    if (fc && fc.difficulty) lines.push("难度模式：" + String(fc.difficulty));
+    if (fc && fc.birth) {
+      var b = "出身：" + fc.birth;
+      if (fc.birth === "自定义" && fc.customBirth) {
+        b += "（" + String(fc.customBirth.name || fc.customBirth.tag || "").trim() + "）";
+      }
+      lines.push(b);
+    }
+    if (fc && fc.race) {
+      var r = "种族：" + fc.race;
+      if (fc.race === "自定义" && fc.customRace) {
+        r += "（" + String(fc.customRace.name || fc.customRace.tag || "").trim() + "）";
+      }
+      lines.push(r);
+    }
+
+    appendPlayerBaseLines(lines, G, fc);
+    appendWorldFactorLines(lines, fc);
+    appendTraitsLines(lines, fc);
+
     if (!lines.length) return "";
     return "【当前存档摘要】\n" + lines.join("\n");
   }

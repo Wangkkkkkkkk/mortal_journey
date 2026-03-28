@@ -22,6 +22,7 @@
         </div>
         <div class="mj-pane-header">角色信息</div>
         <div class="mj-pane-body mj-player-body">
+          <div class="mj-player-body-fixed">
           <div class="mj-player-avatar-wrap">
             <img class="mj-player-avatar hidden" id="mj-player-avatar" src="" alt="角色" width="96" height="96" />
             <div class="mj-player-avatar mj-player-avatar--placeholder" id="mj-player-avatar-placeholder" aria-hidden="true">
@@ -33,7 +34,7 @@
 
           <div class="mj-resource-row">
             <div class="mj-resource-label">
-              <span>进度</span>
+              <span>修炼进度</span>
               <span class="mj-resource-nums" id="mj-cultivation-pct-text">0%</span>
             </div>
             <div class="mj-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="mj-cultivation-bar">
@@ -56,6 +57,26 @@
               </div>
               <div class="mj-stat-cell">
                 <span class="mj-stat-k">寿元</span><span class="mj-stat-v" id="mj-stat-shouyuan">—</span>
+              </div>
+            </div>
+            <div class="mj-talent-block" aria-label="逆天改命天赋">
+              <div class="mj-talent-heading">天赋</div>
+              <div class="mj-talent-row" id="mj-talent-row" role="group" aria-label="五个天赋槽位">
+                <div class="mj-trait-slot mj-trait-slot--empty" data-trait-slot="0">
+                  <span class="mj-trait-slot-inner">—</span>
+                </div>
+                <div class="mj-trait-slot mj-trait-slot--empty" data-trait-slot="1">
+                  <span class="mj-trait-slot-inner">—</span>
+                </div>
+                <div class="mj-trait-slot mj-trait-slot--empty" data-trait-slot="2">
+                  <span class="mj-trait-slot-inner">—</span>
+                </div>
+                <div class="mj-trait-slot mj-trait-slot--empty" data-trait-slot="3">
+                  <span class="mj-trait-slot-inner">—</span>
+                </div>
+                <div class="mj-trait-slot mj-trait-slot--empty" data-trait-slot="4">
+                  <span class="mj-trait-slot-inner">—</span>
+                </div>
               </div>
             </div>
           </div>
@@ -117,8 +138,36 @@
             </div>
           </div>
 
-          <h3 class="mj-attr-section-title">储物袋</h3>
-          <div class="mj-inventory-grid" id="mj-inventory-grid" aria-label="储物袋格子"></div>
+          <div class="mj-equip-block">
+            <h3 class="mj-attr-section-title">装备佩戴</h3>
+            <div class="mj-equip-row" id="mj-equip-row" role="group" aria-label="已装备栏位：主武器、副武器、防具">
+              <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="0" title="主武器空位">
+                <span class="mj-equip-slot-k">主武器</span>
+                <span class="mj-equip-slot-name">—</span>
+              </div>
+              <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="1" title="副武器空位">
+                <span class="mj-equip-slot-k">副武器</span>
+                <span class="mj-equip-slot-name">—</span>
+              </div>
+              <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="2" title="防具空位">
+                <span class="mj-equip-slot-k">防具</span>
+                <span class="mj-equip-slot-name">—</span>
+              </div>
+            </div>
+          </div>
+          </div>
+
+          <div class="mj-player-bag-stack">
+            <h3 class="mj-attr-section-title">功法</h3>
+            <div class="mj-bag-grid-scroll" aria-label="功法格子区域，可上下滚动">
+              <div class="mj-inventory-grid mj-gongfa-grid" id="mj-gongfa-grid" aria-label="功法栏，3行4列共12格"></div>
+            </div>
+
+            <h3 class="mj-attr-section-title">储物袋</h3>
+            <div class="mj-bag-grid-scroll" aria-label="储物袋格子区域，可上下滚动">
+              <div class="mj-inventory-grid" id="mj-inventory-grid" aria-label="储物袋，首格为灵石，其余为物品"></div>
+            </div>
+          </div>
         </div>
       </aside>
 
@@ -152,6 +201,16 @@
           </div>
         </div>
       </aside>
+    </div>
+
+    <div id="mj-trait-detail-root" class="mj-trait-modal-root hidden" aria-hidden="true">
+      <div class="mj-trait-modal-backdrop" data-mj-trait-modal-close tabindex="-1"></div>
+      <div class="mj-trait-modal" role="dialog" aria-modal="true" aria-labelledby="mj-trait-modal-title">
+        <button type="button" class="mj-trait-modal-close" data-mj-trait-modal-close aria-label="关闭">×</button>
+        <h4 id="mj-trait-modal-title" class="mj-trait-modal-title"></h4>
+        <div id="mj-trait-modal-rarity" class="mj-trait-modal-rarity"></div>
+        <div id="mj-trait-modal-body" class="mj-trait-modal-body"></div>
+      </div>
     </div>
 
     <script src="./js/data/leegen_state.js"></script>

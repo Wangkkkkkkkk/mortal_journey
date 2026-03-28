@@ -58,6 +58,25 @@
 
   var BASE_STAT_KEYS = ["hp", "mp", "patk", "pdef", "matk", "mdef", "foot", "sense"];
 
+  /** 与 mainScreen 默认一致；魅力/气运在此基础上叠加配置 bonus 后限制在 [0,100] */
+  var DEFAULT_CHARM = 0;
+  var DEFAULT_LUCK = 0;
+  var SPECIAL_MIN = 0;
+  var SPECIAL_MAX = 100;
+
+  /** creationConfig 中文属性键 → playerBase 英文键（未列出的加成项忽略） */
+  var ZH_BONUS_TO_PLAYER_KEY = {
+    物攻: "patk",
+    物防: "pdef",
+    法攻: "matk",
+    法防: "mdef",
+    神识: "sense",
+    脚力: "foot",
+    法力: "mp",
+    魅力: "charm",
+    气运: "luck",
+  };
+
   var STAT_LABEL_ZH = {
     hp: "血量",
     mp: "法力",
@@ -67,7 +86,67 @@
     mdef: "法防",
     foot: "脚力",
     sense: "神识",
+    charm: "魅力",
+    luck: "气运",
   };
+
+  function clampSpecialAttr(n, fallback) {
+    if (typeof n !== "number" || !isFinite(n)) return fallback;
+    var x = Math.round(n);
+    if (x < SPECIAL_MIN) return SPECIAL_MIN;
+    if (x > SPECIAL_MAX) return SPECIAL_MAX;
+    return x;
+  }
+
+  function mergeZhBonusesOntoPlayerBase(playerBase, bonusList) {
+    var out = Object.assign({}, playerBase);
+    out.charm = DEFAULT_CHARM;
+    out.luck = DEFAULT_LUCK;
+    for (var i = 0; i < bonusList.length; i++) {
+      var b = bonusList[i];
+      if (!b || typeof b !== "object") continue;
+      for (var zh in b) {
+        if (!Object.prototype.hasOwnProperty.call(b, zh)) continue;
+        var en = ZH_BONUS_TO_PLAYER_KEY[zh];
+        if (!en) continue;
+        var add = b[zh];
+        if (typeof add !== "number" || !isFinite(add)) continue;
+        var cur = out[en];
+        if (typeof cur !== "number" || !isFinite(cur)) cur = en === "charm" ? DEFAULT_CHARM : en === "luck" ? DEFAULT_LUCK : 0;
+        out[en] = cur + add;
+      }
+    }
+    out.charm = clampSpecialAttr(out.charm, DEFAULT_CHARM);
+    out.luck = clampSpecialAttr(out.luck, DEFAULT_LUCK);
+    var eight = roundBaseStats(out);
+    eight.charm = out.charm;
+    eight.luck = out.luck;
+    return eight;
+  }
+
+  function collectFateChoiceBonusObjects() {
+    var c = cfg();
+    var list = [];
+    if (!c) return list;
+    var diffName = state.selectedDifficulty;
+    if (diffName && c.DIFFICULTIES && c.DIFFICULTIES[diffName] && c.DIFFICULTIES[diffName].bonus) {
+      list.push(c.DIFFICULTIES[diffName].bonus);
+    }
+    var birthName = state.selectedBirth;
+    if (birthName && c.BIRTHS && c.BIRTHS[birthName] && c.BIRTHS[birthName].bonus) {
+      list.push(c.BIRTHS[birthName].bonus);
+    }
+    var raceName = state.selectedRace;
+    if (raceName && c.RACES && c.RACES[raceName] && c.RACES[raceName].bonus) {
+      list.push(c.RACES[raceName].bonus);
+    }
+    var traits = state.selectedTraits || [];
+    for (var t = 0; t < traits.length; t++) {
+      var tr = traits[t];
+      if (tr && tr.bonus && typeof tr.bonus === "object") list.push(tr.bonus);
+    }
+    return list;
+  }
 
   function roundBaseStats(obj) {
     var out = {};
@@ -107,7 +186,8 @@
       LS && typeof LS.applyToBase === "function"
         ? LS.applyToBase(state.rawRealmBase, START_REALM_MAJOR, linggen)
         : Object.assign({}, state.rawRealmBase);
-    state.playerBase = roundBaseStats(merged);
+    var withCreation = mergeZhBonusesOntoPlayerBase(merged, collectFateChoiceBonusObjects());
+    state.playerBase = withCreation;
     pushRuntimeSnapshot();
     logPlayerBaseIfChanged();
   }
@@ -135,6 +215,8 @@
       var raw = state.rawRealmBase && state.rawRealmBase[k];
       zhRow[STAT_LABEL_ZH[k]] = typeof raw === "number" && raw !== cur ? cur + "（表值 " + raw + "）" : String(cur);
     }
+    zhRow[STAT_LABEL_ZH.charm] = String(state.playerBase.charm != null ? state.playerBase.charm : DEFAULT_CHARM);
+    zhRow[STAT_LABEL_ZH.luck] = String(state.playerBase.luck != null ? state.playerBase.luck : DEFAULT_LUCK);
 
     console.info(
       "[命运抉择] 练气·初期 · 灵根:",
@@ -164,6 +246,8 @@
     }
     if (state.playerBase) {
       G.playerBase = Object.assign({}, state.playerBase);
+      if (typeof G.playerBase.charm === "number") G.charm = G.playerBase.charm;
+      if (typeof G.playerBase.luck === "number") G.luck = G.playerBase.luck;
     } else {
       G.playerBase = null;
     }
@@ -244,7 +328,14 @@
     for (var i = 0; i < count && bag.length; i++) {
       var idx = Math.floor(Math.random() * bag.length);
       var t = bag.splice(idx, 1)[0];
-      out.push({ name: t.name, rarity: t.rarity, desc: t.desc, effects: t.effects, locked: false });
+      var row = {};
+      for (var k in t) {
+        if (Object.prototype.hasOwnProperty.call(t, k) && k !== "locked") {
+          row[k] = t[k];
+        }
+      }
+      row.locked = false;
+      out.push(row);
     }
     return out;
   }

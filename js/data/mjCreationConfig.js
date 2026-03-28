@@ -9,9 +9,11 @@
     DIFFICULTIES: {
       简单: {
         desc: "自由开局：出身、种族、灵根与天赋均可任意选择与刷新",
+        bonus: { 魅力: 10, 气运: 10 },
       },
       凡人: {
         desc: "真正凡人：出身「凡人」、种族「人族」；灵根与天赋不可刷新",
+        bonus: { 魅力: 10, 气运: 20 },
       },
     },
     GENDERS: {
@@ -76,19 +78,9 @@
         effect: "有机会获得带有强大负面效果的神器碎片。获得神迹品质物品几率微弱提升。",
       },
     },
-    /** 逆天改命随机用的小型词条池（完整库见 ref_html creationConfig） */
-    TRAIT_SAMPLES: [
-      { name: "手脚笨拙", rarity: "平庸", desc: "协调性略差。", effects: "无" },
-      { name: "过目不忘", rarity: "稀有", desc: "记忆力超群。", effects: "学习类判定有利" },
-      { name: "剑心通明", rarity: "史诗", desc: "与剑道极为契合。", effects: "剑类伤害+5%" },
-      { name: "霉运缠身", rarity: "负面状态", desc: "诸事不顺。", effects: "气运相关判定不利" },
-      { name: "天生神力", rarity: "普通", desc: "体魄异于常人。", effects: "物攻+3" },
-      { name: "灵觉敏锐", rarity: "稀有", desc: "对灵气波动敏感。", effects: "神识+2" },
-      { name: "道胎初成", rarity: "传说", desc: "罕见的先天资质。", effects: "修炼速度+10%" },
-      { name: "五行均衡", rarity: "普通", desc: "五行亲和平均。", effects: "无显著偏科" },
-      { name: "孤星照命", rarity: "史诗", desc: "亲缘淡薄，独走仙路。", effects: "独处时心境稳定" },
-      { name: "红尘凡心", rarity: "平庸", desc: "难断俗缘。", effects: "社交剧情权重+1" },
-    ],
+    /** 逆天改命随机词条池（数据见 mj_trait_samples.js，与 ref_html TRAITS 对齐，共 148 条） */
+    TRAIT_SAMPLES: Array.isArray(global.MjTraitSamples) ? global.MjTraitSamples : [],
+
   };
 
   cfg.rollRandomLinggenName = function rollRandomLinggenName() {

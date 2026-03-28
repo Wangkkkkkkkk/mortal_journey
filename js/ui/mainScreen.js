@@ -9,9 +9,14 @@
   var DEFAULT_WORLD_TIME = "0001年 01月 01日 08:00";
   var DEFAULT_AGE = 16;
   var DEFAULT_SHOUYUAN = 100;
-  var DEFAULT_CHARM = 50;
-  var DEFAULT_LUCK = 50;
+  var DEFAULT_CHARM = 0;
+  var DEFAULT_LUCK = 0;
   var INVENTORY_SLOT_COUNT = 12;
+  /** 功法栏：与储物袋相同 3×4，共 12 格 */
+  var GONGFA_SLOT_COUNT = 12;
+  /** 佩戴栏固定 3 格：主武器、副武器、防具（不可超过 3 件） */
+  var EQUIP_SLOT_COUNT = 3;
+  var EQUIP_SLOT_EMPTY_TITLE = ["主武器空位", "副武器空位", "防具空位"];
 
   function clampPct(n) {
     if (typeof n !== "number" || !isFinite(n)) return 0;
@@ -64,6 +69,66 @@
       if (G.currentMp == null) G.currentMp = pb.mp;
     }
     if (!Array.isArray(G.chatHistory)) G.chatHistory = [];
+    ensureEquippedSlots(G);
+    ensureGongfaSlots(G);
+    ensureInventorySlots(G);
+  }
+
+  function ensureEquippedSlots(G) {
+    if (!G) return;
+    if (!Array.isArray(G.equippedSlots) || G.equippedSlots.length !== EQUIP_SLOT_COUNT) {
+      G.equippedSlots = [null, null, null];
+      return;
+    }
+  }
+
+  function ensureGongfaSlots(G) {
+    if (!G) return;
+    if (!Array.isArray(G.gongfaSlots) || G.gongfaSlots.length !== GONGFA_SLOT_COUNT) {
+      var a = [];
+      for (var j = 0; j < GONGFA_SLOT_COUNT; j++) a.push(null);
+      G.gongfaSlots = a;
+    }
+  }
+
+  function normalizeBagItem(entry) {
+    if (entry == null) return null;
+    var name =
+      entry.name != null
+        ? String(entry.name).trim()
+        : entry.label != null
+          ? String(entry.label).trim()
+          : "";
+    if (!name) return null;
+    var c = entry.count;
+    var cnt =
+      typeof c === "number" && isFinite(c) ? Math.max(0, Math.floor(c)) : 1;
+    var o = { name: name, count: cnt };
+    if (entry.desc != null && String(entry.desc).trim() !== "") o.desc = String(entry.desc);
+    return o;
+  }
+
+  /** 储物袋 12 格：第 0 格固定为灵石；其余为普通物品 { name, count, desc? } */
+  function ensureInventorySlots(G) {
+    if (!G) return;
+    if (!Array.isArray(G.inventorySlots) || G.inventorySlots.length !== INVENTORY_SLOT_COUNT) {
+      var a = [];
+      a[0] = { kind: "lingshi", count: 0 };
+      for (var j = 1; j < INVENTORY_SLOT_COUNT; j++) a.push(null);
+      G.inventorySlots = a;
+      return;
+    }
+    var z = G.inventorySlots[0];
+    if (!z || z.kind !== "lingshi") {
+      var prev = z && typeof z.count === "number" && isFinite(z.count) ? z.count : 0;
+      G.inventorySlots[0] = { kind: "lingshi", count: Math.max(0, Math.floor(prev)) };
+    } else {
+      var cz = z.count;
+      z.count = Math.max(0, Math.floor(typeof cz === "number" && isFinite(cz) ? cz : 0));
+    }
+    for (var k = 1; k < INVENTORY_SLOT_COUNT; k++) {
+      G.inventorySlots[k] = normalizeBagItem(G.inventorySlots[k]);
+    }
   }
 
   function getChatLogEl() {
@@ -448,9 +513,278 @@
     grid.innerHTML = "";
     for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
       var slot = document.createElement("div");
-      slot.className = "mj-inventory-slot";
+      slot.className =
+        "mj-inventory-slot" +
+        (i === 0 ? " mj-inventory-slot--lingshi" : " mj-inventory-slot--empty");
       slot.setAttribute("data-slot", String(i));
+      var lab = document.createElement("span");
+      lab.className = "mj-inventory-slot-label";
+      var qty = document.createElement("span");
+      qty.className = "mj-inventory-slot-qty";
+      qty.setAttribute("aria-label", "数量");
+      slot.appendChild(lab);
+      slot.appendChild(qty);
       grid.appendChild(slot);
+    }
+  }
+
+  function renderBagSlots(G) {
+    ensureInventorySlots(G);
+    var grid = document.getElementById("mj-inventory-grid");
+    if (!grid || !G || !G.inventorySlots) return;
+    for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
+      var el = grid.querySelector('[data-slot="' + i + '"]');
+      if (!el) continue;
+      var labelEl = el.querySelector(".mj-inventory-slot-label");
+      var qtyEl = el.querySelector(".mj-inventory-slot-qty");
+      if (i === 0) {
+        el.classList.add("mj-inventory-slot--lingshi");
+        el.classList.remove("mj-inventory-slot--empty", "mj-inventory-slot--filled");
+        if (labelEl) labelEl.textContent = "灵石";
+        var c0 = G.inventorySlots[0] && typeof G.inventorySlots[0].count === "number" ? G.inventorySlots[0].count : 0;
+        if (qtyEl) {
+          qtyEl.textContent = String(c0);
+          qtyEl.classList.remove("hidden");
+        }
+        el.setAttribute("title", "灵石：" + c0);
+        el.setAttribute("aria-label", "灵石，数量 " + c0);
+        continue;
+      }
+      var item = G.inventorySlots[i];
+      if (item && item.name) {
+        el.classList.add("mj-inventory-slot--filled");
+        el.classList.remove("mj-inventory-slot--empty");
+        if (labelEl) labelEl.textContent = item.name;
+        var cnt = typeof item.count === "number" ? item.count : 1;
+        if (qtyEl) {
+          qtyEl.textContent = String(cnt);
+          qtyEl.classList.remove("hidden");
+        }
+        var tip = item.name;
+        if (item.desc) tip += "\n" + item.desc;
+        tip += "\n数量：" + cnt;
+        el.setAttribute("title", tip);
+        el.setAttribute("aria-label", item.name + "，数量 " + cnt);
+      } else {
+        el.classList.add("mj-inventory-slot--empty");
+        el.classList.remove("mj-inventory-slot--filled");
+        if (labelEl) labelEl.textContent = "";
+        if (qtyEl) {
+          qtyEl.textContent = "";
+          qtyEl.classList.add("hidden");
+        }
+        el.setAttribute("title", "空位");
+        el.removeAttribute("aria-label");
+      }
+    }
+  }
+
+  function renderGongfaGrid() {
+    var grid = document.getElementById("mj-gongfa-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    for (var i = 0; i < GONGFA_SLOT_COUNT; i++) {
+      var slot = document.createElement("div");
+      slot.className = "mj-inventory-slot";
+      slot.setAttribute("data-gongfa-slot", String(i));
+      slot.setAttribute("title", "功法空位");
+      grid.appendChild(slot);
+    }
+  }
+
+  function renderGongfaSlots(G) {
+    ensureGongfaSlots(G);
+    var grid = document.getElementById("mj-gongfa-grid");
+    if (!grid || !G || !G.gongfaSlots) return;
+    for (var i = 0; i < GONGFA_SLOT_COUNT; i++) {
+      var el = grid.querySelector('[data-gongfa-slot="' + i + '"]');
+      if (!el) continue;
+      var item = G.gongfaSlots[i];
+      var label = item && (item.name != null ? item.name : item.label);
+      if (label) {
+        el.classList.add("mj-gongfa-slot--filled");
+        el.textContent = String(label);
+        el.setAttribute("title", item.desc ? String(item.desc) : String(label));
+      } else {
+        el.classList.remove("mj-gongfa-slot--filled");
+        el.textContent = "";
+        el.setAttribute("title", "功法空位");
+      }
+    }
+  }
+
+  function buildTraitSlotTooltip(t) {
+    if (!t || !t.name) return "空槽";
+    var s = t.name + (t.rarity ? "（" + t.rarity + "）" : "");
+    if (t.desc) s += "\n" + t.desc;
+    if (t.effects != null && String(t.effects) !== "") s += "\n效果：" + t.effects;
+    return s;
+  }
+
+  function formatTraitBonusLine(b) {
+    if (!b || typeof b !== "object") return "";
+    var keys = Object.keys(b);
+    if (!keys.length) return "";
+    return keys
+      .map(function (k) {
+        return k + " " + b[k];
+      })
+      .join("；");
+  }
+
+  function appendTraitModalSection(bodyEl, label, text) {
+    if (text == null || String(text).trim() === "") return;
+    var sec = document.createElement("div");
+    sec.className = "mj-trait-modal-section";
+    var k = document.createElement("span");
+    k.className = "mj-trait-modal-k";
+    k.textContent = label;
+    var v = document.createElement("div");
+    v.className = "mj-trait-modal-v";
+    v.textContent = String(text);
+    sec.appendChild(k);
+    sec.appendChild(v);
+    bodyEl.appendChild(sec);
+  }
+
+  function openTraitDetailModal(t) {
+    var root = document.getElementById("mj-trait-detail-root");
+    var titleEl = document.getElementById("mj-trait-modal-title");
+    var rarityEl = document.getElementById("mj-trait-modal-rarity");
+    var bodyEl = document.getElementById("mj-trait-modal-body");
+    if (!root || !titleEl || !rarityEl || !bodyEl || !t || !t.name) return;
+    titleEl.textContent = t.name;
+    rarityEl.textContent = t.rarity ? "品质：" + t.rarity : "";
+    bodyEl.textContent = "";
+    appendTraitModalSection(bodyEl, "简述", t.desc);
+    appendTraitModalSection(bodyEl, "效果", t.effects);
+    var bonusLine = formatTraitBonusLine(t.bonus);
+    if (bonusLine) appendTraitModalSection(bodyEl, "属性加成", bonusLine);
+    if (t.item != null && String(t.item).trim() !== "" && String(t.item) !== "无") {
+      appendTraitModalSection(bodyEl, "关联物品", t.item);
+    }
+    var modalPanel = root.querySelector(".mj-trait-modal");
+    if (modalPanel) {
+      modalPanel.removeAttribute("data-rarity");
+      if (t.rarity) modalPanel.setAttribute("data-rarity", String(t.rarity));
+    }
+    root.classList.remove("hidden");
+    root.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    var closeBtn = root.querySelector(".mj-trait-modal-close");
+    if (closeBtn) closeBtn.focus();
+  }
+
+  function closeTraitDetailModal() {
+    var root = document.getElementById("mj-trait-detail-root");
+    if (!root) return;
+    var modalPanel = root.querySelector(".mj-trait-modal");
+    if (modalPanel) modalPanel.removeAttribute("data-rarity");
+    root.classList.add("hidden");
+    root.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  function tryOpenTraitFromSlotEl(slot) {
+    var row = document.getElementById("mj-talent-row");
+    if (!slot || !row || !row.contains(slot)) return;
+    if (!slot.classList.contains("mj-trait-slot--filled")) return;
+    var idx = parseInt(slot.getAttribute("data-trait-slot"), 10);
+    if (isNaN(idx)) return;
+    var G = global.MortalJourneyGame;
+    var fc = G && G.fateChoice;
+    var traits = fc && Array.isArray(fc.traits) ? fc.traits : [];
+    var t = traits[idx];
+    if (t && t.name) openTraitDetailModal(t);
+  }
+
+  var _traitModalUiBound = false;
+
+  function bindTraitDetailModalUi() {
+    if (_traitModalUiBound) return;
+    _traitModalUiBound = true;
+    var root = document.getElementById("mj-trait-detail-root");
+    if (root) {
+      root.querySelectorAll("[data-mj-trait-modal-close]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          closeTraitDetailModal();
+        });
+      });
+    }
+    document.addEventListener("keydown", function (ev) {
+      var r = document.getElementById("mj-trait-detail-root");
+      if (ev.key === "Escape" && r && !r.classList.contains("hidden")) closeTraitDetailModal();
+    });
+    var row = document.getElementById("mj-talent-row");
+    if (row) {
+      row.addEventListener("click", function (e) {
+        var slot = e.target.closest(".mj-trait-slot");
+        tryOpenTraitFromSlotEl(slot);
+      });
+      row.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        var slot = e.target.closest(".mj-trait-slot");
+        if (!slot || !row.contains(slot)) return;
+        if (!slot.classList.contains("mj-trait-slot--filled")) return;
+        if (e.key === " ") e.preventDefault();
+        tryOpenTraitFromSlotEl(slot);
+      });
+    }
+  }
+
+  /** 年龄/寿元下方五个天赋槽，数据来自 fateChoice.traits（逆天改命） */
+  function renderTalentSlots(fc) {
+    var row = document.getElementById("mj-talent-row");
+    if (!row) return;
+    var nodes = row.querySelectorAll("[data-trait-slot]");
+    var traits = fc && Array.isArray(fc.traits) ? fc.traits : [];
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var inner = el.querySelector(".mj-trait-slot-inner");
+      var t = traits[i];
+      el.removeAttribute("data-rarity");
+      if (t && t.name) {
+        el.className = "mj-trait-slot mj-trait-slot--filled";
+        if (t.rarity) el.setAttribute("data-rarity", String(t.rarity));
+        if (inner) inner.textContent = String(t.name);
+        el.setAttribute("title", buildTraitSlotTooltip(t));
+        el.setAttribute("role", "button");
+        el.setAttribute("tabindex", "0");
+        el.setAttribute("aria-label", "查看天赋：" + String(t.name));
+      } else {
+        el.className = "mj-trait-slot mj-trait-slot--empty";
+        el.removeAttribute("role");
+        el.removeAttribute("tabindex");
+        el.removeAttribute("aria-label");
+        if (inner) inner.textContent = "—";
+        el.setAttribute("title", "空槽");
+      }
+    }
+  }
+
+  function renderEquipSlots(G) {
+    ensureEquippedSlots(G);
+    var row = document.getElementById("mj-equip-row");
+    if (!row || !G || !G.equippedSlots) return;
+    for (var i = 0; i < EQUIP_SLOT_COUNT; i++) {
+      var el = row.querySelector('[data-equip-slot="' + i + '"]');
+      if (!el) continue;
+      var nameEl = el.querySelector(".mj-equip-slot-name");
+      var item = G.equippedSlots[i];
+      var label = item && (item.name != null ? item.name : item.label);
+      if (label) {
+        el.classList.remove("mj-equip-slot--empty");
+        el.classList.add("mj-equip-slot--filled");
+        if (nameEl) nameEl.textContent = String(label);
+        var tip = String(label);
+        if (item.desc) tip += "\n" + String(item.desc);
+        el.setAttribute("title", tip);
+      } else {
+        el.classList.add("mj-equip-slot--empty");
+        el.classList.remove("mj-equip-slot--filled");
+        if (nameEl) nameEl.textContent = "—";
+        el.setAttribute("title", EQUIP_SLOT_EMPTY_TITLE[i] || "空位");
+      }
     }
   }
 
@@ -495,6 +829,8 @@
     if (ageEl) ageEl.textContent = G && G.age != null ? String(G.age) : "—";
     if (syEl) syEl.textContent = G && G.shouyuan != null ? String(G.shouyuan) : "—";
 
+    renderTalentSlots(fc);
+
     var pb = G && G.playerBase;
     var patkEl = document.getElementById("mj-stat-patk");
     var pdefEl = document.getElementById("mj-stat-pdef");
@@ -533,9 +869,14 @@
         ph.classList.remove("hidden");
       }
     }
+
+    renderEquipSlots(G);
+    renderGongfaSlots(G);
+    renderBagSlots(G);
   }
 
   function init() {
+    bindTraitDetailModalUi();
     var fc = restoreBootstrap();
     var G = global.MortalJourneyGame;
     if (!G) {
@@ -543,8 +884,9 @@
       global.MortalJourneyGame = G;
     }
     ensureGameRuntimeDefaults(G);
-    renderLeftPanel(fc, G);
     renderInventorySlots();
+    renderGongfaGrid();
+    renderLeftPanel(fc, G);
     renderBootstrapOverview(fc);
 
     if (global.MortalJourneyWorldBook && typeof global.MortalJourneyWorldBook.syncToBridgeStorage === "function") {
@@ -580,6 +922,108 @@
       var fc = global.MortalJourneyGame && global.MortalJourneyGame.fateChoice;
       ensureGameRuntimeDefaults(global.MortalJourneyGame);
       renderLeftPanel(fc, global.MortalJourneyGame);
+    },
+    /** 佩戴栏槽位数（固定 3） */
+    EQUIP_SLOT_COUNT: EQUIP_SLOT_COUNT,
+    /**
+     * 设置佩戴槽 item 为 { name, desc? } 或 null；index 0 主武器 1 副武器 2 防具
+     * @returns {boolean}
+     */
+    setEquippedSlot: function (index, item) {
+      var G = global.MortalJourneyGame;
+      if (!G) return false;
+      ensureGameRuntimeDefaults(G);
+      var i = Number(index);
+      if (!isFinite(i) || i < 0 || i >= EQUIP_SLOT_COUNT) return false;
+      G.equippedSlots[i] = item == null ? null : item;
+      renderEquipSlots(G);
+      return true;
+    },
+    /** @returns {Array} 三槽快照（元素为 null 或 { name, desc? }） */
+    getEquippedSlots: function () {
+      var G = global.MortalJourneyGame;
+      if (!G) return [null, null, null];
+      ensureEquippedSlots(G);
+      return G.equippedSlots.slice();
+    },
+    /** 功法栏格数（3×4，固定 12） */
+    GONGFA_SLOT_COUNT: GONGFA_SLOT_COUNT,
+    /**
+     * 设置功法格 item 为 { name, desc? } 或 null；index 0～11
+     * @returns {boolean}
+     */
+    setGongfaSlot: function (index, item) {
+      var G = global.MortalJourneyGame;
+      if (!G) return false;
+      ensureGameRuntimeDefaults(G);
+      var i = Number(index);
+      if (!isFinite(i) || i < 0 || i >= GONGFA_SLOT_COUNT) return false;
+      G.gongfaSlots[i] = item == null ? null : item;
+      renderGongfaSlots(G);
+      return true;
+    },
+    /** @returns {Array} 12 格快照（元素为 null 或 { name, desc? }） */
+    getGongfaSlots: function () {
+      var G = global.MortalJourneyGame;
+      if (!G) {
+        var empty = [];
+        for (var e = 0; e < GONGFA_SLOT_COUNT; e++) empty.push(null);
+        return empty;
+      }
+      ensureGongfaSlots(G);
+      return G.gongfaSlots.slice();
+    },
+    /** 储物袋格数（含第 0 格灵石） */
+    INVENTORY_SLOT_COUNT: INVENTORY_SLOT_COUNT,
+    /**
+     * 设置灵石数量（第 0 格）
+     * @returns {boolean}
+     */
+    setLingShiCount: function (n) {
+      var G = global.MortalJourneyGame;
+      if (!G) return false;
+      ensureGameRuntimeDefaults(G);
+      var c = Math.max(0, Math.floor(Number(n) || 0));
+      G.inventorySlots[0].count = c;
+      renderBagSlots(G);
+      return true;
+    },
+    /** @returns {number} */
+    getLingShiCount: function () {
+      var G = global.MortalJourneyGame;
+      if (!G) return 0;
+      ensureInventorySlots(G);
+      var z = G.inventorySlots[0];
+      return z && typeof z.count === "number" ? z.count : 0;
+    },
+    /**
+     * 储物袋物品格：index 1～11，item 为 { name, count?, desc? } 或 null；index 0 请用 setLingShiCount
+     * @returns {boolean}
+     */
+    setBagSlot: function (index, item) {
+      var G = global.MortalJourneyGame;
+      if (!G) return false;
+      ensureGameRuntimeDefaults(G);
+      var i = Number(index);
+      if (!isFinite(i) || i < 1 || i >= INVENTORY_SLOT_COUNT) return false;
+      G.inventorySlots[i] = item == null ? null : normalizeBagItem(item);
+      renderBagSlots(G);
+      return true;
+    },
+    /** @returns {Array} 12 格：{ kind:'lingshi', count } 或 { name, count, desc? } 或 null */
+    getBagSlots: function () {
+      var G = global.MortalJourneyGame;
+      if (!G) {
+        var emp = [ { kind: "lingshi", count: 0 } ];
+        for (var b = 1; b < INVENTORY_SLOT_COUNT; b++) emp.push(null);
+        return emp;
+      }
+      ensureInventorySlots(G);
+      return G.inventorySlots.map(function (x) {
+        if (!x) return null;
+        if (x.kind === "lingshi") return { kind: "lingshi", count: x.count };
+        return { name: x.name, count: x.count, desc: x.desc };
+      });
     },
     DEFAULT_WORLD_TIME: DEFAULT_WORLD_TIME,
   };
