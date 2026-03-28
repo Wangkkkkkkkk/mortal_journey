@@ -140,13 +140,13 @@
 
           <div class="mj-equip-block">
             <h3 class="mj-attr-section-title">装备佩戴</h3>
-            <div class="mj-equip-row" id="mj-equip-row" role="group" aria-label="已装备栏位：主武器、副武器、防具">
-              <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="0" title="主武器空位">
-                <span class="mj-equip-slot-k">主武器</span>
+            <div class="mj-equip-row" id="mj-equip-row" role="group" aria-label="已装备栏位：武器、法器、防具">
+              <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="0" title="武器空位（剑、刀等）">
+                <span class="mj-equip-slot-k">武器</span>
                 <span class="mj-equip-slot-name">—</span>
               </div>
-              <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="1" title="副武器空位">
-                <span class="mj-equip-slot-k">副武器</span>
+              <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="1" title="法器空位（戒指、手环、飞行法等）">
+                <span class="mj-equip-slot-k">法器</span>
                 <span class="mj-equip-slot-name">—</span>
               </div>
               <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="2" title="防具空位">
@@ -213,11 +213,24 @@
       </div>
     </div>
 
+    <div id="mj-item-detail-root" class="mj-trait-modal-root hidden" aria-hidden="true">
+      <div class="mj-trait-modal-backdrop" data-mj-item-detail-close tabindex="-1"></div>
+      <div class="mj-trait-modal mj-item-detail-panel" role="dialog" aria-modal="true" aria-labelledby="mj-item-detail-title">
+        <button type="button" class="mj-trait-modal-close" data-mj-item-detail-close aria-label="关闭">×</button>
+        <h4 id="mj-item-detail-title" class="mj-trait-modal-title"></h4>
+        <div id="mj-item-detail-subtitle" class="mj-trait-modal-rarity"></div>
+        <div id="mj-item-detail-body" class="mj-trait-modal-body"></div>
+      </div>
+    </div>
+
     <script src="./js/data/leegen_state.js"></script>
     <script src="./js/worldbook/preset_content.js"></script>
     <script src="./js/worldbook/preset.js"></script>
     <script src="./js/worldbook/world_book_entries.js"></script>
     <script src="./js/worldbook/world_book.js"></script>
+    <script src="./js/data/mjCreationConfig.js"></script>
+    <script src="./js/data/realm_state.js"></script>
+    <script src="./js/game/player_base_runtime.js"></script>
     <script src="./js/ai_server/story_generate.js"></script>
     <script src="./silly_tarven/bridge-config.js"></script>
     <script src="./silly_tarven/bridge.js"></script>

@@ -109,6 +109,8 @@ body.mj-main-body {
 
 .mj-player-body {
   padding-top: 10px;
+  /** 左栏正文统一字号（标签与数值同尺寸；不含 .mj-attr-section-title 等章节标题） */
+  --mj-player-content-font: 0.9rem;
 }
 
 /** 功法 / 储物袋：标题固定，仅下方 3×4 网格区域各自独立滚动（格数增多时） */
@@ -176,7 +178,7 @@ body.mj-main-body {
 }
 
 .mj-realm-line {
-  font-size: 0.88rem;
+  font-size: var(--mj-player-content-font);
   color: var(--mj-text);
   margin: 0 0 10px;
   text-align: center;
@@ -201,12 +203,13 @@ body.mj-main-body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.78rem;
+  font-size: var(--mj-player-content-font);
   color: var(--mj-muted);
   margin-bottom: 4px;
 }
 
 .mj-resource-nums {
+  font-size: 1em;
   color: var(--mj-gold);
   font-variant-numeric: tabular-nums;
 }
@@ -240,7 +243,7 @@ body.mj-main-body {
 .mj-attr-section-title {
   margin: 16px 0 10px;
   padding-bottom: 6px;
-  font-size: 0.88rem;
+  font-size: 0.98rem;
   font-weight: 600;
   color: var(--mj-gold);
   border-bottom: 1px solid var(--mj-border);
@@ -255,7 +258,7 @@ body.mj-main-body {
   grid-template-columns: 1fr 1fr;
   gap: 6px 12px;
   padding: 7px 0;
-  font-size: 0.78rem;
+  font-size: var(--mj-player-content-font);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   align-items: start;
 }
@@ -269,11 +272,13 @@ body.mj-main-body {
 }
 
 .mj-stat-k {
+  font-size: 1em;
   color: var(--mj-muted);
   flex-shrink: 0;
 }
 
 .mj-stat-v {
+  font-size: 1em;
   color: var(--mj-text);
   text-align: right;
   word-break: break-word;
@@ -288,7 +293,7 @@ body.mj-main-body {
 }
 
 .mj-talent-heading {
-  font-size: 0.72rem;
+  font-size: var(--mj-player-content-font);
   color: var(--mj-muted);
   letter-spacing: 0.12em;
   margin-bottom: 6px;
@@ -326,18 +331,19 @@ body.mj-main-body {
 
 .mj-trait-slot--empty .mj-trait-slot-inner {
   color: var(--mj-muted);
-  font-size: 0.85rem;
+  font-size: var(--mj-player-content-font);
 }
 
 .mj-trait-slot-inner {
-  font-size: 0.62rem;
+  font-size: var(--mj-player-content-font);
   line-height: 1.2;
   text-align: center;
   color: var(--mj-text);
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   word-break: break-word;
   max-width: 100%;
 }
@@ -575,7 +581,43 @@ body.mj-main-body {
   word-break: break-word;
 }
 
-/* 装备佩戴：储物袋上方，固定 3 槽（主武器 / 副武器 / 防具），正方形格 */
+.mj-item-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mj-item-detail-action-btn {
+  flex: 1;
+  min-width: 88px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--mj-text, #e8e4dc);
+  cursor: pointer;
+}
+
+.mj-item-detail-action-btn:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mj-item-detail-action-btn--primary {
+  border-color: rgba(129, 199, 132, 0.55);
+  background: rgba(129, 199, 132, 0.12);
+}
+
+.mj-item-detail-action-btn--primary:hover {
+  border-color: rgba(129, 199, 132, 0.85);
+  background: rgba(129, 199, 132, 0.2);
+}
+
+/* 装备佩戴：储物袋上方，固定 3 槽（武器 / 法器 / 防具），正方形格 */
 .mj-equip-block {
   margin-top: 8px;
 }
@@ -615,22 +657,24 @@ body.mj-main-body {
 .mj-equip-slot--empty {
   border-style: dashed;
   opacity: 0.85;
+  cursor: default;
 }
 
 .mj-equip-slot--filled {
   border-style: solid;
   border-color: rgba(232, 197, 71, 0.55);
   background: rgba(232, 197, 71, 0.06);
+  cursor: pointer;
 }
 
 .mj-equip-slot-k {
-  font-size: 0.65rem;
+  font-size: var(--mj-player-content-font);
   color: var(--mj-muted);
   letter-spacing: 0.04em;
 }
 
 .mj-equip-slot-name {
-  font-size: 0.68rem;
+  font-size: var(--mj-player-content-font);
   line-height: 1.2;
   color: var(--mj-text);
   max-width: 100%;
@@ -644,7 +688,7 @@ body.mj-main-body {
 
 .mj-equip-slot--empty .mj-equip-slot-name {
   color: var(--mj-muted);
-  font-size: 0.8rem;
+  font-size: var(--mj-player-content-font);
 }
 
 .mj-inventory-grid {
@@ -673,7 +717,7 @@ body.mj-main-body {
 }
 
 #mj-inventory-grid .mj-inventory-slot-label {
-  font-size: 0.8rem;
+  font-size: var(--mj-player-content-font);
   line-height: 1.15;
   text-align: center;
   word-break: break-word;
@@ -693,7 +737,7 @@ body.mj-main-body {
   position: absolute;
   bottom: 3px;
   right: 4px;
-  font-size: 0.82rem;
+  font-size: var(--mj-player-content-font);
   font-weight: 600;
   color: var(--mj-gold-dim);
   line-height: 1;
@@ -719,29 +763,46 @@ body.mj-main-body {
   background: rgba(232, 197, 71, 0.05);
 }
 
-/* 功法：与储物袋同 3×4 方格；有功法名时略高亮 */
+/* 功法：格子 flex 居中；文字在内层标签上限制行数，避免顶对齐 */
 .mj-gongfa-grid .mj-inventory-slot {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 3px;
-  font-size: 0.62rem;
-  line-height: 1.15;
-  text-align: center;
-  word-break: break-word;
+  padding: 4px 5px;
   box-sizing: border-box;
+  cursor: default;
 }
 
 .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled {
+  cursor: pointer;
+}
+
+.mj-gongfa-grid .mj-gongfa-slot-label {
+  width: 100%;
+  max-height: 100%;
+  font-size: var(--mj-player-content-font);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-word;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
   overflow: hidden;
+  color: var(--mj-text);
+  pointer-events: none;
+}
+
+.mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled {
   border-style: solid;
   border-color: rgba(232, 197, 71, 0.5);
   background: rgba(232, 197, 71, 0.06);
-  color: var(--mj-text);
+}
+
+#mj-inventory-grid .mj-inventory-slot--filled,
+#mj-inventory-grid .mj-inventory-slot--lingshi {
+  cursor: pointer;
 }
 
 .hidden {

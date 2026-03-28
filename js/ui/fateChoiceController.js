@@ -58,24 +58,9 @@
 
   var BASE_STAT_KEYS = ["hp", "mp", "patk", "pdef", "matk", "mdef", "foot", "sense"];
 
-  /** 与 mainScreen 默认一致；魅力/气运在此基础上叠加配置 bonus 后限制在 [0,100] */
+  /** 与 mainScreen 默认一致；魅力/气运由 PlayerBaseRuntime 合并 bonus 后限制在 [0,100] */
   var DEFAULT_CHARM = 0;
   var DEFAULT_LUCK = 0;
-  var SPECIAL_MIN = 0;
-  var SPECIAL_MAX = 100;
-
-  /** creationConfig 中文属性键 → playerBase 英文键（未列出的加成项忽略） */
-  var ZH_BONUS_TO_PLAYER_KEY = {
-    物攻: "patk",
-    物防: "pdef",
-    法攻: "matk",
-    法防: "mdef",
-    神识: "sense",
-    脚力: "foot",
-    法力: "mp",
-    魅力: "charm",
-    气运: "luck",
-  };
 
   var STAT_LABEL_ZH = {
     hp: "血量",
@@ -90,82 +75,13 @@
     luck: "气运",
   };
 
-  function clampSpecialAttr(n, fallback) {
-    if (typeof n !== "number" || !isFinite(n)) return fallback;
-    var x = Math.round(n);
-    if (x < SPECIAL_MIN) return SPECIAL_MIN;
-    if (x > SPECIAL_MAX) return SPECIAL_MAX;
-    return x;
-  }
-
-  function mergeZhBonusesOntoPlayerBase(playerBase, bonusList) {
-    var out = Object.assign({}, playerBase);
-    out.charm = DEFAULT_CHARM;
-    out.luck = DEFAULT_LUCK;
-    for (var i = 0; i < bonusList.length; i++) {
-      var b = bonusList[i];
-      if (!b || typeof b !== "object") continue;
-      for (var zh in b) {
-        if (!Object.prototype.hasOwnProperty.call(b, zh)) continue;
-        var en = ZH_BONUS_TO_PLAYER_KEY[zh];
-        if (!en) continue;
-        var add = b[zh];
-        if (typeof add !== "number" || !isFinite(add)) continue;
-        var cur = out[en];
-        if (typeof cur !== "number" || !isFinite(cur)) cur = en === "charm" ? DEFAULT_CHARM : en === "luck" ? DEFAULT_LUCK : 0;
-        out[en] = cur + add;
-      }
-    }
-    out.charm = clampSpecialAttr(out.charm, DEFAULT_CHARM);
-    out.luck = clampSpecialAttr(out.luck, DEFAULT_LUCK);
-    var eight = roundBaseStats(out);
-    eight.charm = out.charm;
-    eight.luck = out.luck;
-    return eight;
-  }
-
-  function collectFateChoiceBonusObjects() {
-    var c = cfg();
-    var list = [];
-    if (!c) return list;
-    var diffName = state.selectedDifficulty;
-    if (diffName && c.DIFFICULTIES && c.DIFFICULTIES[diffName] && c.DIFFICULTIES[diffName].bonus) {
-      list.push(c.DIFFICULTIES[diffName].bonus);
-    }
-    var birthName = state.selectedBirth;
-    if (birthName && c.BIRTHS && c.BIRTHS[birthName] && c.BIRTHS[birthName].bonus) {
-      list.push(c.BIRTHS[birthName].bonus);
-    }
-    var raceName = state.selectedRace;
-    if (raceName && c.RACES && c.RACES[raceName] && c.RACES[raceName].bonus) {
-      list.push(c.RACES[raceName].bonus);
-    }
-    var traits = state.selectedTraits || [];
-    for (var t = 0; t < traits.length; t++) {
-      var tr = traits[t];
-      if (tr && tr.bonus && typeof tr.bonus === "object") list.push(tr.bonus);
-    }
-    return list;
-  }
-
-  function roundBaseStats(obj) {
-    var out = {};
-    for (var i = 0; i < BASE_STAT_KEYS.length; i++) {
-      var k = BASE_STAT_KEYS[i];
-      var v = obj && obj[k];
-      out[k] = typeof v === "number" && isFinite(v) ? Math.round(v) : 0;
-    }
-    return out;
-  }
-
   /**
-   * 以练气初期为底，按当前灵根乘练气期灵根倍率，写入 state.rawRealmBase / state.playerBase，
-   * 并同步到 global.MortalJourneyGame（供后续剧情与战斗读写）。
+   * 与主界面一致：境界表 + 灵根 + 难度/出身/种族/天赋/出身 stuff + 当前出身对应的功法栏与佩戴栏快照。
    */
   function recomputePlayerBase() {
     var RS = global.RealmState;
-    var LS = global.LinggenState;
-    if (!RS || typeof RS.getBaseStats !== "function") {
+    var PBR = global.PlayerBaseRuntime;
+    if (!RS || typeof RS.getBaseStats !== "function" || !PBR || typeof PBR.computePlayerBase !== "function") {
       state.rawRealmBase = null;
       state.playerBase = null;
       pushRuntimeSnapshot();
@@ -180,14 +96,27 @@
       logPlayerBaseIfChanged();
       return;
     }
-    state.rawRealmBase = roundBaseStats(raw);
-    var linggen = state.selectedLinggen || "";
-    var merged =
-      LS && typeof LS.applyToBase === "function"
-        ? LS.applyToBase(state.rawRealmBase, START_REALM_MAJOR, linggen)
-        : Object.assign({}, state.rawRealmBase);
-    var withCreation = mergeZhBonusesOntoPlayerBase(merged, collectFateChoiceBonusObjects());
-    state.playerBase = withCreation;
+    var fakeFc = {
+      difficulty: state.selectedDifficulty,
+      birth: state.selectedBirth,
+      race: state.selectedRace,
+      traits: state.selectedTraits,
+      linggen: state.selectedLinggen,
+      realm: { major: START_REALM_MAJOR, minor: START_REALM_STAGE },
+      worldFactors: state.selectedWorldFactors,
+    };
+    var c = cfg();
+    var ovr = {};
+    if (c && state.selectedBirth) {
+      if (typeof c.buildStartingGongfaSlots === "function") {
+        ovr.gongfaSlots = c.buildStartingGongfaSlots(state.selectedBirth);
+      }
+      if (typeof c.buildStartingEquippedSlots === "function") {
+        ovr.equippedSlots = c.buildStartingEquippedSlots(state.selectedBirth);
+      }
+    }
+    state.rawRealmBase = PBR.snapshotRawRealmBase(fakeFc, null);
+    state.playerBase = PBR.computePlayerBase(null, fakeFc, ovr);
     pushRuntimeSnapshot();
     logPlayerBaseIfChanged();
   }
@@ -204,7 +133,9 @@
     _lastAttrLogSignature = sig;
 
     if (!state.playerBase) {
-      console.info("[命运抉择] 角色属性（练气初期）未就绪，请检查 realm_state.js / leegen_state.js 是否已加载。");
+      console.info(
+        "[命运抉择] 角色属性（练气初期）未就绪，请检查 realm_state.js、leegen_state.js、player_base_runtime.js 是否已加载。",
+      );
       return;
     }
 
@@ -261,6 +192,11 @@
   function applyMortalModeLocks() {
     state.selectedBirth = "凡人";
     state.customBirth = null;
+    var c = cfg();
+    var fm = c && c.BIRTHS && c.BIRTHS.凡人;
+    if (fm && fm.location != null && String(fm.location).trim() !== "") {
+      state.birthLocation = String(fm.location).trim();
+    }
     state.selectedRace = "人族";
     state.customRace = null;
     state.currentTraitOptions = [];
@@ -406,7 +342,7 @@
     var modeHint = !diffReady
       ? "请先选择难度：简单（自由）或凡人（固定出身/种族；灵根每次选凡人时自动随机，不可手动再刷；天赋不可刷新）"
       : mortal
-        ? "凡人模式：出身「凡人」、种族「人族」；灵根与天赋不可刷新。"
+        ? "凡人模式：以真正的凡人开始游戏，有额外气运加成。"
         : "简单模式：可自由选择，灵根与天赋可无限次刷新。";
     var isReady =
       !!state.selectedDifficulty &&
@@ -481,12 +417,9 @@
       "</div>" +
       '<div class="creation-section-title"><i class="fas fa-venus-mars"></i> 性别</div>' +
       '<div class="creation-grid">' +
-      Object.entries(c.GENDERS || {})
-        .map(function (entry) {
-          var name = entry[0];
-          var data = entry[1];
+      Object.keys(c.GENDERS || {})
+        .map(function (name) {
           var selected = state.selectedGender === name;
-          var effects = data && Array.isArray(data.effects) ? data.effects : [];
           return (
             '<div class="creation-card ' +
             (selected ? "selected" : "") +
@@ -496,11 +429,6 @@
             "<h4>" +
             name +
             "</h4>" +
-            effects
-              .map(function (e) {
-                return "<p>" + e + "</p>";
-              })
-              .join("") +
             "</div>"
           );
         })
@@ -775,6 +703,10 @@
         }
         state.selectedBirth = birthName;
         state.customBirth = null;
+        var bd = c.BIRTHS && c.BIRTHS[birthName];
+        if (bd && bd.location != null && String(bd.location).trim() !== "") {
+          state.birthLocation = String(bd.location).trim();
+        }
         renderPage();
       });
     });
@@ -914,6 +846,17 @@
 
   function handleStartGame() {
     var statusEl = getEl("start-game-status");
+    var c = cfg();
+    if (state.selectedBirth && c && c.BIRTHS && c.BIRTHS[state.selectedBirth]) {
+      var bl = c.BIRTHS[state.selectedBirth].location;
+      if (
+        (state.birthLocation == null || String(state.birthLocation).trim() === "") &&
+        bl != null &&
+        String(bl).trim() !== ""
+      ) {
+        state.birthLocation = String(bl).trim();
+      }
+    }
     var payload = {
       difficulty: state.selectedDifficulty,
       gender: state.selectedGender,
@@ -938,11 +881,36 @@
       statusEl.textContent = "配置已记录，后续可在此接入存档与主界面。";
     }
     global.MortalJourneyGame = global.MortalJourneyGame || {};
-    global.MortalJourneyGame.fateChoice = payload;
-    global.MortalJourneyGame.startedAt = typeof Date.now === "function" ? Date.now() : 0;
-    global.MortalJourneyGame.playerBase = payload.playerBase ? Object.assign({}, payload.playerBase) : null;
-    global.MortalJourneyGame.rawRealmBase = payload.rawRealmBase ? Object.assign({}, payload.rawRealmBase) : null;
-    global.MortalJourneyGame.realm = payload.realm ? Object.assign({}, payload.realm) : null;
+    var G0 = global.MortalJourneyGame;
+    G0.fateChoice = payload;
+    G0.startedAt = typeof Date.now === "function" ? Date.now() : 0;
+    G0.realm = payload.realm ? Object.assign({}, payload.realm) : null;
+
+    var invSlots = null;
+    var gongfaSlots0 = null;
+    var equippedSlots0 = null;
+    if (c && typeof c.buildStartingInventorySlots === "function") {
+      invSlots = c.buildStartingInventorySlots(state.selectedBirth);
+      G0.inventorySlots = JSON.parse(JSON.stringify(invSlots));
+    }
+    if (c && typeof c.buildStartingGongfaSlots === "function") {
+      gongfaSlots0 = c.buildStartingGongfaSlots(state.selectedBirth);
+      G0.gongfaSlots = JSON.parse(JSON.stringify(gongfaSlots0));
+    }
+    if (c && typeof c.buildStartingEquippedSlots === "function") {
+      equippedSlots0 = c.buildStartingEquippedSlots(state.selectedBirth);
+      G0.equippedSlots = JSON.parse(JSON.stringify(equippedSlots0));
+    }
+
+    var PBR = global.PlayerBaseRuntime;
+    if (PBR && typeof PBR.applyToGame === "function") {
+      PBR.applyToGame(G0, payload);
+      if (G0.playerBase) payload.playerBase = Object.assign({}, G0.playerBase);
+      if (G0.rawRealmBase) payload.rawRealmBase = Object.assign({}, G0.rawRealmBase);
+    } else {
+      G0.playerBase = payload.playerBase ? Object.assign({}, payload.playerBase) : null;
+      G0.rawRealmBase = payload.rawRealmBase ? Object.assign({}, payload.rawRealmBase) : null;
+    }
 
     try {
       sessionStorage.setItem(
@@ -950,6 +918,9 @@
         JSON.stringify({
           fateChoice: payload,
           startedAt: global.MortalJourneyGame.startedAt,
+          inventorySlots: invSlots,
+          gongfaSlots: gongfaSlots0,
+          equippedSlots: equippedSlots0,
         }),
       );
     } catch (err) {

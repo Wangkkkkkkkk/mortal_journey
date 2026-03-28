@@ -83,6 +83,41 @@
     }
   }
 
+  function appendBagAndGongfaLines(lines, G) {
+    if (!G) return;
+    var gf = G.gongfaSlots;
+    if (Array.isArray(gf) && gf.length) {
+      var gn = [];
+      for (var i = 0; i < gf.length; i++) {
+        if (gf[i] && gf[i].name) gn.push(String(gf[i].name));
+      }
+      if (gn.length) lines.push("【已学功法】" + gn.join("、"));
+    }
+    var inv = G.inventorySlots;
+    if (!Array.isArray(inv) || !inv.length) return;
+    var z = inv[0];
+    if (z && z.kind === "lingshi") lines.push("灵石：" + (typeof z.count === "number" ? z.count : 0));
+    var bits = [];
+    for (var j = 1; j < inv.length; j++) {
+      var it = inv[j];
+      if (it && it.name) bits.push(String(it.name) + (it.count > 1 ? "×" + it.count : ""));
+    }
+    if (bits.length) lines.push("【储物袋】" + bits.join("、"));
+  }
+
+  function appendEquippedLines(lines, G) {
+    if (!G || !Array.isArray(G.equippedSlots)) return;
+    var slotLabels = ["武器", "法器", "防具"];
+    var parts = [];
+    for (var i = 0; i < G.equippedSlots.length; i++) {
+      var it = G.equippedSlots[i];
+      if (it && (it.name != null ? it.name : it.label)) {
+        parts.push(slotLabels[i] + "：" + String(it.name != null ? it.name : it.label));
+      }
+    }
+    if (parts.length) lines.push("【装备佩戴】" + parts.join("；"));
+  }
+
   function appendTraitsLines(lines, fc) {
     if (!fc || !Array.isArray(fc.traits) || !fc.traits.length) {
       if (fc && fc.difficulty === "凡人") lines.push("【逆天改命】凡人模式：无天赋词条。");
@@ -136,6 +171,8 @@
     appendPlayerBaseLines(lines, G, fc);
     appendWorldFactorLines(lines, fc);
     appendTraitsLines(lines, fc);
+    appendEquippedLines(lines, G);
+    appendBagAndGongfaLines(lines, G);
 
     if (!lines.length) return "";
     return "【当前存档摘要】\n" + lines.join("\n");

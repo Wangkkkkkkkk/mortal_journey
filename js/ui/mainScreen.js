@@ -14,9 +14,10 @@
   var INVENTORY_SLOT_COUNT = 12;
   /** 功法栏：与储物袋相同 3×4，共 12 格 */
   var GONGFA_SLOT_COUNT = 12;
-  /** 佩戴栏固定 3 格：主武器、副武器、防具（不可超过 3 件） */
+  /** 佩戴栏固定 3 格：武器、法器（戒指/手环/飞行法等）、防具（不可超过 3 件） */
   var EQUIP_SLOT_COUNT = 3;
-  var EQUIP_SLOT_EMPTY_TITLE = ["主武器空位", "副武器空位", "防具空位"];
+  var EQUIP_SLOT_EMPTY_TITLE = ["武器空位", "法器空位", "防具空位"];
+  var EQUIP_SLOT_KIND_LABELS = ["武器", "法器", "防具"];
 
   function clampPct(n) {
     if (typeof n !== "number" || !isFinite(n)) return 0;
@@ -37,6 +38,41 @@
       global.MortalJourneyGame.playerBase = fc.playerBase ? Object.assign({}, fc.playerBase) : null;
       global.MortalJourneyGame.rawRealmBase = fc.rawRealmBase ? Object.assign({}, fc.rawRealmBase) : null;
       global.MortalJourneyGame.realm = fc.realm ? Object.assign({}, fc.realm) : null;
+
+      var C = global.MjCreationConfig;
+      var invOk =
+        data.inventorySlots &&
+        Array.isArray(data.inventorySlots) &&
+        data.inventorySlots.length === INVENTORY_SLOT_COUNT;
+      var gfOk =
+        data.gongfaSlots &&
+        Array.isArray(data.gongfaSlots) &&
+        data.gongfaSlots.length === GONGFA_SLOT_COUNT;
+      if (invOk) {
+        global.MortalJourneyGame.inventorySlots = JSON.parse(JSON.stringify(data.inventorySlots));
+      } else if (fc.birth && C && typeof C.buildStartingInventorySlots === "function") {
+        global.MortalJourneyGame.inventorySlots = JSON.parse(
+          JSON.stringify(C.buildStartingInventorySlots(fc.birth)),
+        );
+      }
+      if (gfOk) {
+        global.MortalJourneyGame.gongfaSlots = JSON.parse(JSON.stringify(data.gongfaSlots));
+      } else if (fc.birth && C && typeof C.buildStartingGongfaSlots === "function") {
+        global.MortalJourneyGame.gongfaSlots = JSON.parse(JSON.stringify(C.buildStartingGongfaSlots(fc.birth)));
+      }
+
+      var eqOk =
+        data.equippedSlots &&
+        Array.isArray(data.equippedSlots) &&
+        data.equippedSlots.length === EQUIP_SLOT_COUNT;
+      if (eqOk) {
+        global.MortalJourneyGame.equippedSlots = JSON.parse(JSON.stringify(data.equippedSlots));
+      } else if (fc.birth && C && typeof C.buildStartingEquippedSlots === "function") {
+        global.MortalJourneyGame.equippedSlots = JSON.parse(
+          JSON.stringify(C.buildStartingEquippedSlots(fc.birth)),
+        );
+      }
+
       return fc;
     } catch (e) {
       console.warn("[主界面] 无法读取开局存档", e);
@@ -105,6 +141,9 @@
       typeof c === "number" && isFinite(c) ? Math.max(0, Math.floor(c)) : 1;
     var o = { name: name, count: cnt };
     if (entry.desc != null && String(entry.desc).trim() !== "") o.desc = String(entry.desc);
+    if (entry.equipType != null && String(entry.equipType).trim() !== "") {
+      o.equipType = String(entry.equipType).trim();
+    }
     return o;
   }
 
@@ -546,8 +585,10 @@
           qtyEl.textContent = String(c0);
           qtyEl.classList.remove("hidden");
         }
-        el.setAttribute("title", "灵石：" + c0);
+        el.setAttribute("title", "灵石：" + c0 + "（点击查看详情）");
         el.setAttribute("aria-label", "灵石，数量 " + c0);
+        el.setAttribute("role", "button");
+        el.setAttribute("tabindex", "0");
         continue;
       }
       var item = G.inventorySlots[i];
@@ -562,9 +603,11 @@
         }
         var tip = item.name;
         if (item.desc) tip += "\n" + item.desc;
-        tip += "\n数量：" + cnt;
+        tip += "\n数量：" + cnt + "（点击查看详情）";
         el.setAttribute("title", tip);
         el.setAttribute("aria-label", item.name + "，数量 " + cnt);
+        el.setAttribute("role", "button");
+        el.setAttribute("tabindex", "0");
       } else {
         el.classList.add("mj-inventory-slot--empty");
         el.classList.remove("mj-inventory-slot--filled");
@@ -575,6 +618,8 @@
         }
         el.setAttribute("title", "空位");
         el.removeAttribute("aria-label");
+        el.removeAttribute("role");
+        el.removeAttribute("tabindex");
       }
     }
   }
@@ -588,6 +633,10 @@
       slot.className = "mj-inventory-slot";
       slot.setAttribute("data-gongfa-slot", String(i));
       slot.setAttribute("title", "功法空位");
+      var inner = document.createElement("span");
+      inner.className = "mj-gongfa-slot-label";
+      inner.setAttribute("aria-hidden", "true");
+      slot.appendChild(inner);
       grid.appendChild(slot);
     }
   }
@@ -599,17 +648,511 @@
     for (var i = 0; i < GONGFA_SLOT_COUNT; i++) {
       var el = grid.querySelector('[data-gongfa-slot="' + i + '"]');
       if (!el) continue;
+      var inner = el.querySelector(".mj-gongfa-slot-label");
       var item = G.gongfaSlots[i];
       var label = item && (item.name != null ? item.name : item.label);
       if (label) {
         el.classList.add("mj-gongfa-slot--filled");
-        el.textContent = String(label);
-        el.setAttribute("title", item.desc ? String(item.desc) : String(label));
+        if (inner) inner.textContent = String(label);
+        var tip = String(label);
+        if (item.desc) tip += "\n" + String(item.desc);
+        tip += "\n（点击查看详情）";
+        el.setAttribute("title", tip);
+        el.setAttribute("role", "button");
+        el.setAttribute("tabindex", "0");
+        el.setAttribute("aria-label", "查看功法：" + String(label));
       } else {
         el.classList.remove("mj-gongfa-slot--filled");
-        el.textContent = "";
+        if (inner) inner.textContent = "";
         el.setAttribute("title", "功法空位");
+        el.removeAttribute("role");
+        el.removeAttribute("tabindex");
+        el.removeAttribute("aria-label");
       }
+    }
+  }
+
+  function formatZhBonusObject(b) {
+    if (!b || typeof b !== "object") return "";
+    var keys = Object.keys(b);
+    if (!keys.length) return "";
+    return keys
+      .map(function (k) {
+        var v = b[k];
+        if (typeof v === "number" && isFinite(v)) {
+          return (v >= 0 ? k + " +" + v : k + " " + v);
+        }
+        return k + " " + String(v);
+      })
+      .join("；");
+  }
+
+  /** 配置里 stuff 条目的 bonus 展示用（灵石只体现在 0 格数量） */
+  function formatStuffBonusForDisplay(b) {
+    if (!b || typeof b !== "object") return "";
+    var o = Object.assign({}, b);
+    delete o.灵石;
+    return formatZhBonusObject(o);
+  }
+
+  /** 按物品显示名匹配任意出身 stuff 元数据 { desc, bonus } */
+  function lookupStuffMetaByItemName(itemName) {
+    if (!itemName) return null;
+    var C = global.MjCreationConfig;
+    if (!C || !C.BIRTHS || typeof C.resolveStuffEntry !== "function") return null;
+    var want = String(itemName).trim();
+    for (var bk in C.BIRTHS) {
+      if (!Object.prototype.hasOwnProperty.call(C.BIRTHS, bk)) continue;
+      var bd = C.BIRTHS[bk];
+      var stuff = bd && bd.stuff;
+      if (!stuff || typeof stuff !== "object" || Array.isArray(stuff)) continue;
+      for (var key in stuff) {
+        if (!Object.prototype.hasOwnProperty.call(stuff, key)) continue;
+        var meta = stuff[key];
+        if (!meta || typeof meta !== "object") meta = {};
+        var resolved = C.resolveStuffEntry(key, meta);
+        if (resolved.type === "item" && resolved.name === want) return meta;
+      }
+    }
+    return null;
+  }
+
+  /** 在所有出身的 gongfa 表里查找同名功法定义（含 desc / bonus） */
+  function lookupGongfaConfigDef(gongfaName) {
+    if (!gongfaName) return null;
+    var C = global.MjCreationConfig;
+    if (!C || !C.BIRTHS) return null;
+    var births = C.BIRTHS;
+    for (var bk in births) {
+      if (!Object.prototype.hasOwnProperty.call(births, bk)) continue;
+      var bd = births[bk];
+      if (!bd || !bd.gongfa || typeof bd.gongfa !== "object") continue;
+      if (bd.gongfa[gongfaName]) return bd.gongfa[gongfaName];
+    }
+    return null;
+  }
+
+  /** 按装备名匹配任意出身 equipment 元数据 { desc, type, bonus } */
+  function lookupEquipmentMetaByItemName(itemName) {
+    if (!itemName) return null;
+    var C = global.MjCreationConfig;
+    if (!C || !C.BIRTHS) return null;
+    var want = String(itemName).trim();
+    for (var bk in C.BIRTHS) {
+      if (!Object.prototype.hasOwnProperty.call(C.BIRTHS, bk)) continue;
+      var bd = C.BIRTHS[bk];
+      var eq = bd && bd.equipment;
+      if (!eq || typeof eq !== "object") continue;
+      if (eq[want]) return eq[want];
+    }
+    return null;
+  }
+
+  function formatEquipTypeLabel(ty) {
+    if (ty == null || String(ty).trim() === "") return "";
+    var r = String(ty).trim();
+    if (r === "副武器") return "法器";
+    if (r === "主武器") return "武器";
+    return r;
+  }
+
+  function findFirstEmptyBagSlot(G) {
+    ensureInventorySlots(G);
+    for (var i = 1; i < INVENTORY_SLOT_COUNT; i++) {
+      if (!G.inventorySlots[i]) return i;
+    }
+    return -1;
+  }
+
+  /**
+   * 将一件物品放入储物袋（1～11）：优先与同名堆叠，否则找空位。
+   * @returns {boolean}
+   */
+  function tryPlaceItemInBag(G, payload) {
+    if (!G || !payload || !payload.name) return false;
+    ensureInventorySlots(G);
+    var name = String(payload.name).trim();
+    if (!name) return false;
+    var cnt = typeof payload.count === "number" && isFinite(payload.count) ? Math.max(1, Math.floor(payload.count)) : 1;
+    var desc = payload.desc != null ? String(payload.desc) : "";
+    for (var i = 1; i < INVENTORY_SLOT_COUNT; i++) {
+      var c = G.inventorySlots[i];
+      if (c && c.name === name) {
+        c.count = (typeof c.count === "number" && isFinite(c.count) ? c.count : 1) + cnt;
+        return true;
+      }
+    }
+    var j = findFirstEmptyBagSlot(G);
+    if (j < 0) return false;
+    G.inventorySlots[j] = normalizeBagItem({
+      name: name,
+      count: cnt,
+      desc: desc || undefined,
+      equipType: payload.equipType,
+    });
+    return true;
+  }
+
+  /** 背包格物品是否可穿戴：有佩戴部位（格子上 equipType 或配置 equipment.type）则返回栏位索引 0～2 */
+  function resolveWearableSlotIndexForBagItem(it) {
+    if (!it || !it.name) return null;
+    var ty = it.equipType != null ? String(it.equipType).trim() : "";
+    if (!ty) {
+      var em = lookupEquipmentMetaByItemName(String(it.name).trim());
+      if (!em || em.type == null || String(em.type).trim() === "") return null;
+      ty = String(em.type).trim();
+    }
+    var C = global.MjCreationConfig;
+    if (!C || typeof C.equipTypeToSlotIndex !== "function") return null;
+    var si = C.equipTypeToSlotIndex(ty);
+    return si == null ? null : si;
+  }
+
+  function notifyBagFull() {
+    var msg = "储物袋已满，无法卸下或更换装备。";
+    if (global.GameLog && typeof global.GameLog.warn === "function") global.GameLog.warn(msg);
+    else window.alert(msg);
+  }
+
+  /**
+   * 从佩戴栏卸下放入储物袋。
+   * @param {number} equipIdx 0～2
+   * @returns {boolean}
+   */
+  function performUnequipToBag(equipIdx) {
+    var G = global.MortalJourneyGame;
+    if (!G) return false;
+    ensureGameRuntimeDefaults(G);
+    var ei = Number(equipIdx);
+    if (!isFinite(ei) || ei < 0 || ei >= EQUIP_SLOT_COUNT) return false;
+    var item = G.equippedSlots[ei];
+    if (!item) return false;
+    var nm = item.name != null ? String(item.name).trim() : "";
+    if (!nm) return false;
+    var payload = {
+      name: nm,
+      count: 1,
+      desc: item.desc != null ? String(item.desc) : "",
+      equipType: item.equipType,
+    };
+    if (!tryPlaceItemInBag(G, payload)) {
+      notifyBagFull();
+      return false;
+    }
+    G.equippedSlots[ei] = null;
+    renderLeftPanel(G.fateChoice, G);
+    return true;
+  }
+
+  /**
+   * 从储物袋穿戴到对应部位；若该部位已有装备则先放入储物袋再穿戴。
+   * @param {number} bagIdx 1～11
+   * @returns {boolean}
+   */
+  function performEquipFromBag(bagIdx) {
+    var G = global.MortalJourneyGame;
+    if (!G) return false;
+    ensureGameRuntimeDefaults(G);
+    var bi = Number(bagIdx);
+    if (!isFinite(bi) || bi < 1 || bi >= INVENTORY_SLOT_COUNT) return false;
+    var it = G.inventorySlots[bi];
+    if (!it || !it.name) return false;
+    var slotIdx = resolveWearableSlotIndexForBagItem(it);
+    if (slotIdx == null) return false;
+
+    var prev = G.equippedSlots[slotIdx];
+    if (prev && prev.name) {
+      if (
+        !tryPlaceItemInBag(G, {
+          name: String(prev.name).trim(),
+          count: 1,
+          desc: prev.desc != null ? String(prev.desc) : "",
+          equipType: prev.equipType,
+        })
+      ) {
+        notifyBagFull();
+        return false;
+      }
+    }
+
+    var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(0, Math.floor(it.count)) : 1;
+    if (cnt < 1) return false;
+
+    var eqMeta = lookupEquipmentMetaByItemName(String(it.name).trim());
+    var ty =
+      it.equipType != null && String(it.equipType).trim() !== ""
+        ? String(it.equipType).trim()
+        : eqMeta && eqMeta.type != null
+          ? String(eqMeta.type).trim()
+          : "";
+    var descStr = "";
+    if (it.desc != null && String(it.desc).trim() !== "") descStr = String(it.desc).trim();
+    else if (eqMeta && eqMeta.desc != null) descStr = String(eqMeta.desc).trim();
+
+    var equipObj = {
+      name: String(it.name).trim(),
+      desc: descStr,
+      equipType: ty,
+    };
+
+    if (cnt > 1) {
+      G.inventorySlots[bi] = normalizeBagItem({
+        name: it.name,
+        count: cnt - 1,
+        desc: it.desc,
+        equipType: it.equipType,
+      });
+    } else {
+      G.inventorySlots[bi] = null;
+    }
+
+    G.equippedSlots[slotIdx] = equipObj;
+    renderLeftPanel(G.fateChoice, G);
+    return true;
+  }
+
+  function appendItemDetailActionButtons(bodyEl, actionButtons) {
+    if (!bodyEl || !Array.isArray(actionButtons) || !actionButtons.length) return;
+    var wrap = document.createElement("div");
+    wrap.className = "mj-item-detail-actions";
+    for (var b = 0; b < actionButtons.length; b++) {
+      var spec = actionButtons[b];
+      if (!spec || !spec.label) continue;
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className =
+        "mj-item-detail-action-btn" + (spec.primary ? " mj-item-detail-action-btn--primary" : "");
+      btn.textContent = String(spec.label);
+      (function (onClick) {
+        btn.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          if (typeof onClick === "function") onClick();
+        });
+      })(spec.onClick);
+      wrap.appendChild(btn);
+    }
+    if (wrap.childNodes.length) bodyEl.appendChild(wrap);
+  }
+
+  /**
+   * @param {{ label: string, text: string }[]} sections
+   * @param {{ label: string, primary?: boolean, onClick?: function(): void }[]} [actionButtons]
+   */
+  function openItemDetailModal(title, subtitle, sections, actionButtons) {
+    var root = document.getElementById("mj-item-detail-root");
+    var titleEl = document.getElementById("mj-item-detail-title");
+    var subEl = document.getElementById("mj-item-detail-subtitle");
+    var bodyEl = document.getElementById("mj-item-detail-body");
+    if (!root || !titleEl || !subEl || !bodyEl) return;
+    titleEl.textContent = title || "—";
+    subEl.textContent = subtitle || "";
+    bodyEl.textContent = "";
+    if (Array.isArray(sections)) {
+      for (var i = 0; i < sections.length; i++) {
+        var s = sections[i];
+        if (!s) continue;
+        var lab = s.label != null ? String(s.label) : "说明";
+        var txt = s.text != null ? String(s.text) : "";
+        if (txt === "") continue;
+        appendTraitModalSection(bodyEl, lab, txt);
+      }
+    }
+    appendItemDetailActionButtons(bodyEl, actionButtons);
+    root.classList.remove("hidden");
+    root.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    var closeBtn = root.querySelector(".mj-trait-modal-close");
+    if (closeBtn) closeBtn.focus();
+  }
+
+  function closeItemDetailModal() {
+    var root = document.getElementById("mj-item-detail-root");
+    if (!root) return;
+    root.classList.add("hidden");
+    root.setAttribute("aria-hidden", "true");
+    var traitRoot = document.getElementById("mj-trait-detail-root");
+    if (!traitRoot || traitRoot.classList.contains("hidden")) {
+      document.body.style.overflow = "";
+    }
+  }
+
+  function tryOpenGongfaFromSlot(slotEl) {
+    var grid = document.getElementById("mj-gongfa-grid");
+    if (!slotEl || !grid || !grid.contains(slotEl)) return;
+    if (!slotEl.classList.contains("mj-gongfa-slot--filled")) return;
+    var idx = parseInt(slotEl.getAttribute("data-gongfa-slot"), 10);
+    if (isNaN(idx)) return;
+    var G = global.MortalJourneyGame;
+    var item = G && G.gongfaSlots && G.gongfaSlots[idx];
+    if (!item || !(item.name != null ? item.name : item.label)) return;
+    var name = String(item.name != null ? item.name : item.label);
+    var cfgDef = lookupGongfaConfigDef(name);
+    var descRuntime = item.desc != null ? String(item.desc).trim() : "";
+    var descCfg = cfgDef && cfgDef.desc != null ? String(cfgDef.desc).trim() : "";
+    var desc = descRuntime || descCfg || "";
+    var sections = [];
+    if (desc) sections.push({ label: "简介", text: desc });
+    var bonusLine = cfgDef && cfgDef.bonus ? formatZhBonusObject(cfgDef.bonus) : "";
+    if (bonusLine) sections.push({ label: "修炼加成", text: bonusLine });
+    if (!sections.length) sections.push({ label: "说明", text: "暂无详细描述。" });
+    openItemDetailModal(name, "功法", sections);
+  }
+
+  function tryOpenBagSlotFromEl(slotEl) {
+    var grid = document.getElementById("mj-inventory-grid");
+    if (!slotEl || !grid || !grid.contains(slotEl)) return;
+    var idx = parseInt(slotEl.getAttribute("data-slot"), 10);
+    if (isNaN(idx)) return;
+    var G = global.MortalJourneyGame;
+    if (!G || !G.inventorySlots) return;
+    if (idx === 0) {
+      var z = G.inventorySlots[0];
+      var cnt = z && typeof z.count === "number" ? z.count : 0;
+      openItemDetailModal("灵石", "货币", [
+        { label: "说明", text: "修士界流通的基础货币，可用于购买丹药、法器与材料等。" },
+        { label: "持有数量", text: String(cnt) },
+      ]);
+      return;
+    }
+    if (!slotEl.classList.contains("mj-inventory-slot--filled")) return;
+    var it = G.inventorySlots[idx];
+    if (!it || !it.name) return;
+    var cnt = typeof it.count === "number" ? it.count : 1;
+    var stuffMeta = lookupStuffMetaByItemName(it.name);
+    var eqMeta = lookupEquipmentMetaByItemName(it.name);
+    var descRuntime = it.desc != null ? String(it.desc).trim() : "";
+    var descCfg =
+      (stuffMeta && stuffMeta.desc != null ? String(stuffMeta.desc).trim() : "") ||
+      (eqMeta && eqMeta.desc != null ? String(eqMeta.desc).trim() : "");
+    var desc = descRuntime || descCfg || "";
+    var sections = [];
+    if (desc) sections.push({ label: "简介", text: desc });
+    else sections.push({ label: "简介", text: "暂无详细描述。" });
+    var wearSlot = resolveWearableSlotIndexForBagItem(it);
+    if (wearSlot != null) {
+      var tyShow = it.equipType
+        ? formatEquipTypeLabel(it.equipType)
+        : eqMeta && eqMeta.type
+          ? formatEquipTypeLabel(eqMeta.type)
+          : EQUIP_SLOT_KIND_LABELS[wearSlot] || "装备";
+      sections.push({ label: "佩戴部位", text: tyShow });
+    }
+    var bonusStuff = stuffMeta && stuffMeta.bonus ? formatStuffBonusForDisplay(stuffMeta.bonus) : "";
+    var bonusEq = eqMeta && eqMeta.bonus ? formatZhBonusObject(eqMeta.bonus) : "";
+    if (bonusStuff) sections.push({ label: "效果", text: bonusStuff });
+    if (bonusEq) sections.push({ label: "属性加成", text: bonusEq });
+    sections.push({ label: "持有数量", text: String(cnt) });
+
+    var actions = [];
+    if (wearSlot != null) {
+      actions.push({
+        label: "穿戴",
+        primary: true,
+        onClick: function () {
+          closeItemDetailModal();
+          performEquipFromBag(idx);
+        },
+      });
+    }
+    openItemDetailModal(String(it.name), "物品", sections, actions);
+  }
+
+  function tryOpenEquipFromSlotEl(slotEl) {
+    var row = document.getElementById("mj-equip-row");
+    if (!slotEl || !row || !row.contains(slotEl)) return;
+    if (!slotEl.classList.contains("mj-equip-slot--filled")) return;
+    var idx = parseInt(slotEl.getAttribute("data-equip-slot"), 10);
+    if (isNaN(idx) || idx < 0 || idx >= EQUIP_SLOT_COUNT) return;
+    var G = global.MortalJourneyGame;
+    var item = G && G.equippedSlots && G.equippedSlots[idx];
+    if (!item || !(item.name != null ? item.name : item.label)) return;
+    var name = String(item.name != null ? item.name : item.label);
+    var meta = lookupEquipmentMetaByItemName(name);
+    var descRuntime = item.desc != null ? String(item.desc).trim() : "";
+    var descCfg = meta && meta.desc != null ? String(meta.desc).trim() : "";
+    var desc = descRuntime || descCfg || "";
+    var tyLabel = item.equipType
+      ? formatEquipTypeLabel(item.equipType)
+      : EQUIP_SLOT_KIND_LABELS[idx] || "装备";
+    var sections = [];
+    sections.push({ label: "佩戴部位", text: tyLabel });
+    if (desc) sections.push({ label: "简介", text: desc });
+    else sections.push({ label: "简介", text: "暂无详细描述。" });
+    var bonusLine = meta && meta.bonus ? formatZhBonusObject(meta.bonus) : "";
+    if (bonusLine) sections.push({ label: "属性加成", text: bonusLine });
+    openItemDetailModal(name, "装备", sections, [
+      {
+        label: "卸下",
+        onClick: function () {
+          closeItemDetailModal();
+          performUnequipToBag(idx);
+        },
+      },
+    ]);
+  }
+
+  var _gongfaBagDetailUiBound = false;
+
+  function bindGongfaBagDetailUi() {
+    if (_gongfaBagDetailUiBound) return;
+    _gongfaBagDetailUiBound = true;
+    var itemRoot = document.getElementById("mj-item-detail-root");
+    if (itemRoot) {
+      itemRoot.querySelectorAll("[data-mj-item-detail-close]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          closeItemDetailModal();
+        });
+      });
+    }
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Escape") return;
+      var rItem = document.getElementById("mj-item-detail-root");
+      if (rItem && !rItem.classList.contains("hidden")) {
+        closeItemDetailModal();
+        ev.preventDefault();
+      }
+    });
+    var gf = document.getElementById("mj-gongfa-grid");
+    if (gf) {
+      gf.addEventListener("click", function (e) {
+        tryOpenGongfaFromSlot(e.target.closest(".mj-inventory-slot"));
+      });
+      gf.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        var slot = e.target.closest(".mj-inventory-slot");
+        if (!slot || !gf.contains(slot)) return;
+        if (!slot.classList.contains("mj-gongfa-slot--filled")) return;
+        if (e.key === " ") e.preventDefault();
+        tryOpenGongfaFromSlot(slot);
+      });
+    }
+    var bag = document.getElementById("mj-inventory-grid");
+    if (bag) {
+      bag.addEventListener("click", function (e) {
+        tryOpenBagSlotFromEl(e.target.closest(".mj-inventory-slot"));
+      });
+      bag.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        var slot = e.target.closest(".mj-inventory-slot");
+        if (!slot || !bag.contains(slot)) return;
+        if (slot.classList.contains("mj-inventory-slot--empty")) return;
+        if (e.key === " ") e.preventDefault();
+        tryOpenBagSlotFromEl(slot);
+      });
+    }
+    var equipRow = document.getElementById("mj-equip-row");
+    if (equipRow) {
+      equipRow.addEventListener("click", function (e) {
+        tryOpenEquipFromSlotEl(e.target.closest(".mj-equip-slot"));
+      });
+      equipRow.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        var slot = e.target.closest(".mj-equip-slot");
+        if (!slot || !equipRow.contains(slot)) return;
+        if (!slot.classList.contains("mj-equip-slot--filled")) return;
+        if (e.key === " ") e.preventDefault();
+        tryOpenEquipFromSlotEl(slot);
+      });
     }
   }
 
@@ -776,19 +1319,46 @@
         el.classList.remove("mj-equip-slot--empty");
         el.classList.add("mj-equip-slot--filled");
         if (nameEl) nameEl.textContent = String(label);
-        var tip = String(label);
+        var tip = "";
+        if (item.equipType) {
+          var tyRaw = String(item.equipType);
+          var tyShow =
+            tyRaw === "副武器" ? "法器" : tyRaw === "主武器" ? "武器" : tyRaw;
+          tip += tyShow + "：";
+        }
+        tip += String(label);
         if (item.desc) tip += "\n" + String(item.desc);
+        tip += "\n（点击查看详情）";
         el.setAttribute("title", tip);
+        el.setAttribute("role", "button");
+        el.setAttribute("tabindex", "0");
+        el.setAttribute("aria-label", "查看装备：" + String(label));
       } else {
         el.classList.add("mj-equip-slot--empty");
         el.classList.remove("mj-equip-slot--filled");
         if (nameEl) nameEl.textContent = "—";
         el.setAttribute("title", EQUIP_SLOT_EMPTY_TITLE[i] || "空位");
+        el.removeAttribute("role");
+        el.removeAttribute("tabindex");
+        el.removeAttribute("aria-label");
       }
     }
   }
 
   function renderLeftPanel(fc, G) {
+    if (
+      G &&
+      fc &&
+      global.PlayerBaseRuntime &&
+      typeof global.PlayerBaseRuntime.applyToGame === "function"
+    ) {
+      try {
+        global.PlayerBaseRuntime.applyToGame(G, fc);
+      } catch (pbrErr) {
+        console.warn("[主界面] PlayerBaseRuntime.applyToGame 失败", pbrErr);
+      }
+    }
+
     var worldEl = document.getElementById("mj-world-time");
     if (worldEl) worldEl.textContent = (G && G.worldTimeString) || DEFAULT_WORLD_TIME;
 
@@ -877,6 +1447,7 @@
 
   function init() {
     bindTraitDetailModalUi();
+    bindGongfaBagDetailUi();
     var fc = restoreBootstrap();
     var G = global.MortalJourneyGame;
     if (!G) {
@@ -926,7 +1497,7 @@
     /** 佩戴栏槽位数（固定 3） */
     EQUIP_SLOT_COUNT: EQUIP_SLOT_COUNT,
     /**
-     * 设置佩戴槽 item 为 { name, desc? } 或 null；index 0 主武器 1 副武器 2 防具
+     * 设置佩戴槽 item 为 { name, desc?, equipType? } 或 null；index 0 武器 1 法器 2 防具
      * @returns {boolean}
      */
     setEquippedSlot: function (index, item) {
@@ -936,7 +1507,7 @@
       var i = Number(index);
       if (!isFinite(i) || i < 0 || i >= EQUIP_SLOT_COUNT) return false;
       G.equippedSlots[i] = item == null ? null : item;
-      renderEquipSlots(G);
+      renderLeftPanel(G.fateChoice, G);
       return true;
     },
     /** @returns {Array} 三槽快照（元素为 null 或 { name, desc? }） */
@@ -959,7 +1530,7 @@
       var i = Number(index);
       if (!isFinite(i) || i < 0 || i >= GONGFA_SLOT_COUNT) return false;
       G.gongfaSlots[i] = item == null ? null : item;
-      renderGongfaSlots(G);
+      renderLeftPanel(G.fateChoice, G);
       return true;
     },
     /** @returns {Array} 12 格快照（元素为 null 或 { name, desc? }） */
@@ -1022,8 +1593,18 @@
       return G.inventorySlots.map(function (x) {
         if (!x) return null;
         if (x.kind === "lingshi") return { kind: "lingshi", count: x.count };
-        return { name: x.name, count: x.count, desc: x.desc };
+        var o = { name: x.name, count: x.count, desc: x.desc };
+        if (x.equipType) o.equipType = x.equipType;
+        return o;
       });
+    },
+    /** 从储物袋格（1～11）穿戴；满袋无法换下当前装备时返回 false */
+    equipFromBagSlot: function (bagIndex) {
+      return performEquipFromBag(bagIndex);
+    },
+    /** 卸下佩戴栏一格（0～2）到储物袋；袋满返回 false */
+    unequipToBag: function (equipSlotIndex) {
+      return performUnequipToBag(equipSlotIndex);
     },
     DEFAULT_WORLD_TIME: DEFAULT_WORLD_TIME,
   };
