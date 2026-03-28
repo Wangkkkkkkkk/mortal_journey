@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>凡人修仙传</title>
+    <link rel="stylesheet" href="./css/start_frame.css" />
+  </head>
+  <body>
+    <!-- 结构对齐 ref_html/index.html 启动段；样式贴近像素风参考图 -->
+    <div id="splash-screen">
+      <div id="splash-bg" aria-hidden="true"></div>
+
+      <div id="splash-content">
+        <h1 id="splash-title">凡人修仙传</h1>
+        <p id="splash-info">作者: KAI&nbsp;&nbsp;|&nbsp;&nbsp;版本: 1.0.0</p>
+
+        <div id="splash-buttons">
+          <button class="splash-btn" id="start-new-life-btn" type="button">开始新人生</button>
+          <button class="splash-btn" id="load-life-btn" type="button">读取人生</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+        document.getElementById("start-new-life-btn").addEventListener("click", function () {
+          // 后续可接角色创建或路由
+          console.info("[凡人修仙传] 开始新人生");
+        });
+        document.getElementById("load-life-btn").addEventListener("click", function () {
+          console.info("[凡人修仙传] 读取人生");
+        });
+      })();
+    </script>
+  </body>
+</html>

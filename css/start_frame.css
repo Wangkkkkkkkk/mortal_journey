@@ -1,0 +1,180 @@
+/* 凡人修仙传 · 启动页（像素风参考图 + index 骨架对齐） */
+@import url("https://fonts.googleapis.com/css2?family=Long+Cang&family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@400;600&display=swap");
+
+:root {
+  --splash-gold: #e8c547;
+  --splash-gold-dim: #c9a227;
+  --splash-gold-glow: rgba(255, 210, 120, 0.45);
+  --splash-fg: #f5f5f0;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: "Noto Sans SC", "Source Han Sans SC", sans-serif;
+  background: #0d160f;
+  color: var(--splash-fg);
+}
+
+#splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* 背景图 + 暗角，贴近参考图黄绿氛围 */
+#splash-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-color: #1a2e22;
+  background-image: url("../assets/splash-bg.png");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+#splash-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to bottom, rgba(10, 18, 12, 0.25) 0%, transparent 35%, rgba(5, 10, 8, 0.55) 100%),
+    radial-gradient(ellipse 80% 60% at 50% 45%, transparent 0%, rgba(8, 14, 10, 0.35) 100%);
+}
+
+/* 轻微像素格扫描感（可选层次） */
+#splash-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.06;
+  background-image: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(0, 0, 0, 0.35) 3px,
+      rgba(0, 0, 0, 0.35) 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 3px,
+      rgba(0, 0, 0, 0.25) 3px,
+      rgba(0, 0, 0, 0.25) 4px
+    );
+}
+
+#splash-content {
+  position: relative;
+  z-index: 2;
+  padding: clamp(12px, 4vw, 28px);
+  background: transparent;
+  max-width: min(96vw, 520px);
+}
+
+#splash-title {
+  margin: 0;
+  font-family: "Ma Shan Zheng", "Long Cang", serif;
+  font-weight: 400;
+  font-size: clamp(2.8rem, 12vw, 5.5rem);
+  line-height: 1.05;
+  letter-spacing: 0.06em;
+  color: var(--splash-gold);
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.55),
+    0 0 2px rgba(0, 0, 0, 0.8),
+    0 0 14px var(--splash-gold-glow),
+    0 0 36px rgba(200, 160, 60, 0.25);
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  #splash-title {
+    white-space: normal;
+  }
+}
+
+#splash-info {
+  margin: 12px 0 0;
+  font-size: clamp(0.8rem, 2.8vw, 0.95rem);
+  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+}
+
+#splash-buttons {
+  margin-top: clamp(28px, 7vw, 44px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(14px, 3.5vw, 20px);
+}
+
+.splash-btn {
+  width: min(280px, 86vw);
+  padding: 14px 28px;
+  font-size: clamp(1rem, 3.2vw, 1.2rem);
+  font-family: "Noto Sans SC", sans-serif;
+  font-weight: 600;
+  color: var(--splash-gold);
+  background: rgba(0, 0, 0, 0.48);
+  border: 1px solid rgba(212, 175, 55, 0.92);
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    background 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.15s ease;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 235, 180, 0.12);
+}
+
+.splash-btn:hover {
+  background: rgba(55, 42, 12, 0.72);
+  border-color: rgba(255, 230, 150, 0.98);
+  color: #ffe9a8;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.5),
+    0 0 22px rgba(255, 200, 80, 0.28),
+    inset 0 1px 0 rgba(255, 235, 190, 0.22);
+  transform: translateY(-1px);
+}
+
+.splash-btn:active {
+  transform: translateY(0);
+}
+
+.splash-btn:focus-visible {
+  outline: 2px solid var(--splash-gold-dim);
+  outline-offset: 3px;
+}
+
+.splash-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
