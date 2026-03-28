@@ -178,3 +178,8 @@ body {
   cursor: not-allowed;
   transform: none;
 }
+
+/* 与命运抉择屏切换共用 */
+.hidden {
+  display: none !important;
+}

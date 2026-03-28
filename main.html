@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>凡人修仙传 · 修行</title>
+    <link rel="stylesheet" href="./css/main.css" />
+  </head>
+  <body class="mj-main-body">
+    <header class="mj-main-header">
+      <h1>凡人修仙传</h1>
+      <span class="mj-sub">AI 剧情 · 骨架界面</span>
+    </header>
+
+    <div class="mj-main-layout" id="mj-main-layout">
+      <!-- 左侧：角色属性 -->
+      <aside class="mj-pane" aria-label="角色属性">
+        <div class="mj-pane-header">角色属性</div>
+        <div class="mj-pane-body">
+          <p class="mj-attr-placeholder" id="mj-player-attr-hint">加载中…</p>
+          <ul class="mj-attr-list" id="mj-player-attr-list"></ul>
+        </div>
+      </aside>
+
+      <!-- 中间：聊天 -->
+      <section class="mj-pane mj-pane--chat" aria-label="聊天">
+        <div class="mj-pane-header">剧情对话</div>
+        <div class="mj-chat-log" id="mj-chat-log">
+          <p class="mj-chat-placeholder">
+            此处将展示与 AI 的对话消息。<br />
+            具体收发、流式输出、酒馆桥接等后续再接。
+          </p>
+        </div>
+        <div class="mj-chat-composer">
+          <textarea id="mj-chat-input" rows="2" placeholder="输入行动或想法…（占位，尚未接 AI）"></textarea>
+          <button type="button" id="mj-chat-send">发送</button>
+        </div>
+      </section>
+
+      <!-- 右侧：周围人物 -->
+      <aside class="mj-pane" aria-label="周围人物">
+        <div class="mj-pane-header">周围人物</div>
+        <div class="mj-pane-body" id="mj-npc-panel">
+          <div class="mj-npc-card">
+            <h3>占位 · 路人甲</h3>
+            <p>身份、境界、关系等摘要将放在此处。</p>
+          </div>
+          <div class="mj-npc-card">
+            <h3>占位 · 商贩</h3>
+            <p>列表与详情交互后续实现。</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <script src="./js/ui/mainScreen.js"></script>
+  </body>
+</html>

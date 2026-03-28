@@ -4,10 +4,22 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>凡人修仙传</title>
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="./css/start_frame.css" />
+    <link rel="stylesheet" href="./css/logPanel.css" />
+    <link rel="stylesheet" href="./css/hongmeng_creation.css" />
   </head>
   <body>
-    <!-- 结构对齐 ref_html/index.html 启动段；样式贴近像素风参考图 -->
+    <script src="./js/log/logPanel.js"></script>
+    <script src="./js/data/mjCreationConfig.js"></script>
+    <script src="./js/data/realm_state.js"></script>
+    <script src="./js/data/leegen_state.js"></script>
+    <script src="./js/ui/fateChoiceController.js"></script>
+
+    <!-- 结构对齐 ref_html/index.html 启动段 -->
     <div id="splash-screen">
       <div id="splash-bg" aria-hidden="true"></div>
 
@@ -22,12 +34,24 @@
       </div>
     </div>
 
+    <!-- 对齐 ref_html/index.html #character-creation-screen（开辟鸿蒙 / 命运抉择） -->
+    <div id="character-creation-screen" class="hidden" aria-hidden="true">
+      <div class="creation-container">
+        <div class="creation-step-indicator" id="creation-step-indicator"></div>
+        <div class="creation-content" id="creation-content"></div>
+        <div class="creation-nav" id="creation-nav"></div>
+      </div>
+    </div>
+
     <script>
       (function () {
         "use strict";
         document.getElementById("start-new-life-btn").addEventListener("click", function () {
-          // 后续可接角色创建或路由
-          console.info("[凡人修仙传] 开始新人生");
+          if (window.FateChoiceController && typeof window.FateChoiceController.show === "function") {
+            window.FateChoiceController.show();
+          } else {
+            console.warn("[凡人修仙传] FateChoiceController 未加载");
+          }
         });
         document.getElementById("load-life-btn").addEventListener("click", function () {
           console.info("[凡人修仙传] 读取人生");
