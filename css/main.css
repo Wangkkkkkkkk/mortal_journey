@@ -58,7 +58,7 @@ body.mj-main-body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(220px, 260px) 1fr minmax(220px, 280px);
+  grid-template-columns: minmax(260px, 300px) 1fr minmax(220px, 280px);
   gap: 0;
 }
 
@@ -92,32 +92,193 @@ body.mj-main-body {
   padding: 12px 14px;
 }
 
-/* 左栏 · 角色属性 */
-.mj-attr-placeholder {
-  font-size: 0.85rem;
-  color: var(--mj-muted);
-  line-height: 1.5;
-  margin: 0 0 12px;
+/* 左栏 · 角色信息 */
+.mj-pane--player {
+  position: relative;
 }
 
-.mj-attr-list {
-  list-style: none;
+/** 世界时间：在「角色信息」标题之上，不参与下方滚动，始终可见 */
+.mj-player-world-fixed {
+  flex-shrink: 0;
+  z-index: 3;
+  padding: 10px 14px 10px;
+  border-bottom: 1px solid var(--mj-border);
+  background: linear-gradient(180deg, rgba(28, 34, 30, 0.99), rgba(20, 26, 22, 0.96));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.mj-player-body {
+  padding-top: 10px;
+}
+
+.mj-world-time {
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--mj-gold-dim);
+  letter-spacing: 0.04em;
   margin: 0;
-  padding: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(140, 120, 83, 0.25);
 }
 
-.mj-attr-list li {
+.mj-player-avatar-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.mj-player-avatar-wrap .mj-player-avatar.hidden {
+  display: none;
+}
+
+.mj-player-avatar-wrap .mj-player-avatar:not(.hidden) ~ .mj-player-avatar--placeholder {
+  display: none;
+}
+
+.mj-player-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid var(--mj-border);
+}
+
+.mj-player-avatar--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--mj-muted);
+  font-size: 0.78rem;
+  user-select: none;
+}
+
+.mj-realm-line {
+  font-size: 0.88rem;
+  color: var(--mj-text);
+  margin: 0 0 10px;
+  text-align: center;
+}
+
+.mj-player-identity {
+  margin: 12px 0 14px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(140, 120, 83, 0.25);
+}
+
+.mj-combat-stats {
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.mj-resource-row {
+  margin-bottom: 10px;
+}
+
+.mj-resource-label {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  font-size: 0.88rem;
+  align-items: center;
+  font-size: 0.78rem;
+  color: var(--mj-muted);
+  margin-bottom: 4px;
 }
 
-.mj-attr-list li span:last-child {
+.mj-resource-nums {
   color: var(--mj-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.mj-bar {
+  height: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mj-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.mj-bar-fill--cultivation {
+  background: linear-gradient(90deg, #5d4e37, var(--mj-gold));
+}
+
+.mj-bar-fill--hp {
+  background: linear-gradient(90deg, #8b2942, #c62828);
+}
+
+.mj-bar-fill--mp {
+  background: linear-gradient(90deg, #1565c0, #4fc3f7);
+}
+
+.mj-attr-section-title {
+  margin: 16px 0 10px;
+  padding-bottom: 6px;
+  font-size: 0.88rem;
   font-weight: 600;
+  color: var(--mj-gold);
+  border-bottom: 1px solid var(--mj-border);
+}
+
+.mj-attr-section-title--first {
+  margin-top: 4px;
+}
+
+.mj-stat-pair-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  padding: 7px 0;
+  font-size: 0.78rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  align-items: start;
+}
+
+.mj-stat-cell {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mj-stat-k {
+  color: var(--mj-muted);
+  flex-shrink: 0;
+}
+
+.mj-stat-v {
+  color: var(--mj-text);
+  text-align: right;
+  word-break: break-word;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.mj-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.mj-inventory-slot {
+  aspect-ratio: 1;
+  min-height: 36px;
+  border: 1px dashed rgba(140, 120, 83, 0.4);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.hidden {
+  display: none !important;
 }
 
 /* 中栏 · 聊天 */
@@ -140,6 +301,170 @@ body.mj-main-body {
   color: var(--mj-muted);
   font-size: 0.9rem;
   line-height: 1.6;
+}
+
+/* 剧情区 · 开局总览（首条系统消息） */
+.mj-chat-msg--overview {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--mj-border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.38);
+  text-align: left;
+  color: var(--mj-text);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.mj-chat-overview-title {
+  margin: 0 0 10px;
+  font-size: 1.02rem;
+  color: var(--mj-gold);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.mj-chat-overview-intro {
+  margin: 0 0 4px;
+  color: var(--mj-muted);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+.mj-chat-overview-h {
+  margin: 16px 0 8px;
+  font-size: 0.92rem;
+  color: rgba(232, 197, 71, 0.9);
+  font-weight: 600;
+  border-bottom: 1px solid rgba(140, 120, 83, 0.28);
+  padding-bottom: 5px;
+}
+
+.mj-chat-overview-h:first-of-type {
+  margin-top: 10px;
+}
+
+.mj-chat-overview-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(4.5em, auto) 1fr;
+  gap: 6px 14px;
+  font-size: 0.86rem;
+}
+
+.mj-chat-overview-dl dt {
+  margin: 0;
+  color: var(--mj-muted);
+  font-weight: normal;
+}
+
+.mj-chat-overview-dl dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.mj-chat-overview-muted {
+  margin: 6px 0 0;
+  color: var(--mj-muted);
+  font-size: 0.86rem;
+}
+
+.mj-chat-overview-ul {
+  margin: 8px 0 0;
+  padding-left: 1.15em;
+}
+
+.mj-chat-overview-li {
+  margin-bottom: 10px;
+}
+
+.mj-chat-overview-li strong {
+  color: rgba(255, 235, 190, 0.95);
+  font-weight: 600;
+}
+
+.mj-chat-overview-sub {
+  color: rgba(220, 218, 210, 0.92);
+  font-size: 0.9em;
+}
+
+.mj-chat-overview-effect {
+  color: var(--mj-muted);
+  font-size: 0.88em;
+}
+
+.mj-chat-msg--role {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mj-chat-msg--user {
+  margin-left: 12%;
+  background: rgba(60, 90, 70, 0.45);
+  border: 1px solid rgba(120, 160, 130, 0.35);
+}
+
+.mj-chat-msg--assistant {
+  margin-right: 8%;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--mj-border);
+}
+
+.mj-chat-msg--error {
+  margin-right: 8%;
+  background: rgba(120, 40, 40, 0.35);
+  border: 1px solid rgba(200, 80, 80, 0.45);
+  color: #f0c0c0;
+}
+
+.mj-chat-role-label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--mj-muted);
+  margin-bottom: 4px;
+  letter-spacing: 0.04em;
+}
+
+/* 剧情请求状态（等待 / 流式 / 完成 / 失败） */
+.mj-chat-status {
+  flex-shrink: 0;
+  min-height: 1.4em;
+  padding: 6px 16px 4px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--mj-muted);
+  border-top: 1px solid rgba(140, 120, 83, 0.2);
+  background: rgba(0, 0, 0, 0.18);
+  transition: color 0.2s ease;
+}
+
+.mj-chat-status--idle:empty {
+  padding-top: 0;
+  padding-bottom: 0;
+  min-height: 0;
+  border-top-color: transparent;
+  background: transparent;
+}
+
+.mj-chat-status--waiting {
+  color: var(--mj-gold);
+}
+
+.mj-chat-status--streaming {
+  color: #9ec5e8;
+}
+
+.mj-chat-status--done {
+  color: #81c784;
+}
+
+.mj-chat-status--error {
+  color: #e57373;
 }
 
 .mj-chat-composer {
@@ -167,6 +492,11 @@ body.mj-main-body {
 
 .mj-chat-composer textarea::placeholder {
   color: var(--mj-muted);
+}
+
+.mj-chat-composer textarea:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .mj-chat-composer button {
