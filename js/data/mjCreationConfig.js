@@ -1,5 +1,6 @@
 /**
  * 与 ref_html/js/data/creationConfig.js 对齐的开局数据（凡人修仙传独立页用）
+ * 装备 / 杂物 / 功法详情见 js/stuff_describe/*.js，此处按名称引用。
  */
 (function (global) {
   "use strict";
@@ -28,9 +29,9 @@
             desc: "凡人家庭多务农为生，生活清苦。家中若有灵根子弟，则举族期望其踏入仙门，以求光宗耀祖、改变命运，但多数人一生皆与仙途无缘。",
           },
         },
-        equipment: {},
+        equipment: [],
         stuff: {},
-        gongfa: {},
+        gongfa: [],
         desc: "出生在凡人家庭，不曾接触过修仙界，但你的未来充满了无限可能。",
       },
       七玄门弟子: {
@@ -40,43 +41,12 @@
             desc: "七玄门，越国镜州三流势力，雄踞彩霞山。门内设外四堂、内四堂，弟子数千。",
           },
         },
-        equipment: {
-          "木剑": {
-            desc: "一把普通的木剑，可以用来战斗",
-            type: "武器",
-            bonus: { 物攻: 3 },
-          },
-          "七玄戒": {
-            desc: "七玄门的弟子戒指，可以增加法力",
-            type: "法器",
-            bonus: { 法力: 5 },
-          },
-          "布衣": {
-            desc: "一件普通的布衣，可以用来保暖",
-            type: "防具",
-            bonus: { 物防: 5 },
-          },
-        },
+        equipment: ["木剑", "七玄戒", "布衣"],
         stuff: {
-          "七玄门弟子令牌": {
-            desc: "七玄门的弟子令牌，可以证明你是七玄门的弟子",
-            bonus: {},
-          },
-          "灵石": {
-            desc: "修士界流通的基础货币，可用于购买丹药、法器与材料等。",
-            bonus: { 灵石: 10 },
-          },
+          七玄门令牌: {},
+          下品灵石: { bonus: { 下品灵石: 1 } },
         },
-        gongfa: {
-          "长春功": {
-            desc: "长春功是七玄门的入门功法，修炼后可以增加血量",
-            bonus: { 血量: 20 },
-          },
-          "眨眼剑法": {
-            desc: "眨眼剑法是七玄门的入门剑法",
-            bonus: { 物攻: 5 },
-          },
-        },
+        gongfa: ["长春功", "眨眼剑法"],
         desc: "你是凡人武林门派中的一名弟子，跟随一位医术高明但性情古怪的师父学习。",
       },
       黄枫谷弟子: {
@@ -86,43 +56,12 @@
             desc: "黄枫谷，越国七大宗门之一，位于太岳山脉。以剑修传承闻名，门规严谨。",
           },
         },
-        equipment: {
-          "铁剑": {
-            desc: "一把普通的铁剑，可以用来战斗",
-            type: "武器",
-            bonus: { 物攻: 5 },
-          },
-          "青叶": {
-            desc: "外形酷似黄叶，可载人飞行，是弟子最主要的赶路工具",
-            type: "法器",
-            bonus: { 脚力: 5 },
-          },
-          "布衣": {
-            desc: "一件普通的布衣，可以用来保暖",
-            type: "防具",
-            bonus: { 物防: 5 },
-          },
-        },
+        equipment: ["铁剑", "青叶", "布衣"],
         stuff: {
-          "黄枫谷弟子令牌": {
-            desc: "黄枫谷的弟子令牌，可以证明你是黄枫谷的弟子",
-            bonus: {},
-          },
-          "灵石": {
-            desc: "修士界流通的基础货币，可用于购买丹药、法器与材料等。",
-            bonus: { 灵石: 20 },
-          },
+          黄枫谷令牌: {},
+          下品灵石: { bonus: { 下品灵石: 2 } },
         },
-        gongfa: {
-          "凝元功": {
-            desc: "凝元功是黄枫谷的入门功法，辅助性功法，主要作用是巩固修为、凝聚法力",
-            bonus: { 法力: 10 },
-          },
-          "青元剑诀": {
-            desc: "攻防一体，后期可布强大剑阵，是人界顶级功法之一",
-            bonus: { 物攻: 5, 物防: 5 },
-          },
-        },
+        gongfa: ["凝元功", "青元剑诀"],
         desc: "你通过了升仙大会，侥幸成为越国七派之一的黄枫谷入门弟子，一切都从头开始。",
       },
     },
@@ -214,6 +153,45 @@
     防具: 2,
   };
 
+  function shallowDescribeClone(src) {
+    if (!src || typeof src !== "object") return null;
+    var out = {
+      desc: src.desc != null ? String(src.desc) : "",
+      bonus: src.bonus && typeof src.bonus === "object" ? Object.assign({}, src.bonus) : {},
+    };
+    if (src.type != null && String(src.type).trim() !== "") out.type = String(src.type).trim();
+    if (typeof src.value === "number" && isFinite(src.value)) out.value = src.value;
+    if (src.grade != null && String(src.grade).trim() !== "") out.grade = String(src.grade).trim();
+    return out;
+  }
+
+  /** @returns {{ desc: string, bonus: Object, type?: string } | null} */
+  cfg.getEquipmentDescribe = function getEquipmentDescribe(name) {
+    var w = name == null ? "" : String(name).trim();
+    if (!w) return null;
+    var t = global.MjDescribeEquipment;
+    return shallowDescribeClone(t && t[w]);
+  };
+
+  /** @returns {{ desc: string, bonus: Object, type?: string } | null} */
+  cfg.getGongfaDescribe = function getGongfaDescribe(name) {
+    var w = name == null ? "" : String(name).trim();
+    if (!w) return null;
+    var t = global.MjDescribeGongfa;
+    return shallowDescribeClone(t && t[w]);
+  };
+
+  /** @returns {{ desc: string, bonus: Object, type?: string } | null} */
+  cfg.getStuffDescribe = function getStuffDescribe(name) {
+    var w = name == null ? "" : String(name).trim();
+    if (!w) return null;
+    var raw =
+      (global.MjDescribeSpiritStones && global.MjDescribeSpiritStones[w]) ||
+      (global.MjDescribePills && global.MjDescribePills[w]) ||
+      (global.MjDescribeStuff && global.MjDescribeStuff[w]);
+    return shallowDescribeClone(raw);
+  };
+
   /** 解析出身 stuff 键名：如「灵石*10」「令牌名」「丹药*3」 */
   cfg.parseStuffLine = function parseStuffLine(line) {
     var s = line == null ? "" : String(line).trim();
@@ -225,11 +203,15 @@
     return { kind: "item", name: s, count: 1 };
   };
 
+  /** 旧版「灵石」额度与背包堆叠统一为此名（见 stuff_describe） */
+  cfg.LINGSHI_STACK_ITEM_NAME = "下品灵石";
+  var LINGSHI_ITEM_NAME = cfg.LINGSHI_STACK_ITEM_NAME;
+
   /**
-   * 从单条 stuff 元数据解析：灵石进 0 格；物品带 desc 供弹窗。
+   * 从单条 stuff 元数据解析：旧版灵石额度变为「下品灵石」堆叠；其余为普通物品。
    * @param {string} keyStr 配置键（可与显示名不同，如「灵石*10」）
    * @param {{ desc?: string, bonus?: Object }} meta
-   * @returns {{ type: 'lingshi', amount: number } | { type: 'item', name: string, count: number, desc?: string }}
+   * @returns {{ type: 'item', name: string, count: number, desc?: string }}
    */
   cfg.resolveStuffEntry = function resolveStuffEntry(keyStr, meta) {
     var bonus = meta && meta.bonus && typeof meta.bonus === "object" ? meta.bonus : {};
@@ -240,7 +222,26 @@
       parsed && parsed.kind === "lingshi" ? Math.max(0, parsed.amount || 0) : 0;
     var lingAmount = lingFromBonus > 0 ? lingFromBonus : lingFromKey;
     if (lingAmount > 0) {
-      return { type: "lingshi", amount: lingAmount };
+      var st = cfg.getStuffDescribe(LINGSHI_ITEM_NAME);
+      var d0 =
+        meta && meta.desc != null && String(meta.desc).trim() !== ""
+          ? String(meta.desc).trim()
+          : st && st.desc
+            ? String(st.desc)
+            : "";
+      var gStone =
+        meta && meta.grade != null && String(meta.grade).trim() !== ""
+          ? String(meta.grade).trim()
+          : st && st.grade != null && String(st.grade).trim() !== ""
+            ? String(st.grade).trim()
+            : "";
+      return {
+        type: "item",
+        name: LINGSHI_ITEM_NAME,
+        count: lingAmount,
+        desc: d0 || undefined,
+        grade: gStone || undefined,
+      };
     }
     var name;
     var count;
@@ -252,91 +253,188 @@
       count = 1;
     }
     var desc = meta && meta.desc != null ? String(meta.desc).trim() : "";
+    var gItem =
+      meta && meta.grade != null && String(meta.grade).trim() !== "" ? String(meta.grade).trim() : "";
     return {
       type: "item",
       name: name,
       count: count,
       desc: desc || undefined,
+      grade: gItem || undefined,
     };
   };
 
-  /** 按出身生成储物袋 12 格（0 为灵石，1～11 为物品）；stuff 为对象 { 键: { desc, bonus } }，兼容旧版数组 */
+  function mergeStuffEntryMeta(keyStr, birthPatch) {
+    var p = cfg.parseStuffLine(keyStr);
+    var baseName;
+    if (p && p.kind === "item") baseName = String(p.name || "").trim();
+    else if (p && p.kind === "lingshi") baseName = LINGSHI_ITEM_NAME;
+    else baseName = String(keyStr).trim();
+    var base = baseName ? cfg.getStuffDescribe(baseName) : null;
+    if (!base) base = { desc: "", bonus: {} };
+    var patch = birthPatch == null || birthPatch === true ? {} : birthPatch;
+    if (typeof patch !== "object") patch = {};
+    var bonus = Object.assign(
+      {},
+      base.bonus && typeof base.bonus === "object" ? base.bonus : {},
+      patch.bonus && typeof patch.bonus === "object" ? patch.bonus : {},
+    );
+    var desc =
+      patch.desc != null && String(patch.desc).trim() !== ""
+        ? String(patch.desc).trim()
+        : base.desc || "";
+    var out = { desc: desc, bonus: bonus };
+    var gPatch =
+      patch.grade != null && String(patch.grade).trim() !== "" ? String(patch.grade).trim() : "";
+    var gBase =
+      base && base.grade != null && String(base.grade).trim() !== "" ? String(base.grade).trim() : "";
+    if (gPatch) out.grade = gPatch;
+    else if (gBase) out.grade = gBase;
+    return out;
+  }
+
+  function mergeGongfaMeta(title, birthGi) {
+    var base = cfg.getGongfaDescribe(title) || { desc: "", bonus: {} };
+    var patch = birthGi && typeof birthGi === "object" ? birthGi : {};
+    var bonus = Object.assign(
+      {},
+      base.bonus && typeof base.bonus === "object" ? base.bonus : {},
+      patch.bonus && typeof patch.bonus === "object" ? patch.bonus : {},
+    );
+    var desc =
+      patch.desc != null && String(patch.desc).trim() !== ""
+        ? String(patch.desc).trim()
+        : base.desc || "";
+    var ty =
+      patch.type != null && String(patch.type).trim() !== ""
+        ? String(patch.type).trim()
+        : base.type && String(base.type).trim() !== ""
+          ? String(base.type).trim()
+          : "";
+    return { desc: desc, bonus: bonus, type: ty };
+  }
+
+  /** 按出身生成储物袋 12 格（均为物品格，灵石类为「下品灵石」堆叠）；stuff 为 { 键: 覆盖? } 或字符串数组 */
   cfg.buildStartingInventorySlots = function buildStartingInventorySlots(birthKey) {
     var slots = [];
-    slots[0] = { kind: "lingshi", count: 0 };
-    for (var i = 1; i < START_BAG_SLOTS; i++) slots.push(null);
+    for (var s = 0; s < START_BAG_SLOTS; s++) slots.push(null);
     var birth = birthKey && cfg.BIRTHS && cfg.BIRTHS[birthKey];
     if (!birth || birth.stuff == null) return slots;
-    var lingAdd = 0;
     var items = [];
 
     if (Array.isArray(birth.stuff)) {
       for (var j = 0; j < birth.stuff.length; j++) {
-        var p = cfg.parseStuffLine(birth.stuff[j]);
-        if (!p) continue;
-        if (p.kind === "lingshi") lingAdd += Math.max(0, p.amount || 0);
-        else if (p.name) items.push({ name: p.name, count: Math.max(1, p.count || 1) });
+        var mergedA = mergeStuffEntryMeta(birth.stuff[j], {});
+        var resolvedA = cfg.resolveStuffEntry(birth.stuff[j], mergedA);
+        if (resolvedA.type === "item" && resolvedA.name)
+          items.push({
+            name: resolvedA.name,
+            count: resolvedA.count,
+            desc: resolvedA.desc,
+            grade: resolvedA.grade,
+          });
       }
     } else if (typeof birth.stuff === "object") {
       for (var key in birth.stuff) {
         if (!Object.prototype.hasOwnProperty.call(birth.stuff, key)) continue;
-        var meta = birth.stuff[key];
-        if (!meta || typeof meta !== "object") meta = {};
-        var resolved = cfg.resolveStuffEntry(key, meta);
-        if (resolved.type === "lingshi") lingAdd += resolved.amount;
-        else if (resolved.name)
+        var rawMeta = birth.stuff[key];
+        var patch = rawMeta == null || rawMeta === true ? {} : rawMeta;
+        if (typeof patch !== "object") patch = {};
+        var merged = mergeStuffEntryMeta(key, patch);
+        var resolved = cfg.resolveStuffEntry(key, merged);
+        if (resolved.type === "item" && resolved.name)
           items.push({
             name: resolved.name,
             count: resolved.count,
             desc: resolved.desc,
+            grade: resolved.grade,
           });
       }
     }
 
-    slots[0].count = lingAdd;
-    var idx = 1;
-    for (var k = 0; k < items.length && idx < START_BAG_SLOTS; k++) {
+    var idx = 0;
+    for (var k = 0; k < items.length; k++) {
       var it = items[k];
       var cell = { name: it.name, count: it.count };
       if (it.desc) cell.desc = it.desc;
-      slots[idx++] = cell;
+      if (it.grade) cell.grade = it.grade;
+      var placed = false;
+      for (var t = 0; t < START_BAG_SLOTS; t++) {
+        var ex = slots[t];
+        if (ex && ex.name === cell.name) {
+          ex.count = (typeof ex.count === "number" && isFinite(ex.count) ? ex.count : 1) + cell.count;
+          if (!ex.desc && cell.desc) ex.desc = cell.desc;
+          if (!ex.grade && cell.grade) ex.grade = cell.grade;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        if (idx >= START_BAG_SLOTS) continue;
+        slots[idx++] = cell;
+      }
     }
     return slots;
   };
 
-  /** 出身物品的 bonus（去掉「灵石」键）合并进面板；灵石数量只进背包 0 格 */
+  /** 出身物品的 bonus（去掉「灵石」键）合并进面板 */
   cfg.collectBirthStuffBonusObjects = function collectBirthStuffBonusObjects(birthKey) {
     var list = [];
     var birth = birthKey && cfg.BIRTHS && cfg.BIRTHS[birthKey];
-    if (!birth || birth.stuff == null || Array.isArray(birth.stuff)) return list;
+    if (!birth || birth.stuff == null) return list;
+    function pushMergedBonus(merged) {
+      var b = Object.assign({}, merged.bonus && typeof merged.bonus === "object" ? merged.bonus : {});
+      delete b.灵石;
+      if (Object.keys(b).length) list.push(b);
+    }
+    if (Array.isArray(birth.stuff)) {
+      for (var j = 0; j < birth.stuff.length; j++) {
+        pushMergedBonus(mergeStuffEntryMeta(birth.stuff[j], {}));
+      }
+      return list;
+    }
     if (typeof birth.stuff !== "object") return list;
     for (var key in birth.stuff) {
       if (!Object.prototype.hasOwnProperty.call(birth.stuff, key)) continue;
-      var meta = birth.stuff[key];
-      if (!meta || typeof meta !== "object" || !meta.bonus || typeof meta.bonus !== "object") continue;
-      var b = Object.assign({}, meta.bonus);
-      delete b.灵石;
-      var keys = Object.keys(b);
-      if (keys.length) list.push(b);
+      var raw = birth.stuff[key];
+      var patch = raw == null || raw === true ? {} : raw;
+      if (typeof patch !== "object") patch = {};
+      pushMergedBonus(mergeStuffEntryMeta(key, patch));
     }
     return list;
   };
 
-  /** 按出身生成功法栏 12 格（顺序与配置中 gongfa 键顺序一致） */
+  /** 按出身生成功法栏 12 格；gongfa 为名称数组，或旧版 { 名: 覆盖 } 对象 */
   cfg.buildStartingGongfaSlots = function buildStartingGongfaSlots(birthKey) {
     var arr = [];
     for (var g = 0; g < START_GONGFA_SLOTS; g++) arr.push(null);
     var birth = birthKey && cfg.BIRTHS && cfg.BIRTHS[birthKey];
-    if (!birth || !birth.gongfa || typeof birth.gongfa !== "object") return arr;
+    if (!birth || birth.gongfa == null) return arr;
     var idx = 0;
-    for (var title in birth.gongfa) {
-      if (!Object.prototype.hasOwnProperty.call(birth.gongfa, title)) continue;
-      if (idx >= START_GONGFA_SLOTS) break;
-      var gi = birth.gongfa[title];
-      arr[idx++] = {
-        name: title,
-        desc: gi && gi.desc != null ? String(gi.desc) : "",
-      };
+    if (Array.isArray(birth.gongfa)) {
+      for (var i = 0; i < birth.gongfa.length && idx < START_GONGFA_SLOTS; i++) {
+        var title = String(birth.gongfa[i]).trim();
+        if (!title) continue;
+        var gi = cfg.getGongfaDescribe(title);
+        if (!gi) {
+          arr[idx++] = { name: title, desc: "" };
+          continue;
+        }
+        var cell = { name: title, desc: gi.desc || "" };
+        if (gi.type) cell.type = gi.type;
+        arr[idx++] = cell;
+      }
+      return arr;
+    }
+    if (typeof birth.gongfa === "object") {
+      for (var t2 in birth.gongfa) {
+        if (!Object.prototype.hasOwnProperty.call(birth.gongfa, t2)) continue;
+        if (idx >= START_GONGFA_SLOTS) break;
+        var merged = mergeGongfaMeta(t2, birth.gongfa[t2]);
+        var cell2 = { name: t2, desc: merged.desc };
+        if (merged.type) cell2.type = merged.type;
+        arr[idx++] = cell2;
+      }
     }
     return arr;
   };
@@ -345,36 +443,77 @@
   cfg.collectBirthGongfaBonusObjects = function collectBirthGongfaBonusObjects(birthKey) {
     var list = [];
     var birth = birthKey && cfg.BIRTHS && cfg.BIRTHS[birthKey];
-    if (!birth || !birth.gongfa || typeof birth.gongfa !== "object") return list;
-    for (var title in birth.gongfa) {
-      if (!Object.prototype.hasOwnProperty.call(birth.gongfa, title)) continue;
-      var gi = birth.gongfa[title];
-      if (gi && gi.bonus && typeof gi.bonus === "object") list.push(gi.bonus);
+    if (!birth || birth.gongfa == null) return list;
+    if (Array.isArray(birth.gongfa)) {
+      for (var i = 0; i < birth.gongfa.length; i++) {
+        var title = String(birth.gongfa[i]).trim();
+        if (!title) continue;
+        var gi = cfg.getGongfaDescribe(title);
+        if (gi && gi.bonus && typeof gi.bonus === "object" && Object.keys(gi.bonus).length) list.push(gi.bonus);
+      }
+      return list;
+    }
+    if (typeof birth.gongfa === "object") {
+      for (var t2 in birth.gongfa) {
+        if (!Object.prototype.hasOwnProperty.call(birth.gongfa, t2)) continue;
+        var merged = mergeGongfaMeta(t2, birth.gongfa[t2]);
+        if (merged.bonus && typeof merged.bonus === "object" && Object.keys(merged.bonus).length) list.push(merged.bonus);
+      }
     }
     return list;
   };
 
   /**
    * 按出身生成佩戴栏三格：[武器, 法器, 防具]
-   * equipment 为 { 装备名: { desc, type: '武器'|'法器'|'防具', bonus } }（亦兼容 type「主武器」「副武器」）
+   * equipment 为名称数组，或旧版 { 装备名: { desc, type, bonus } }（可与 stuff_describe 合并）
    */
   cfg.buildStartingEquippedSlots = function buildStartingEquippedSlots(birthKey) {
     var out = [null, null, null];
     var birth = birthKey && cfg.BIRTHS && cfg.BIRTHS[birthKey];
-    if (!birth || !birth.equipment || typeof birth.equipment !== "object") return out;
-    for (var itemName in birth.equipment) {
-      if (!Object.prototype.hasOwnProperty.call(birth.equipment, itemName)) continue;
-      var meta = birth.equipment[itemName];
-      if (!meta || typeof meta !== "object") continue;
-      var ty = meta.type != null ? String(meta.type).trim() : "";
+    if (!birth || birth.equipment == null) return out;
+    function placeEquipped(itemName, metaMerged) {
+      if (!itemName || !metaMerged) return;
+      var ty = metaMerged.type != null ? String(metaMerged.type).trim() : "";
       var si = EQUIP_TYPE_TO_INDEX[ty];
-      if (si == null) continue;
-      var o = {
-        name: itemName,
-        desc: meta.desc != null ? String(meta.desc) : "",
+      if (si == null) return;
+      out[si] = {
+        name: String(itemName).trim(),
+        desc: metaMerged.desc != null ? String(metaMerged.desc) : "",
         equipType: ty,
       };
-      out[si] = o;
+    }
+    if (Array.isArray(birth.equipment)) {
+      for (var e = 0; e < birth.equipment.length; e++) {
+        var nm = String(birth.equipment[e]).trim();
+        if (!nm) continue;
+        var em = cfg.getEquipmentDescribe(nm);
+        if (em) placeEquipped(nm, em);
+      }
+      return out;
+    }
+    if (typeof birth.equipment === "object") {
+      for (var itemName in birth.equipment) {
+        if (!Object.prototype.hasOwnProperty.call(birth.equipment, itemName)) continue;
+        var raw = birth.equipment[itemName];
+        var patch = raw == null || raw === true ? {} : typeof raw === "object" ? raw : {};
+        var base = cfg.getEquipmentDescribe(itemName) || { desc: "", bonus: {} };
+        var em2 = {
+          desc:
+            patch.desc != null && String(patch.desc).trim() !== ""
+              ? String(patch.desc)
+              : base.desc || "",
+          type:
+            patch.type != null && String(patch.type).trim() !== ""
+              ? String(patch.type).trim()
+              : base.type || "",
+          bonus: Object.assign(
+            {},
+            base.bonus && typeof base.bonus === "object" ? base.bonus : {},
+            patch.bonus && typeof patch.bonus === "object" ? patch.bonus : {},
+          ),
+        };
+        placeEquipped(itemName, em2);
+      }
     }
     return out;
   };
@@ -391,13 +530,29 @@
   cfg.collectBirthEquipmentBonusObjects = function collectBirthEquipmentBonusObjects(birthKey) {
     var list = [];
     var birth = birthKey && cfg.BIRTHS && cfg.BIRTHS[birthKey];
-    if (!birth || !birth.equipment || typeof birth.equipment !== "object") return list;
-    for (var k in birth.equipment) {
-      if (!Object.prototype.hasOwnProperty.call(birth.equipment, k)) continue;
-      var meta = birth.equipment[k];
-      if (!meta || !meta.bonus || typeof meta.bonus !== "object") continue;
-      if (!Object.keys(meta.bonus).length) continue;
-      list.push(meta.bonus);
+    if (!birth || birth.equipment == null) return list;
+    if (Array.isArray(birth.equipment)) {
+      for (var i = 0; i < birth.equipment.length; i++) {
+        var nm = String(birth.equipment[i]).trim();
+        if (!nm) continue;
+        var em = cfg.getEquipmentDescribe(nm);
+        if (em && em.bonus && typeof em.bonus === "object" && Object.keys(em.bonus).length) list.push(em.bonus);
+      }
+      return list;
+    }
+    if (typeof birth.equipment === "object") {
+      for (var k in birth.equipment) {
+        if (!Object.prototype.hasOwnProperty.call(birth.equipment, k)) continue;
+        var raw = birth.equipment[k];
+        var patch = raw == null || raw === true ? {} : typeof raw === "object" ? raw : {};
+        var base = cfg.getEquipmentDescribe(k) || {};
+        var b = Object.assign(
+          {},
+          base.bonus && typeof base.bonus === "object" ? base.bonus : {},
+          patch.bonus && typeof patch.bonus === "object" ? patch.bonus : {},
+        );
+        if (Object.keys(b).length) list.push(b);
+      }
     }
     return list;
   };

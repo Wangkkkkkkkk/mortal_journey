@@ -24,6 +24,199 @@
     return Math.max(0, Math.min(100, n));
   }
 
+  /** getStuffDescribe 中带 value 的条目（灵石、丹药等）→ 每件炼化获得的修为 */
+  function getSpiritStoneCultivationValue(itemName) {
+    var nm = String(itemName || "").trim();
+    if (!nm) return 0;
+    var C = global.MjCreationConfig;
+    if (!C || typeof C.getStuffDescribe !== "function") return 0;
+    var d = C.getStuffDescribe(nm);
+    if (d && typeof d.value === "number" && isFinite(d.value) && d.value > 0) return Math.floor(d.value);
+    if (nm === "灵石") {
+      var d2 = C.getStuffDescribe("下品灵石");
+      if (d2 && typeof d2.value === "number" && isFinite(d2.value) && d2.value > 0) return Math.floor(d2.value);
+    }
+    return 0;
+  }
+
+  /** 当前修为、本阶段需求、进度条百分比（0～100，可已满） */
+  function computeCultivationUi(G, fc) {
+    var r = (G && G.realm) || (fc && fc.realm) || {};
+    var major = r.major || "";
+    var minor = r.minor;
+    var RS = global.RealmState;
+    var req =
+      RS && typeof RS.getCultivationRequired === "function"
+        ? RS.getCultivationRequired(major, minor)
+        : null;
+    var cur = G && typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? Math.max(0, Math.floor(G.xiuwei)) : 0;
+    var pct = 0;
+    if (req != null && req > 0) pct = (cur / req) * 100;
+    return { cur: cur, req: req, pct: clampPct(pct) };
+  }
+
+  function getNextMinorStage(minor) {
+    var SS = global.RealmState && global.RealmState.SUB_STAGES;
+    if (!SS || !SS.length) return null;
+    var m = String(minor == null ? "" : minor).trim();
+    for (var i = 0; i < SS.length - 1; i++) {
+      if (SS[i] === m) return SS[i + 1];
+    }
+    return null;
+  }
+
+  function getNextMajorRealm(major) {
+    var RO = global.RealmState && global.RealmState.REALM_ORDER;
+    if (!RO || !RO.length) return null;
+    var maj = String(major == null ? "" : major).trim();
+    for (var j = 0; j < RO.length - 1; j++) {
+      if (RO[j] === maj) return RO[j + 1];
+    }
+    return null;
+  }
+
+  function writeRealmToGameAndFate(G, fc, major, minor) {
+    if (!G) return;
+    if (!G.realm || typeof G.realm !== "object") G.realm = {};
+    G.realm.major = major;
+    G.realm.minor = minor;
+    if (fc && typeof fc === "object") {
+      if (!fc.realm || typeof fc.realm !== "object") fc.realm = {};
+      fc.realm.major = major;
+      fc.realm.minor = minor;
+    }
+  }
+
+  /**
+   * 小境界：修为 ≥ 本阶段需求则直接进阶并扣除需求；大境界：仅在「后期」满足需求时掷概率，失败不扣修为。
+   * 应在修为变化后或读档后调用；勿在每次 renderLeftPanel 调用（避免大境界失败时反复掷骰）。
+   * @returns {{ changed: boolean, messages: string[] }}
+   */
+  function applyRealmBreakthroughs(G) {
+    var msgs = [];
+    if (!G) return { changed: false, messages: msgs };
+    var RS = global.RealmState;
+    if (!RS || typeof RS.getCultivationRequired !== "function") return { changed: false, messages: msgs };
+    var fc = G.fateChoice;
+    if (!fc) return { changed: false, messages: msgs };
+
+    var changed = false;
+    var guard = 0;
+    while (guard++ < 48) {
+      var r = (G && G.realm) || (fc && fc.realm) || {};
+      var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+      var minor = r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
+
+      if (major === "化神") break;
+
+      var req = RS.getCultivationRequired(major, minor);
+      if (req == null || req <= 0) break;
+
+      var X = typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? Math.floor(G.xiuwei) : 0;
+      if (X < req) break;
+
+      var nextMinor = getNextMinorStage(minor);
+      if (nextMinor != null) {
+        G.xiuwei = X - req;
+        writeRealmToGameAndFate(G, fc, major, nextMinor);
+        changed = true;
+        msgs.push("突破成功：已达「" + major + nextMinor + "」");
+        continue;
+      }
+
+      if (minor !== "后期") break;
+
+      var nextMaj = getNextMajorRealm(major);
+      if (nextMaj == null) break;
+
+      if (typeof RS.rollMajorBreakthrough !== "function") break;
+      var p = typeof RS.getMajorBreakthroughChance === "function" ? RS.getMajorBreakthroughChance(major, nextMaj) : null;
+      if (p == null || p <= 0) break;
+
+      var ok = RS.rollMajorBreakthrough(major, nextMaj);
+      if (!ok) {
+        var pctStr = (Math.round(p * 10000) / 100).toString();
+        msgs.push("大境界突破失败：「" + major + "」→「" + nextMaj + "」（成功率 " + pctStr + "%）");
+        break;
+      }
+      G.xiuwei = X - req;
+      writeRealmToGameAndFate(G, fc, nextMaj, "初期");
+      changed = true;
+      msgs.push("大境界突破成功：已进入「" + nextMaj + "初期」");
+      continue;
+    }
+
+    G.xiuwei = Math.max(0, Math.floor(G.xiuwei));
+    return { changed: changed, messages: msgs };
+  }
+
+  function logBreakthroughMessages(msgs) {
+    if (!msgs || !msgs.length) return;
+    var line = msgs.join("；");
+    if (global.GameLog && typeof global.GameLog.info === "function") {
+      global.GameLog.info("[境界突破] " + line);
+    } else {
+      console.info("[境界突破]", line);
+    }
+  }
+
+  function persistBootstrapSnapshot() {
+    try {
+      var G = global.MortalJourneyGame;
+      if (!G || !G.fateChoice) return;
+      ensureGameRuntimeDefaults(G);
+      var data = {
+        fateChoice: G.fateChoice,
+        startedAt: G.startedAt || 0,
+        xiuwei: typeof G.xiuwei === "number" ? G.xiuwei : 0,
+        inventorySlots: JSON.parse(JSON.stringify(G.inventorySlots)),
+        gongfaSlots: JSON.parse(JSON.stringify(G.gongfaSlots || [])),
+        equippedSlots: JSON.parse(JSON.stringify(G.equippedSlots || [])),
+      };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.warn("[主界面] 存档缓存写入失败", e);
+    }
+  }
+
+  /**
+   * 消耗背包格中的灵石类物品增加修为（每件增加额 = describe.value）。
+   * @param {boolean} consumeAll 是否消耗该格全部堆叠
+   * @returns {boolean}
+   */
+  function performAbsorbSpiritStonesFromBag(G, bagIdx, consumeAll) {
+    if (!G || !G.inventorySlots) return false;
+    ensureGameRuntimeDefaults(G);
+    var bi = Number(bagIdx);
+    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    var it = G.inventorySlots[bi];
+    if (!it || !it.name) return false;
+    var val = getSpiritStoneCultivationValue(it.name);
+    if (val <= 0) return false;
+    var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
+    var useN = consumeAll ? cnt : 1;
+    var gain = val * useN;
+    G.xiuwei = (typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? G.xiuwei : 0) + gain;
+    var left = cnt - useN;
+    if (left <= 0) G.inventorySlots[bi] = null;
+    else {
+      G.inventorySlots[bi] = normalizeBagItem({
+        name: it.name,
+        count: left,
+        desc: it.desc,
+        equipType: it.equipType,
+        grade: it.grade,
+      });
+    }
+    var br = applyRealmBreakthroughs(G);
+    logBreakthroughMessages(br.messages);
+    var ui = computeCultivationUi(G, G.fateChoice);
+    G.cultivationProgress = ui.pct;
+    persistBootstrapSnapshot();
+    renderLeftPanel(G.fateChoice, G);
+    return true;
+  }
+
   function restoreBootstrap() {
     try {
       var raw = sessionStorage.getItem(STORAGE_KEY);
@@ -73,6 +266,10 @@
         );
       }
 
+      if (typeof data.xiuwei === "number" && isFinite(data.xiuwei)) {
+        global.MortalJourneyGame.xiuwei = Math.max(0, Math.floor(data.xiuwei));
+      }
+
       return fc;
     } catch (e) {
       console.warn("[主界面] 无法读取开局存档", e);
@@ -88,10 +285,13 @@
     if (G.worldTimeString == null || G.worldTimeString === "") {
       G.worldTimeString = DEFAULT_WORLD_TIME;
     }
+    if (G.xiuwei == null || typeof G.xiuwei !== "number" || !isFinite(G.xiuwei)) {
+      G.xiuwei = 0;
+    }
+    G.xiuwei = Math.max(0, Math.floor(G.xiuwei));
     if (G.cultivationProgress == null || typeof G.cultivationProgress !== "number") {
       G.cultivationProgress = 0;
     }
-    G.cultivationProgress = clampPct(G.cultivationProgress);
     if (G.age == null) G.age = DEFAULT_AGE;
     if (G.shouyuan == null) G.shouyuan = DEFAULT_SHOUYUAN;
     if (G.charm == null || typeof G.charm !== "number") G.charm = DEFAULT_CHARM;
@@ -150,30 +350,57 @@
     if (entry.equipType != null && String(entry.equipType).trim() !== "") {
       o.equipType = String(entry.equipType).trim();
     }
+    if (entry.grade != null && String(entry.grade).trim() !== "") o.grade = String(entry.grade).trim();
     return o;
   }
 
-  /** 储物袋 12 格：第 0 格固定为灵石；其余为普通物品 { name, count, desc? } */
+  /** 旧存档格子上无 grade 时，按描述表补全（刷新后即可上色） */
+  function enrichInventoryGradesFromDescribe(G) {
+    if (!G || !G.inventorySlots) return;
+    var C = global.MjCreationConfig;
+    if (!C) return;
+    for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
+      var it = G.inventorySlots[i];
+      if (!it || !it.name) continue;
+      if (it.grade != null && String(it.grade).trim() !== "") continue;
+      var nm = String(it.name).trim();
+      if (!nm) continue;
+      if (typeof C.getStuffDescribe === "function") {
+        var st = C.getStuffDescribe(nm);
+        if (st && st.grade != null && String(st.grade).trim() !== "") {
+          it.grade = String(st.grade).trim();
+          continue;
+        }
+      }
+      if (typeof C.getEquipmentDescribe === "function") {
+        var em = C.getEquipmentDescribe(nm);
+        if (em && em.grade != null && String(em.grade).trim() !== "") it.grade = String(em.grade).trim();
+      }
+    }
+  }
+
+  /** 储物袋 12 格均为物品 { name, count, desc? }；兼容旧存档第 0 格 kind:lingshi → 下品灵石 */
   function ensureInventorySlots(G) {
     if (!G) return;
+    var C = global.MjCreationConfig;
+    var stoneName =
+      C && C.LINGSHI_STACK_ITEM_NAME ? String(C.LINGSHI_STACK_ITEM_NAME) : "下品灵石";
     if (!Array.isArray(G.inventorySlots) || G.inventorySlots.length !== INVENTORY_SLOT_COUNT) {
       var a = [];
-      a[0] = { kind: "lingshi", count: 0 };
-      for (var j = 1; j < INVENTORY_SLOT_COUNT; j++) a.push(null);
+      for (var j = 0; j < INVENTORY_SLOT_COUNT; j++) a.push(null);
       G.inventorySlots = a;
       return;
     }
-    var z = G.inventorySlots[0];
-    if (!z || z.kind !== "lingshi") {
-      var prev = z && typeof z.count === "number" && isFinite(z.count) ? z.count : 0;
-      G.inventorySlots[0] = { kind: "lingshi", count: Math.max(0, Math.floor(prev)) };
-    } else {
-      var cz = z.count;
-      z.count = Math.max(0, Math.floor(typeof cz === "number" && isFinite(cz) ? cz : 0));
+    for (var k = 0; k < INVENTORY_SLOT_COUNT; k++) {
+      var cell = G.inventorySlots[k];
+      if (cell && cell.kind === "lingshi") {
+        var prev = typeof cell.count === "number" && isFinite(cell.count) ? Math.max(0, Math.floor(cell.count)) : 0;
+        G.inventorySlots[k] = prev > 0 ? normalizeBagItem({ name: stoneName, count: prev }) : null;
+      } else {
+        G.inventorySlots[k] = normalizeBagItem(cell);
+      }
     }
-    for (var k = 1; k < INVENTORY_SLOT_COUNT; k++) {
-      G.inventorySlots[k] = normalizeBagItem(G.inventorySlots[k]);
-    }
+    enrichInventoryGradesFromDescribe(G);
   }
 
   function getChatLogEl() {
@@ -566,9 +793,7 @@
     grid.innerHTML = "";
     for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
       var slot = document.createElement("div");
-      slot.className =
-        "mj-inventory-slot" +
-        (i === 0 ? " mj-inventory-slot--lingshi" : " mj-inventory-slot--empty");
+      slot.className = "mj-inventory-slot mj-inventory-slot--empty";
       slot.setAttribute("data-slot", String(i));
       var lab = document.createElement("span");
       lab.className = "mj-inventory-slot-label";
@@ -583,6 +808,7 @@
 
   function renderBagSlots(G) {
     ensureInventorySlots(G);
+    enrichInventoryGradesFromDescribe(G);
     var grid = document.getElementById("mj-inventory-grid");
     if (!grid || !G || !G.inventorySlots) return;
     for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
@@ -590,21 +816,6 @@
       if (!el) continue;
       var labelEl = el.querySelector(".mj-inventory-slot-label");
       var qtyEl = el.querySelector(".mj-inventory-slot-qty");
-      if (i === 0) {
-        el.classList.add("mj-inventory-slot--lingshi");
-        el.classList.remove("mj-inventory-slot--empty", "mj-inventory-slot--filled");
-        if (labelEl) labelEl.textContent = "灵石";
-        var c0 = G.inventorySlots[0] && typeof G.inventorySlots[0].count === "number" ? G.inventorySlots[0].count : 0;
-        if (qtyEl) {
-          qtyEl.textContent = String(c0);
-          qtyEl.classList.remove("hidden");
-        }
-        el.setAttribute("title", "灵石：" + c0 + "（点击查看详情）");
-        el.setAttribute("aria-label", "灵石，数量 " + c0);
-        el.setAttribute("role", "button");
-        el.setAttribute("tabindex", "0");
-        continue;
-      }
       var item = G.inventorySlots[i];
       if (item && item.name) {
         el.classList.add("mj-inventory-slot--filled");
@@ -622,6 +833,7 @@
         el.setAttribute("aria-label", item.name + "，数量 " + cnt);
         el.setAttribute("role", "button");
         el.setAttribute("tabindex", "0");
+        setSlotRarityDataAttr(el, resolveBagItemTraitRarity(item.name, item));
       } else {
         el.classList.add("mj-inventory-slot--empty");
         el.classList.remove("mj-inventory-slot--filled");
@@ -634,6 +846,7 @@
         el.removeAttribute("aria-label");
         el.removeAttribute("role");
         el.removeAttribute("tabindex");
+        setSlotRarityDataAttr(el, null);
       }
     }
   }
@@ -647,10 +860,17 @@
       slot.className = "mj-inventory-slot";
       slot.setAttribute("data-gongfa-slot", String(i));
       slot.setAttribute("title", "功法空位");
+      var stack = document.createElement("div");
+      stack.className = "mj-gongfa-slot-stack";
       var inner = document.createElement("span");
       inner.className = "mj-gongfa-slot-label";
       inner.setAttribute("aria-hidden", "true");
-      slot.appendChild(inner);
+      var typeEl = document.createElement("span");
+      typeEl.className = "mj-gongfa-slot-type";
+      typeEl.setAttribute("aria-hidden", "true");
+      stack.appendChild(inner);
+      stack.appendChild(typeEl);
+      slot.appendChild(stack);
       grid.appendChild(slot);
     }
   }
@@ -662,26 +882,49 @@
     for (var i = 0; i < GONGFA_SLOT_COUNT; i++) {
       var el = grid.querySelector('[data-gongfa-slot="' + i + '"]');
       if (!el) continue;
-      var inner = el.querySelector(".mj-gongfa-slot-label");
+      var stack = el.querySelector(".mj-gongfa-slot-stack");
+      var inner = stack ? stack.querySelector(".mj-gongfa-slot-label") : el.querySelector(".mj-gongfa-slot-label");
+      var typeSpan = stack ? stack.querySelector(".mj-gongfa-slot-type") : el.querySelector(".mj-gongfa-slot-type");
       var item = G.gongfaSlots[i];
       var label = item && (item.name != null ? item.name : item.label);
       if (label) {
         el.classList.add("mj-gongfa-slot--filled");
         if (inner) inner.textContent = String(label);
+        var cfgGf = lookupGongfaConfigDef(String(label));
+        var tyRaw =
+          item && item.type != null && String(item.type).trim() !== ""
+            ? String(item.type).trim()
+            : cfgGf && cfgGf.type != null
+              ? String(cfgGf.type).trim()
+              : "";
+        if (typeSpan) {
+          typeSpan.textContent = tyRaw;
+          typeSpan.className = "mj-gongfa-slot-type";
+          if (tyRaw === "辅助") typeSpan.classList.add("mj-gongfa-slot-type--support");
+          else if (tyRaw === "攻击") typeSpan.classList.add("mj-gongfa-slot-type--attack");
+          else if (tyRaw) typeSpan.classList.add("mj-gongfa-slot-type--other");
+        }
         var tip = String(label);
+        if (tyRaw) tip += "\n类型：" + tyRaw;
         if (item.desc) tip += "\n" + String(item.desc);
         tip += "\n（点击查看详情）";
         el.setAttribute("title", tip);
         el.setAttribute("role", "button");
         el.setAttribute("tabindex", "0");
-        el.setAttribute("aria-label", "查看功法：" + String(label));
+        el.setAttribute("aria-label", "查看功法：" + String(label) + (tyRaw ? "，" + tyRaw : ""));
+        setSlotRarityDataAttr(el, resolveGongfaTraitRarity(String(label), item, cfgGf));
       } else {
         el.classList.remove("mj-gongfa-slot--filled");
         if (inner) inner.textContent = "";
+        if (typeSpan) {
+          typeSpan.textContent = "";
+          typeSpan.className = "mj-gongfa-slot-type";
+        }
         el.setAttribute("title", "功法空位");
         el.removeAttribute("role");
         el.removeAttribute("tabindex");
         el.removeAttribute("aria-label");
+        setSlotRarityDataAttr(el, null);
       }
     }
   }
@@ -709,57 +952,116 @@
     return formatZhBonusObject(o);
   }
 
-  /** 按物品显示名匹配任意出身 stuff 元数据 { desc, bonus } */
+  /**
+   * describe.value 为全局统一的「灵石等价」刻度（与下品灵石、中品灵石等条目的 value 同一套数轴）；
+   * 非「多少颗下品灵石」的颗数含义。
+   */
+  function formatReferenceValueFromNumber(n) {
+    if (typeof n !== "number" || !isFinite(n)) return null;
+    return Math.floor(n);
+  }
+
+  function formatReferenceValueLine(meta) {
+    if (!meta || typeof meta.value !== "number" || !isFinite(meta.value)) return null;
+    return formatReferenceValueFromNumber(meta.value);
+  }
+
+  /** 从多条 describe 元数据中取第一个有效的 value（灵石等价刻度，背包物品可能只命中其一） */
+  function pickDescribeValueFromMetas() {
+    for (var i = 0; i < arguments.length; i++) {
+      var m = arguments[i];
+      if (m && typeof m.value === "number" && isFinite(m.value)) return m.value;
+    }
+    return null;
+  }
+
+  /** 按物品显示名匹配 stuff_describe 元数据 { desc, bonus } */
   function lookupStuffMetaByItemName(itemName) {
     if (!itemName) return null;
     var C = global.MjCreationConfig;
-    if (!C || !C.BIRTHS || typeof C.resolveStuffEntry !== "function") return null;
-    var want = String(itemName).trim();
-    for (var bk in C.BIRTHS) {
-      if (!Object.prototype.hasOwnProperty.call(C.BIRTHS, bk)) continue;
-      var bd = C.BIRTHS[bk];
-      var stuff = bd && bd.stuff;
-      if (!stuff || typeof stuff !== "object" || Array.isArray(stuff)) continue;
-      for (var key in stuff) {
-        if (!Object.prototype.hasOwnProperty.call(stuff, key)) continue;
-        var meta = stuff[key];
-        if (!meta || typeof meta !== "object") meta = {};
-        var resolved = C.resolveStuffEntry(key, meta);
-        if (resolved.type === "item" && resolved.name === want) return meta;
-      }
-    }
-    return null;
+    if (!C || typeof C.getStuffDescribe !== "function") return null;
+    return C.getStuffDescribe(String(itemName).trim());
   }
 
-  /** 在所有出身的 gongfa 表里查找同名功法定义（含 desc / bonus） */
+  /** 按名称查找功法定义（含 desc / type / bonus） */
   function lookupGongfaConfigDef(gongfaName) {
     if (!gongfaName) return null;
     var C = global.MjCreationConfig;
-    if (!C || !C.BIRTHS) return null;
-    var births = C.BIRTHS;
-    for (var bk in births) {
-      if (!Object.prototype.hasOwnProperty.call(births, bk)) continue;
-      var bd = births[bk];
-      if (!bd || !bd.gongfa || typeof bd.gongfa !== "object") continue;
-      if (bd.gongfa[gongfaName]) return bd.gongfa[gongfaName];
+    if (!C || typeof C.getGongfaDescribe !== "function") return null;
+    return C.getGongfaDescribe(String(gongfaName).trim());
+  }
+
+  /** 按装备名匹配 equipment 元数据 { desc, type, bonus } */
+  function lookupEquipmentMetaByItemName(itemName) {
+    if (!itemName) return null;
+    var C = global.MjCreationConfig;
+    if (!C || typeof C.getEquipmentDescribe !== "function") return null;
+    return C.getEquipmentDescribe(String(itemName).trim());
+  }
+
+  /** stuff 品阶（下品…）→ 与逆天改命槽位 data-rarity 相同的键，供 CSS 复用 */
+  var GRADE_TO_TRAIT_RARITY = {
+    下品: "平庸",
+    中品: "普通",
+    上品: "稀有",
+    极品: "史诗",
+    仙品: "传说",
+    神品: "神迹",
+  };
+
+  function gradeToTraitRarity(grade) {
+    if (grade == null || String(grade).trim() === "") return null;
+    var g = String(grade).trim();
+    var r = GRADE_TO_TRAIT_RARITY[g];
+    return r != null ? r : null;
+  }
+
+  function setSlotRarityDataAttr(el, traitRarity) {
+    if (!el) return;
+    if (traitRarity) el.setAttribute("data-rarity", traitRarity);
+    else el.removeAttribute("data-rarity");
+  }
+
+  /** 背包：优先格子上已存的 grade（开局/补全），再查 stuff、装备表 */
+  function resolveBagItemTraitRarity(itemName, item) {
+    if (item && item.grade != null && String(item.grade).trim() !== "") {
+      var fromCell = gradeToTraitRarity(item.grade);
+      if (fromCell) return fromCell;
+    }
+    var nm = String(itemName || "").trim();
+    if (!nm) return null;
+    var stuff = lookupStuffMetaByItemName(nm);
+    if (stuff && stuff.grade != null && String(stuff.grade).trim() !== "") {
+      return gradeToTraitRarity(stuff.grade);
+    }
+    var eq = lookupEquipmentMetaByItemName(nm);
+    if (eq && eq.grade != null && String(eq.grade).trim() !== "") {
+      return gradeToTraitRarity(eq.grade);
     }
     return null;
   }
 
-  /** 按装备名匹配任意出身 equipment 元数据 { desc, type, bonus } */
-  function lookupEquipmentMetaByItemName(itemName) {
-    if (!itemName) return null;
-    var C = global.MjCreationConfig;
-    if (!C || !C.BIRTHS) return null;
-    var want = String(itemName).trim();
-    for (var bk in C.BIRTHS) {
-      if (!Object.prototype.hasOwnProperty.call(C.BIRTHS, bk)) continue;
-      var bd = C.BIRTHS[bk];
-      var eq = bd && bd.equipment;
-      if (!eq || typeof eq !== "object") continue;
-      if (eq[want]) return eq[want];
+  function resolveEquipTraitRarity(itemName, item) {
+    var gr = null;
+    if (item && item.grade != null && String(item.grade).trim() !== "") {
+      gr = String(item.grade).trim();
     }
-    return null;
+    if (!gr) {
+      var em = lookupEquipmentMetaByItemName(String(itemName || "").trim());
+      if (em && em.grade != null && String(em.grade).trim() !== "") gr = String(em.grade).trim();
+    }
+    return gr ? gradeToTraitRarity(gr) : null;
+  }
+
+  function resolveGongfaTraitRarity(label, item, cfgGf) {
+    var gr = null;
+    if (item && item.grade != null && String(item.grade).trim() !== "") {
+      gr = String(item.grade).trim();
+    }
+    if (!gr && cfgGf && cfgGf.grade != null && String(cfgGf.grade).trim() !== "") {
+      gr = String(cfgGf.grade).trim();
+    }
+    return gr ? gradeToTraitRarity(gr) : null;
   }
 
   function formatEquipTypeLabel(ty) {
@@ -772,14 +1074,14 @@
 
   function findFirstEmptyBagSlot(G) {
     ensureInventorySlots(G);
-    for (var i = 1; i < INVENTORY_SLOT_COUNT; i++) {
+    for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
       if (!G.inventorySlots[i]) return i;
     }
     return -1;
   }
 
   /**
-   * 将一件物品放入储物袋（1～11）：优先与同名堆叠，否则找空位。
+   * 将一件物品放入储物袋（0～11）：优先与同名堆叠，否则找空位。
    * @returns {boolean}
    */
   function tryPlaceItemInBag(G, payload) {
@@ -789,7 +1091,7 @@
     if (!name) return false;
     var cnt = typeof payload.count === "number" && isFinite(payload.count) ? Math.max(1, Math.floor(payload.count)) : 1;
     var desc = payload.desc != null ? String(payload.desc) : "";
-    for (var i = 1; i < INVENTORY_SLOT_COUNT; i++) {
+    for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
       var c = G.inventorySlots[i];
       if (c && c.name === name) {
         c.count = (typeof c.count === "number" && isFinite(c.count) ? c.count : 1) + cnt;
@@ -803,7 +1105,132 @@
       count: cnt,
       desc: desc || undefined,
       equipType: payload.equipType,
+      grade: payload.grade,
     });
+    return true;
+  }
+
+  function findFirstEmptyGongfaSlot(G) {
+    ensureGongfaSlots(G);
+    for (var g = 0; g < GONGFA_SLOT_COUNT; g++) {
+      var s = G.gongfaSlots[g];
+      var lab = s && (s.name != null ? s.name : s.label);
+      if (!lab || String(lab).trim() === "") return g;
+    }
+    return -1;
+  }
+
+  function notifyGongfaBarFull() {
+    var msg = "功法栏已满，无法装入更多功法。";
+    if (global.GameLog && typeof global.GameLog.warn === "function") global.GameLog.warn(msg);
+    else window.alert(msg);
+  }
+
+  /**
+   * 从功法栏卸下放入储物袋。
+   * @param {number} gfIdx 0～11
+   * @returns {boolean}
+   */
+  function performUnequipGongfaToBag(gfIdx) {
+    var G = global.MortalJourneyGame;
+    if (!G) return false;
+    ensureGameRuntimeDefaults(G);
+    var gi = Number(gfIdx);
+    if (!isFinite(gi) || gi < 0 || gi >= GONGFA_SLOT_COUNT) return false;
+    var item = G.gongfaSlots[gi];
+    var nm =
+      item && item.name != null
+        ? String(item.name).trim()
+        : item && item.label != null
+          ? String(item.label).trim()
+          : "";
+    if (!nm) return false;
+    var cfgGf = lookupGongfaConfigDef(nm);
+    var descStr =
+      item.desc != null && String(item.desc).trim() !== ""
+        ? String(item.desc).trim()
+        : cfgGf && cfgGf.desc != null
+          ? String(cfgGf.desc).trim()
+          : "";
+    var payload = { name: nm, count: 1, desc: descStr };
+    var gr =
+      item && item.grade != null && String(item.grade).trim() !== ""
+        ? String(item.grade).trim()
+        : cfgGf && cfgGf.grade != null
+          ? String(cfgGf.grade).trim()
+          : "";
+    if (gr) payload.grade = gr;
+    if (!tryPlaceItemInBag(G, payload)) {
+      notifyBagFull();
+      return false;
+    }
+    G.gongfaSlots[gi] = null;
+    persistBootstrapSnapshot();
+    renderLeftPanel(G.fateChoice, G);
+    return true;
+  }
+
+  /**
+   * 从储物袋装入功法栏首个空位（与装备类似，每次消耗 1 本）。
+   * @param {number} bagIdx 0～11
+   * @returns {boolean}
+   */
+  function performEquipGongfaFromBag(bagIdx) {
+    var G = global.MortalJourneyGame;
+    if (!G) return false;
+    ensureGameRuntimeDefaults(G);
+    var bi = Number(bagIdx);
+    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    var it = G.inventorySlots[bi];
+    if (!it || !it.name) return false;
+    var nm = String(it.name).trim();
+    var cfgGf = lookupGongfaConfigDef(nm);
+    if (!cfgGf) return false;
+
+    var j = findFirstEmptyGongfaSlot(G);
+    if (j < 0) {
+      notifyGongfaBarFull();
+      return false;
+    }
+
+    var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(0, Math.floor(it.count)) : 1;
+    if (cnt < 1) return false;
+
+    var ty =
+      it.type != null && String(it.type).trim() !== ""
+        ? String(it.type).trim()
+        : cfgGf.type != null
+          ? String(cfgGf.type).trim()
+          : "";
+    var descStr = "";
+    if (it.desc != null && String(it.desc).trim() !== "") descStr = String(it.desc).trim();
+    else if (cfgGf.desc != null) descStr = String(cfgGf.desc).trim();
+
+    var gfObj = { name: nm, desc: descStr };
+    if (ty) gfObj.type = ty;
+    var gGr =
+      it.grade != null && String(it.grade).trim() !== ""
+        ? String(it.grade).trim()
+        : cfgGf.grade != null
+          ? String(cfgGf.grade).trim()
+          : "";
+    if (gGr) gfObj.grade = gGr;
+
+    if (cnt > 1) {
+      G.inventorySlots[bi] = normalizeBagItem({
+        name: it.name,
+        count: cnt - 1,
+        desc: it.desc,
+        equipType: it.equipType,
+        grade: it.grade,
+      });
+    } else {
+      G.inventorySlots[bi] = null;
+    }
+
+    G.gongfaSlots[j] = gfObj;
+    persistBootstrapSnapshot();
+    renderLeftPanel(G.fateChoice, G);
     return true;
   }
 
@@ -854,13 +1281,14 @@
       return false;
     }
     G.equippedSlots[ei] = null;
+    persistBootstrapSnapshot();
     renderLeftPanel(G.fateChoice, G);
     return true;
   }
 
   /**
    * 从储物袋穿戴到对应部位；若该部位已有装备则先放入储物袋再穿戴。
-   * @param {number} bagIdx 1～11
+   * @param {number} bagIdx 0～11
    * @returns {boolean}
    */
   function performEquipFromBag(bagIdx) {
@@ -868,7 +1296,7 @@
     if (!G) return false;
     ensureGameRuntimeDefaults(G);
     var bi = Number(bagIdx);
-    if (!isFinite(bi) || bi < 1 || bi >= INVENTORY_SLOT_COUNT) return false;
+    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
     var it = G.inventorySlots[bi];
     if (!it || !it.name) return false;
     var slotIdx = resolveWearableSlotIndexForBagItem(it);
@@ -921,6 +1349,7 @@
     }
 
     G.equippedSlots[slotIdx] = equipObj;
+    persistBootstrapSnapshot();
     renderLeftPanel(G.fateChoice, G);
     return true;
   }
@@ -951,8 +1380,9 @@
   /**
    * @param {{ label: string, text: string }[]} sections
    * @param {{ label: string, primary?: boolean, onClick?: function(): void }[]} [actionButtons]
+   * @param {string} [modalTraitRarity] 与天赋槽 data-rarity 一致，用于物品详情弹窗描边
    */
-  function openItemDetailModal(title, subtitle, sections, actionButtons) {
+  function openItemDetailModal(title, subtitle, sections, actionButtons, modalTraitRarity) {
     var root = document.getElementById("mj-item-detail-root");
     var titleEl = document.getElementById("mj-item-detail-title");
     var subEl = document.getElementById("mj-item-detail-subtitle");
@@ -972,6 +1402,13 @@
       }
     }
     appendItemDetailActionButtons(bodyEl, actionButtons);
+    var itemPanel = root.querySelector(".mj-item-detail-panel");
+    if (itemPanel) {
+      itemPanel.removeAttribute("data-rarity");
+      if (modalTraitRarity != null && String(modalTraitRarity).trim() !== "") {
+        itemPanel.setAttribute("data-rarity", String(modalTraitRarity).trim());
+      }
+    }
     root.classList.remove("hidden");
     root.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
@@ -982,6 +1419,8 @@
   function closeItemDetailModal() {
     var root = document.getElementById("mj-item-detail-root");
     if (!root) return;
+    var itemPanel = root.querySelector(".mj-item-detail-panel");
+    if (itemPanel) itemPanel.removeAttribute("data-rarity");
     root.classList.add("hidden");
     root.setAttribute("aria-hidden", "true");
     var traitRoot = document.getElementById("mj-trait-detail-root");
@@ -1004,12 +1443,35 @@
     var descRuntime = item.desc != null ? String(item.desc).trim() : "";
     var descCfg = cfgDef && cfgDef.desc != null ? String(cfgDef.desc).trim() : "";
     var desc = descRuntime || descCfg || "";
+    var tyShow =
+      item.type != null && String(item.type).trim() !== ""
+        ? String(item.type).trim()
+        : cfgDef && cfgDef.type != null
+          ? String(cfgDef.type).trim()
+          : "";
     var sections = [];
+    if (tyShow) sections.push({ label: "类型", text: tyShow });
     if (desc) sections.push({ label: "简介", text: desc });
     var bonusLine = cfgDef && cfgDef.bonus ? formatZhBonusObject(cfgDef.bonus) : "";
     if (bonusLine) sections.push({ label: "修炼加成", text: bonusLine });
+    var refGf = formatReferenceValueLine(cfgDef);
+    if (refGf) sections.push({ label: "价值", text: refGf });
     if (!sections.length) sections.push({ label: "说明", text: "暂无详细描述。" });
-    openItemDetailModal(name, "功法", sections);
+    openItemDetailModal(
+      name,
+      "功法",
+      sections,
+      [
+        {
+          label: "卸下",
+          onClick: function () {
+            closeItemDetailModal();
+            performUnequipGongfaToBag(idx);
+          },
+        },
+      ],
+      resolveGongfaTraitRarity(name, item, cfgDef),
+    );
   }
 
   function tryOpenBagSlotFromEl(slotEl) {
@@ -1019,21 +1481,13 @@
     if (isNaN(idx)) return;
     var G = global.MortalJourneyGame;
     if (!G || !G.inventorySlots) return;
-    if (idx === 0) {
-      var z = G.inventorySlots[0];
-      var cnt = z && typeof z.count === "number" ? z.count : 0;
-      openItemDetailModal("灵石", "货币", [
-        { label: "说明", text: "修士界流通的基础货币，可用于购买丹药、法器与材料等。" },
-        { label: "持有数量", text: String(cnt) },
-      ]);
-      return;
-    }
     if (!slotEl.classList.contains("mj-inventory-slot--filled")) return;
     var it = G.inventorySlots[idx];
     if (!it || !it.name) return;
     var cnt = typeof it.count === "number" ? it.count : 1;
     var stuffMeta = lookupStuffMetaByItemName(it.name);
     var eqMeta = lookupEquipmentMetaByItemName(it.name);
+    var gfMeta = lookupGongfaConfigDef(String(it.name).trim());
     var descRuntime = it.desc != null ? String(it.desc).trim() : "";
     var descCfg =
       (stuffMeta && stuffMeta.desc != null ? String(stuffMeta.desc).trim() : "") ||
@@ -1042,6 +1496,19 @@
     var sections = [];
     if (desc) sections.push({ label: "简介", text: desc });
     else sections.push({ label: "简介", text: "暂无详细描述。" });
+    if (stuffMeta && stuffMeta.grade != null && String(stuffMeta.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(stuffMeta.grade).trim() });
+    } else if (gfMeta && gfMeta.grade != null && String(gfMeta.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(gfMeta.grade).trim() });
+    }
+    if (
+      stuffMeta &&
+      stuffMeta.type != null &&
+      String(stuffMeta.type).trim() !== "" &&
+      !eqMeta
+    ) {
+      sections.push({ label: "类型", text: String(stuffMeta.type).trim() });
+    }
     var wearSlot = resolveWearableSlotIndexForBagItem(it);
     if (wearSlot != null) {
       var tyShow = it.equipType
@@ -1055,20 +1522,71 @@
     var bonusEq = eqMeta && eqMeta.bonus ? formatZhBonusObject(eqMeta.bonus) : "";
     if (bonusStuff) sections.push({ label: "效果", text: bonusStuff });
     if (bonusEq) sections.push({ label: "属性加成", text: bonusEq });
+    if (gfMeta) {
+      if (gfMeta.type != null && String(gfMeta.type).trim() !== "") {
+        sections.push({ label: "功法类型", text: String(gfMeta.type).trim() });
+      }
+      var gfBonusLine = gfMeta.bonus ? formatZhBonusObject(gfMeta.bonus) : "";
+      if (gfBonusLine) sections.push({ label: "修炼加成", text: gfBonusLine });
+    }
+    var refNum = pickDescribeValueFromMetas(stuffMeta, eqMeta, gfMeta);
+    var refBag = formatReferenceValueFromNumber(refNum);
+    if (refBag) sections.push({ label: "价值", text: refBag });
     sections.push({ label: "持有数量", text: String(cnt) });
+
+    var stoneVal = getSpiritStoneCultivationValue(it.name);
+    if (stoneVal > 0) {
+      sections.push({
+        label: "修炼",
+        text: "每件可提供 " + stoneVal + " 点修为（消耗背包中的数量）。",
+      });
+    }
 
     var actions = [];
     if (wearSlot != null) {
       actions.push({
         label: "穿戴",
-        primary: true,
+        primary: !stoneVal,
         onClick: function () {
           closeItemDetailModal();
           performEquipFromBag(idx);
         },
       });
     }
-    openItemDetailModal(String(it.name), "物品", sections, actions);
+    if (gfMeta) {
+      actions.push({
+        label: "装入功法栏",
+        primary: !stoneVal && wearSlot == null,
+        onClick: function () {
+          closeItemDetailModal();
+          performEquipGongfaFromBag(idx);
+        },
+      });
+    }
+    if (stoneVal > 0) {
+      actions.push({
+        label: "修炼（1件）",
+        primary: true,
+        onClick: function () {
+          var GG = global.MortalJourneyGame;
+          if (!GG) return;
+          if (!performAbsorbSpiritStonesFromBag(GG, idx, false)) return;
+          closeItemDetailModal();
+        },
+      });
+      if (cnt > 1) {
+        actions.push({
+          label: "尽数修炼",
+          onClick: function () {
+            var GG = global.MortalJourneyGame;
+            if (!GG) return;
+            if (!performAbsorbSpiritStonesFromBag(GG, idx, true)) return;
+            closeItemDetailModal();
+          },
+        });
+      }
+    }
+    openItemDetailModal(String(it.name), "物品", sections, actions, resolveBagItemTraitRarity(it.name, it));
   }
 
   function tryOpenEquipFromSlotEl(slotEl) {
@@ -1094,6 +1612,8 @@
     else sections.push({ label: "简介", text: "暂无详细描述。" });
     var bonusLine = meta && meta.bonus ? formatZhBonusObject(meta.bonus) : "";
     if (bonusLine) sections.push({ label: "属性加成", text: bonusLine });
+    var refEq = formatReferenceValueLine(meta);
+    if (refEq) sections.push({ label: "价值", text: refEq });
     openItemDetailModal(name, "装备", sections, [
       {
         label: "卸下",
@@ -1102,7 +1622,7 @@
           performUnequipToBag(idx);
         },
       },
-    ]);
+    ], resolveEquipTraitRarity(name, item));
   }
 
   var _gongfaBagDetailUiBound = false;
@@ -1347,6 +1867,7 @@
         el.setAttribute("role", "button");
         el.setAttribute("tabindex", "0");
         el.setAttribute("aria-label", "查看装备：" + String(label));
+        setSlotRarityDataAttr(el, resolveEquipTraitRarity(String(label), item));
       } else {
         el.classList.add("mj-equip-slot--empty");
         el.classList.remove("mj-equip-slot--filled");
@@ -1355,6 +1876,7 @@
         el.removeAttribute("role");
         el.removeAttribute("tabindex");
         el.removeAttribute("aria-label");
+        setSlotRarityDataAttr(el, null);
       }
     }
   }
@@ -1393,8 +1915,13 @@
     var cultFill = document.getElementById("mj-cultivation-bar-fill");
     var cultBar = document.getElementById("mj-cultivation-bar");
     var cultTxt = document.getElementById("mj-cultivation-pct-text");
-    var cp = G && typeof G.cultivationProgress === "number" ? G.cultivationProgress : 0;
-    setBarFill(cultFill, cultBar, cp, cultTxt, Math.round(clampPct(cp)) + "%");
+    var cultCtx = computeCultivationUi(G, fc);
+    if (G) G.cultivationProgress = cultCtx.pct;
+    var cultLabel =
+      cultCtx.req != null && cultCtx.req > 0
+        ? Math.round(cultCtx.cur) + " / " + Math.round(cultCtx.req)
+        : Math.round(cultCtx.cur) + " / —";
+    setBarFill(cultFill, cultBar, cultCtx.pct, cultTxt, cultLabel);
 
     var hpFill = document.getElementById("mj-hp-bar-fill");
     var hpBar = document.getElementById("mj-hp-bar");
@@ -1480,6 +2007,13 @@
       global.MortalJourneyGame = G;
     }
     ensureGameRuntimeDefaults(G);
+    var brInit = applyRealmBreakthroughs(G);
+    logBreakthroughMessages(brInit.messages);
+    if (brInit.changed) {
+      var uiInit = computeCultivationUi(G, fc);
+      G.cultivationProgress = uiInit.pct;
+      persistBootstrapSnapshot();
+    }
     renderInventorySlots();
     renderGongfaGrid();
     renderLeftPanel(fc, G);
@@ -1562,7 +2096,7 @@
     /** 功法栏格数（3×4，固定 12） */
     GONGFA_SLOT_COUNT: GONGFA_SLOT_COUNT,
     /**
-     * 设置功法格 item 为 { name, desc? } 或 null；index 0～11
+     * 设置功法格 item 为 { name, desc?, type? } 或 null；index 0～11
      * @returns {boolean}
      */
     setGongfaSlot: function (index, item) {
@@ -1575,7 +2109,7 @@
       renderLeftPanel(G.fateChoice, G);
       return true;
     },
-    /** @returns {Array} 12 格快照（元素为 null 或 { name, desc? }） */
+    /** @returns {Array} 12 格快照（元素为 null 或 { name, desc?, type? }） */
     getGongfaSlots: function () {
       var G = global.MortalJourneyGame;
       if (!G) {
@@ -1586,10 +2120,21 @@
       ensureGongfaSlots(G);
       return G.gongfaSlots.slice();
     },
-    /** 储物袋格数（含第 0 格灵石） */
+    /**
+     * 储物袋一格装入功法栏（首个空位，消耗 1 本）；栏满或物品不在功法配置表中则 false
+     * @returns {boolean}
+     */
+    equipGongfaFromBag: function (bagIndex) {
+      return performEquipGongfaFromBag(bagIndex);
+    },
+    /** 功法栏一格（0～11）卸下至储物袋；袋满 false */
+    unequipGongfaToBag: function (gongfaSlotIndex) {
+      return performUnequipGongfaToBag(gongfaSlotIndex);
+    },
+    /** 储物袋格数（12 格均为物品） */
     INVENTORY_SLOT_COUNT: INVENTORY_SLOT_COUNT,
     /**
-     * 设置灵石数量（第 0 格）
+     * 将背包内所有「下品灵石」「灵石」堆叠清空后，在首个空位放入指定数量下品灵石（与 LINGSHI_STACK_ITEM_NAME 一致）。
      * @returns {boolean}
      */
     setLingShiCount: function (n) {
@@ -1597,20 +2142,45 @@
       if (!G) return false;
       ensureGameRuntimeDefaults(G);
       var c = Math.max(0, Math.floor(Number(n) || 0));
-      G.inventorySlots[0].count = c;
+      var C = global.MjCreationConfig;
+      var stoneName =
+        C && C.LINGSHI_STACK_ITEM_NAME ? String(C.LINGSHI_STACK_ITEM_NAME) : "下品灵石";
+      for (var r = 0; r < INVENTORY_SLOT_COUNT; r++) {
+        var it = G.inventorySlots[r];
+        if (it && (it.name === stoneName || it.name === "灵石")) G.inventorySlots[r] = null;
+      }
+      if (c === 0) {
+        persistBootstrapSnapshot();
+        renderBagSlots(G);
+        return true;
+      }
+      var j = findFirstEmptyBagSlot(G);
+      if (j < 0) return false;
+      G.inventorySlots[j] = normalizeBagItem({ name: stoneName, count: c });
+      persistBootstrapSnapshot();
       renderBagSlots(G);
       return true;
     },
-    /** @returns {number} */
+    /** 背包中「下品灵石」与旧名「灵石」的数量合计 */
     getLingShiCount: function () {
       var G = global.MortalJourneyGame;
       if (!G) return 0;
       ensureInventorySlots(G);
-      var z = G.inventorySlots[0];
-      return z && typeof z.count === "number" ? z.count : 0;
+      var C = global.MjCreationConfig;
+      var stoneName =
+        C && C.LINGSHI_STACK_ITEM_NAME ? String(C.LINGSHI_STACK_ITEM_NAME) : "下品灵石";
+      var sum = 0;
+      for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
+        var it = G.inventorySlots[i];
+        if (!it || !it.name) continue;
+        if (it.name === stoneName || it.name === "灵石") {
+          sum += typeof it.count === "number" && isFinite(it.count) ? Math.max(0, Math.floor(it.count)) : 1;
+        }
+      }
+      return sum;
     },
     /**
-     * 储物袋物品格：index 1～11，item 为 { name, count?, desc? } 或 null；index 0 请用 setLingShiCount
+     * 储物袋物品格：index 0～11，item 为 { name, count?, desc? } 或 null
      * @returns {boolean}
      */
     setBagSlot: function (index, item) {
@@ -1618,35 +2188,111 @@
       if (!G) return false;
       ensureGameRuntimeDefaults(G);
       var i = Number(index);
-      if (!isFinite(i) || i < 1 || i >= INVENTORY_SLOT_COUNT) return false;
+      if (!isFinite(i) || i < 0 || i >= INVENTORY_SLOT_COUNT) return false;
       G.inventorySlots[i] = item == null ? null : normalizeBagItem(item);
+      persistBootstrapSnapshot();
       renderBagSlots(G);
       return true;
     },
-    /** @returns {Array} 12 格：{ kind:'lingshi', count } 或 { name, count, desc? } 或 null */
+    /** 当前累计修为（灵石修炼累加） */
+    getXiuwei: function () {
+      var G = global.MortalJourneyGame;
+      if (!G) return 0;
+      ensureGameRuntimeDefaults(G);
+      return typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? Math.max(0, Math.floor(G.xiuwei)) : 0;
+    },
+    /**
+     * 直接设置修为（剧情用）；会刷新左栏并写入 sessionStorage 快照
+     * @returns {boolean}
+     */
+    setXiuwei: function (n) {
+      var G = global.MortalJourneyGame;
+      if (!G) return false;
+      ensureGameRuntimeDefaults(G);
+      G.xiuwei = Math.max(0, Math.floor(Number(n) || 0));
+      var br = applyRealmBreakthroughs(G);
+      logBreakthroughMessages(br.messages);
+      var ui = computeCultivationUi(G, G.fateChoice);
+      G.cultivationProgress = ui.pct;
+      persistBootstrapSnapshot();
+      renderLeftPanel(G.fateChoice, G);
+      return true;
+    },
+    /**
+     * 在修为已满条时再次尝试突破（小境界直接进；大境界按表概率，失败不扣修为）。
+     * @returns {{ changed: boolean, messages: string[] }}
+     */
+    applyRealmBreakthroughsNow: function () {
+      var G = global.MortalJourneyGame;
+      if (!G) return { changed: false, messages: [] };
+      ensureGameRuntimeDefaults(G);
+      var out = applyRealmBreakthroughs(G);
+      logBreakthroughMessages(out.messages);
+      if (out.changed) {
+        var ui = computeCultivationUi(G, G.fateChoice);
+        G.cultivationProgress = ui.pct;
+        persistBootstrapSnapshot();
+        renderLeftPanel(G.fateChoice, G);
+      }
+      return out;
+    },
+    /**
+     * 消耗背包一格灵石类物品增加修为（每件 = describe.value）
+     * @param {number} bagIndex 0～11
+     * @param {boolean} [consumeAll] 默认 false 只消耗 1 件
+     * @returns {boolean}
+     */
+    absorbSpiritStonesFromBag: function (bagIndex, consumeAll) {
+      var G = global.MortalJourneyGame;
+      if (!G) return false;
+      return performAbsorbSpiritStonesFromBag(G, bagIndex, !!consumeAll);
+    },
+    /** @returns {Array} 12 格：{ name, count, desc? } 或 null */
     getBagSlots: function () {
       var G = global.MortalJourneyGame;
       if (!G) {
-        var emp = [ { kind: "lingshi", count: 0 } ];
-        for (var b = 1; b < INVENTORY_SLOT_COUNT; b++) emp.push(null);
+        var emp = [];
+        for (var b = 0; b < INVENTORY_SLOT_COUNT; b++) emp.push(null);
         return emp;
       }
       ensureInventorySlots(G);
       return G.inventorySlots.map(function (x) {
         if (!x) return null;
-        if (x.kind === "lingshi") return { kind: "lingshi", count: x.count };
         var o = { name: x.name, count: x.count, desc: x.desc };
         if (x.equipType) o.equipType = x.equipType;
+        if (x.grade) o.grade = x.grade;
         return o;
       });
     },
-    /** 从储物袋格（1～11）穿戴；满袋无法换下当前装备时返回 false */
+    /** 从储物袋格（0～11）穿戴；满袋无法换下当前装备时返回 false */
     equipFromBagSlot: function (bagIndex) {
       return performEquipFromBag(bagIndex);
     },
     /** 卸下佩戴栏一格（0～2）到储物袋；袋满返回 false */
     unequipToBag: function (equipSlotIndex) {
       return performUnequipToBag(equipSlotIndex);
+    },
+    /**
+     * 查描述表中的灵石等价数值（describe.value，与灵石/装备/功法等同刻度，非「下品灵石颗数」）
+     * @param {string} itemName
+     * @returns {number|null}
+     */
+    getDescribeReferenceValue: function (itemName) {
+      var nm = String(itemName || "").trim();
+      if (!nm) return null;
+      var n = pickDescribeValueFromMetas(
+        lookupStuffMetaByItemName(nm),
+        lookupEquipmentMetaByItemName(nm),
+        lookupGongfaConfigDef(nm),
+      );
+      return n == null ? null : Math.floor(n);
+    },
+    /**
+     * 与详情弹窗「灵石等价价值」同格式；无效数值返回 null
+     */
+    formatReferenceValueUi: function (amount) {
+      var x = typeof amount === "number" ? amount : Number(amount);
+      return formatReferenceValueFromNumber(x);
     },
     DEFAULT_WORLD_TIME: DEFAULT_WORLD_TIME,
   };

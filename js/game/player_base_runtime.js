@@ -117,29 +117,15 @@
   function lookupGongfaDefByName(name) {
     if (!name) return null;
     var C = global.MjCreationConfig;
-    if (!C || !C.BIRTHS) return null;
-    var want = String(name).trim();
-    for (var bk in C.BIRTHS) {
-      if (!Object.prototype.hasOwnProperty.call(C.BIRTHS, bk)) continue;
-      var bd = C.BIRTHS[bk];
-      if (!bd || !bd.gongfa || typeof bd.gongfa !== "object") continue;
-      if (bd.gongfa[want]) return bd.gongfa[want];
-    }
-    return null;
+    if (!C || typeof C.getGongfaDescribe !== "function") return null;
+    return C.getGongfaDescribe(String(name).trim());
   }
 
   function lookupEquipmentDefByName(name) {
     if (!name) return null;
     var C = global.MjCreationConfig;
-    if (!C || !C.BIRTHS) return null;
-    var want = String(name).trim();
-    for (var bk in C.BIRTHS) {
-      if (!Object.prototype.hasOwnProperty.call(C.BIRTHS, bk)) continue;
-      var bd = C.BIRTHS[bk];
-      if (!bd || !bd.equipment || typeof bd.equipment !== "object") continue;
-      if (bd.equipment[want]) return bd.equipment[want];
-    }
-    return null;
+    if (!C || typeof C.getEquipmentDescribe !== "function") return null;
+    return C.getEquipmentDescribe(String(name).trim());
   }
 
   function collectGongfaSlotBonuses(gongfaSlots) {

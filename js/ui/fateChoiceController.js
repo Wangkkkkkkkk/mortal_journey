@@ -962,12 +962,15 @@
       G0.rawRealmBase = payload.rawRealmBase ? Object.assign({}, payload.rawRealmBase) : null;
     }
 
+    G0.xiuwei = 0;
+
     try {
       sessionStorage.setItem(
         "mortal_journey_bootstrap_v1",
         JSON.stringify({
           fateChoice: payload,
           startedAt: global.MortalJourneyGame.startedAt,
+          xiuwei: G0.xiuwei,
           inventorySlots: invSlots,
           gongfaSlots: gongfaSlots0,
           equippedSlots: equippedSlots0,

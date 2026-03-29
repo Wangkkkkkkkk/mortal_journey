@@ -83,22 +83,36 @@
     }
   }
 
+  function lookupGongfaTypeFromConfig(name) {
+    var C = global.MjCreationConfig;
+    if (!C || typeof C.getGongfaDescribe !== "function" || name == null) return "";
+    var g = C.getGongfaDescribe(String(name).trim());
+    if (g && g.type != null && String(g.type).trim() !== "") return String(g.type).trim();
+    return "";
+  }
+
   function appendBagAndGongfaLines(lines, G) {
     if (!G) return;
     var gf = G.gongfaSlots;
     if (Array.isArray(gf) && gf.length) {
       var gn = [];
       for (var i = 0; i < gf.length; i++) {
-        if (gf[i] && gf[i].name) gn.push(String(gf[i].name));
+        var cell = gf[i];
+        if (cell && cell.name) {
+          var nm = String(cell.name);
+          var ty =
+            cell.type != null && String(cell.type).trim() !== ""
+              ? String(cell.type).trim()
+              : lookupGongfaTypeFromConfig(nm);
+          gn.push(ty ? nm + "（" + ty + "）" : nm);
+        }
       }
       if (gn.length) lines.push("【已学功法】" + gn.join("、"));
     }
     var inv = G.inventorySlots;
     if (!Array.isArray(inv) || !inv.length) return;
-    var z = inv[0];
-    if (z && z.kind === "lingshi") lines.push("灵石：" + (typeof z.count === "number" ? z.count : 0));
     var bits = [];
-    for (var j = 1; j < inv.length; j++) {
+    for (var j = 0; j < inv.length; j++) {
       var it = inv[j];
       if (it && it.name) bits.push(String(it.name) + (it.count > 1 ? "×" + it.count : ""));
     }
@@ -147,6 +161,19 @@
     var profile = [];
     if (G && G.worldTimeString) profile.push("世界时间：" + G.worldTimeString);
     if (fc || G) profile.push("境界：" + formatRealmLine(fc, G));
+    if (fc || G) {
+      var RS = global.RealmState;
+      var rr = (fc && fc.realm) || (G && G.realm) || {};
+      var maj = rr.major || "";
+      var mino = rr.minor;
+      var req =
+        RS && typeof RS.getCultivationRequired === "function"
+          ? RS.getCultivationRequired(maj, mino)
+          : null;
+      var xw = G && typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? Math.max(0, Math.floor(G.xiuwei)) : 0;
+      if (req != null && req > 0) profile.push("修为：" + xw + " / " + req + "（本阶段需求）");
+      else profile.push("修为：" + xw);
+    }
     if (fc && fc.gender) profile.push("性别：" + String(fc.gender));
     if (G && G.age != null) profile.push("年龄：" + String(G.age));
     if (G && G.shouyuan != null) profile.push("寿元：" + String(G.shouyuan));
