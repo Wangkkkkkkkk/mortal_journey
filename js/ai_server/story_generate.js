@@ -114,7 +114,10 @@
     var bits = [];
     for (var j = 0; j < inv.length; j++) {
       var it = inv[j];
-      if (it && it.name) bits.push(String(it.name) + (it.count > 1 ? "×" + it.count : ""));
+      if (!it || !it.name) continue;
+      var cn =
+        typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
+      bits.push(String(it.name) + "×" + cn);
     }
     if (bits.length) lines.push("【储物袋】" + bits.join("、"));
   }

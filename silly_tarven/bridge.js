@@ -31,6 +31,49 @@
     }
   }
 
+  /**
+   * OpenAI 兼容流式包里可见文本可能在不同字段（中转/Gemini/推理模型常见），仅读 content 会表现为「有连接无正文」。
+   * 按优先级合并单包内可能出现的片段（同一包一般只有一种非空）。
+   */
+  function extractOpenAiStreamDeltaText(parsed) {
+    if (!parsed || typeof parsed !== "object") return "";
+    const ch0 = parsed.choices && parsed.choices[0];
+    if (!ch0 || typeof ch0 !== "object") return "";
+    const delta = ch0.delta && typeof ch0.delta === "object" ? ch0.delta : null;
+    const parts = [];
+    if (delta) {
+      const c = delta.content;
+      if (c != null && String(c) !== "") parts.push(String(c));
+      const rc = delta.reasoning_content;
+      if (rc != null && String(rc) !== "") parts.push(String(rc));
+      const t = delta.text;
+      if (t != null && String(t) !== "") parts.push(String(t));
+    }
+    const legacy = ch0.text;
+    if (legacy != null && String(legacy) !== "") parts.push(String(legacy));
+    const msgC = ch0.message && ch0.message.content;
+    if (msgC != null && String(msgC) !== "") parts.push(String(msgC));
+    return parts.join("");
+  }
+
+  /** 非流式 chat/completions 整段 JSON 中助手正文的常见路径（与 extractOpenAiStreamDeltaText 对齐思路） */
+  function extractOpenAiNonStreamMessageText(data) {
+    if (!data || typeof data !== "object") return "";
+    const ch0 = data.choices && data.choices[0];
+    if (!ch0 || typeof ch0 !== "object") return "";
+    const parts = [];
+    const msg = ch0.message && typeof ch0.message === "object" ? ch0.message : null;
+    if (msg) {
+      const c = msg.content;
+      if (c != null && String(c) !== "") parts.push(String(c));
+      const rc = msg.reasoning_content;
+      if (rc != null && String(rc) !== "") parts.push(String(rc));
+    }
+    const legacy = ch0.text;
+    if (legacy != null && String(legacy) !== "") parts.push(String(legacy));
+    return parts.join("");
+  }
+
   function deepClone(value) {
     return safeJsonParse(JSON.stringify(value), null);
   }
@@ -230,37 +273,52 @@
       temperature: typeof preset.temperature === "number" ? preset.temperature : 0.7,
     };
 
-    let fetchAbort = { signal: userSignal || undefined, clear: () => {} };
-    if (!shouldStream && nonStreamMs > 0) {
-      fetchAbort = createFetchAbortSignal(
-        userSignal,
-        nonStreamMs,
+    /**
+     * 非流式：fetch 在收到头后就会 resolve，原先仅用 AbortSignal 包住 fetch，会在 finally 里清掉定时器，
+     * 导致 await response.json() 读正文时再无超时，上游极慢或卡住时会一直等到浏览器/系统层断开。
+     * 此处用 Promise.race 对「fetch + json」整体设上限（与 requestTimeoutMs / nonStreamMs 一致）。
+     */
+    if (!shouldStream) {
+      const budgetMs = nonStreamMs > 0 ? nonStreamMs : 600000;
+      const timeoutErr = () =>
         new Error(
-          `请求超时（非流式超过 ${Math.round(nonStreamMs / 1000)}s）。可在预设中调大 requestTimeoutMs。`,
-        ),
-      );
+          `非流式在 ${Math.round(budgetMs / 1000)}s 内未完成（含连接与整段 JSON）。常见于模型生成很慢、中转排队、或单次 messages 极大。可调 fixedPreset.requestTimeoutMs 或 timeouts.nonStreamMs；或暂时 useStreamingChat: true 观察是否有流式输出。`,
+        );
+      const data = await Promise.race([
+        (async () => {
+          const res = await fetch(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+            signal: userSignal || undefined,
+          });
+          if (!res.ok) {
+            const lastError = await res.text();
+            throw new Error(`上游模型请求失败 (${res.status}): ${lastError || "unknown error"}`);
+          }
+          return res.json();
+        })(),
+        new Promise((_, rej) => setTimeout(() => rej(timeoutErr()), budgetMs)),
+      ]);
+      const out = extractOpenAiNonStreamMessageText(data);
+      if (!out && data && typeof data === "object") {
+        console.warn(
+          "[ST Bridge] 非流式响应中未解析到 choices[0].message.content / reasoning_content / text，请对照上游 JSON。",
+        );
+      }
+      return out;
     }
 
-    let response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: fetchAbort.signal,
-      });
-    } finally {
-      fetchAbort.clear();
-    }
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: userSignal || undefined,
+    });
 
     if (!response.ok) {
       const lastError = await response.text();
       throw new Error(`上游模型请求失败 (${response.status}): ${lastError || "unknown error"}`);
-    }
-
-    if (!shouldStream) {
-      const data = await response.json();
-      return String(data?.choices?.[0]?.message?.content || "");
     }
 
     if (!response.body) {
@@ -272,6 +330,7 @@
     let full = "";
     let buffer = "";
     const streamStartedAt = Date.now();
+    let ssePayloadCount = 0;
 
     while (true) {
       if (userSignal && userSignal.aborted) {
@@ -313,8 +372,9 @@
         if (!trimmed.startsWith("data:")) continue;
         const payload = trimmed.slice(5).trim();
         if (!payload || payload === "[DONE]") continue;
+        ssePayloadCount += 1;
         const parsed = safeJsonParse(payload, null);
-        const token = String(parsed?.choices?.[0]?.delta?.content || "");
+        const token = extractOpenAiStreamDeltaText(parsed);
         if (!token) continue;
         full += token;
         if (typeof onDelta === "function") {
@@ -331,8 +391,9 @@
       if (trimmed.startsWith("data:")) {
         const payload = trimmed.slice(5).trim();
         if (payload && payload !== "[DONE]") {
+          ssePayloadCount += 1;
           const parsed = safeJsonParse(payload, null);
-          const token = String(parsed?.choices?.[0]?.delta?.content || "");
+          const token = extractOpenAiStreamDeltaText(parsed);
           if (token) {
             full += token;
             if (typeof onDelta === "function") {
@@ -344,6 +405,14 @@
           }
         }
       }
+    }
+
+    if (full === "" && shouldStream) {
+      console.warn(
+        "[ST Bridge] 流式请求结束但拼接正文为空。已解析 data 包约 " +
+          ssePayloadCount +
+          " 个。若独立测 API 正常，多为：① 上游未把正文放在 delta.content（本桥已兼容 reasoning_content / text / message.content）；② 游戏内 messages 极大导致上游异常结束；③ 并发新请求触发了 replaced_by_new_generation 中止。",
+      );
     }
 
     return full;

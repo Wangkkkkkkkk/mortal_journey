@@ -400,13 +400,9 @@
     var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
     if (cnt <= 1) G.inventorySlots[bi] = null;
     else {
-      G.inventorySlots[bi] = normalizeBagItem({
-        name: it.name,
-        count: cnt - 1,
-        desc: it.desc,
-        equipType: it.equipType,
-        grade: it.grade,
-      });
+      G.inventorySlots[bi] = normalizeBagItem(
+        Object.assign({ name: it.name, count: cnt - 1 }, continuityFieldsFromBagItem(it)),
+      );
     }
     return true;
   }
@@ -838,13 +834,9 @@
     var left = cnt - useN;
     if (left <= 0) G.inventorySlots[bi] = null;
     else {
-      G.inventorySlots[bi] = normalizeBagItem({
-        name: it.name,
-        count: left,
-        desc: it.desc,
-        equipType: it.equipType,
-        grade: it.grade,
-      });
+      G.inventorySlots[bi] = normalizeBagItem(
+        Object.assign({ name: it.name, count: left }, continuityFieldsFromBagItem(it)),
+      );
     }
     var br = applyRealmBreakthroughs(G);
     clampXiuweiToLateStageCapIfNeeded(G, G.fateChoice);
@@ -1744,10 +1736,36 @@
       o.equipType = String(entry.equipType).trim();
     }
     if (entry.grade != null && String(entry.grade).trim() !== "") o.grade = String(entry.grade).trim();
+    if (typeof entry.value === "number" && isFinite(entry.value)) {
+      o.value = Math.max(0, Math.floor(entry.value));
+    }
+    if (!o.equipType && entry.type != null && String(entry.type).trim() !== "") {
+      o.type = String(entry.type).trim();
+    }
+    if (entry.bonus && typeof entry.bonus === "object" && Object.keys(entry.bonus).length > 0) {
+      o.bonus = entry.bonus;
+    }
+    if (entry.effects && typeof entry.effects === "object" && Object.keys(entry.effects).length > 0) {
+      o.effects = entry.effects;
+    }
     return o;
   }
 
-  /** 旧存档格子上无 grade 时，按描述表补全（刷新后即可上色） */
+  /** 拆堆叠、消耗后写回格子时保留 describe 表外字段 */
+  function continuityFieldsFromBagItem(it) {
+    if (!it) return {};
+    var o = {};
+    if (it.desc != null) o.desc = it.desc;
+    if (it.equipType != null) o.equipType = it.equipType;
+    if (it.grade != null) o.grade = it.grade;
+    if (typeof it.value === "number" && isFinite(it.value)) o.value = it.value;
+    if (it.type != null) o.type = it.type;
+    if (it.bonus && typeof it.bonus === "object") o.bonus = it.bonus;
+    if (it.effects && typeof it.effects === "object") o.effects = it.effects;
+    return o;
+  }
+
+  /** 旧存档格子上无 grade/value 时，按描述表补全（刷新后即可上色 / 显示价值） */
   function enrichInventoryGradesFromDescribe(G) {
     if (!G || !G.inventorySlots) return;
     var C = global.MjCreationConfig;
@@ -1755,19 +1773,33 @@
     for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
       var it = G.inventorySlots[i];
       if (!it || !it.name) continue;
-      if (it.grade != null && String(it.grade).trim() !== "") continue;
       var nm = String(it.name).trim();
       if (!nm) continue;
-      if (typeof C.getStuffDescribe === "function") {
-        var st = C.getStuffDescribe(nm);
-        if (st && st.grade != null && String(st.grade).trim() !== "") {
-          it.grade = String(st.grade).trim();
-          continue;
+      if (it.grade == null || String(it.grade).trim() === "") {
+        if (typeof C.getStuffDescribe === "function") {
+          var st = C.getStuffDescribe(nm);
+          if (st && st.grade != null && String(st.grade).trim() !== "") {
+            it.grade = String(st.grade).trim();
+          }
+        }
+        if ((it.grade == null || String(it.grade).trim() === "") && typeof C.getEquipmentDescribe === "function") {
+          var em = C.getEquipmentDescribe(nm);
+          if (em && em.grade != null && String(em.grade).trim() !== "") it.grade = String(em.grade).trim();
         }
       }
-      if (typeof C.getEquipmentDescribe === "function") {
-        var em = C.getEquipmentDescribe(nm);
-        if (em && em.grade != null && String(em.grade).trim() !== "") it.grade = String(em.grade).trim();
+      if (typeof it.value !== "number" || !isFinite(it.value)) {
+        if (typeof C.getStuffDescribe === "function") {
+          var st2 = C.getStuffDescribe(nm);
+          if (st2 && typeof st2.value === "number" && isFinite(st2.value)) {
+            it.value = Math.max(0, Math.floor(st2.value));
+          }
+        }
+        if ((typeof it.value !== "number" || !isFinite(it.value)) && typeof C.getEquipmentDescribe === "function") {
+          var em2 = C.getEquipmentDescribe(nm);
+          if (em2 && typeof em2.value === "number" && isFinite(em2.value)) {
+            it.value = Math.max(0, Math.floor(em2.value));
+          }
+        }
       }
     }
   }
@@ -1821,6 +1853,13 @@
     return document.getElementById("mj-chat-status");
   }
 
+  /** 与 silly_tarven/bridge-config.js 中 useStreamingChat 一致；未定义时默认 false（非流式一次性显示） */
+  function getBridgeUseStreamingChat() {
+    var C = global.SillyTavernBridgeConfig;
+    if (C && typeof C.useStreamingChat === "boolean") return C.useStreamingChat;
+    return false;
+  }
+
   function clearChatStatusTick() {
     if (_chatStatusTick != null) {
       clearInterval(_chatStatusTick);
@@ -1843,8 +1882,11 @@
   /**
    * @param {HTMLTextAreaElement|null} textarea
    * @param {boolean} streamingStarted
+   * @param {{ kind?: string, wholeResponseWait?: boolean }} [feedbackOpts] wholeResponseWait：非流式时提示「整段生成」
    */
-  function startAiReplyFeedback(textarea, streamingStarted) {
+  function startAiReplyFeedback(textarea, streamingStarted, feedbackOpts) {
+    var fo = feedbackOpts || {};
+    var kind = fo.kind != null && String(fo.kind).trim() !== "" ? String(fo.kind).trim() : "AI";
     var gen = ++_chatFeedbackGen;
     clearChatStatusTick();
     _chatStatusStart = Date.now();
@@ -1853,8 +1895,11 @@
 
     function tickText() {
       var sec = formatElapsedSec(_chatStatusStart);
-      if (_chatStatusStream) return "正在接收 AI 回复… 已 " + sec + " 秒";
-      return "等待 AI 回复中… 已等待 " + sec + " 秒";
+      if (_chatStatusStream) return "正在接收「" + kind + "」回复… 已 " + sec + " 秒";
+      if (fo.wholeResponseWait) {
+        return "非流式：等待「" + kind + "」整段生成… 已 " + sec + " 秒（长上下文可能需数分钟）";
+      }
+      return "等待「" + kind + "」回复中… 已等待 " + sec + " 秒";
     }
 
     setChatStatusUi("waiting", tickText());
@@ -1879,14 +1924,17 @@
    * @param {HTMLTextAreaElement|null} textarea
    * @param {"done"|"error"} outcome
    * @param {string} [errDetail]
+   * @param {{ kind?: string }} [feedbackOpts]
    */
-  function finishAiReplyFeedback(gen, textarea, outcome, errDetail) {
+  function finishAiReplyFeedback(gen, textarea, outcome, errDetail, feedbackOpts) {
     if (gen !== _chatFeedbackGen) return;
     clearChatStatusTick();
     var total = formatElapsedSec(_chatStatusStart);
+    var fo = feedbackOpts || {};
+    var kind = fo.kind != null && String(fo.kind).trim() !== "" ? String(fo.kind).trim() : "AI";
 
     if (outcome === "done") {
-      setChatStatusUi("done", "回复完成，总用时 " + total + " 秒。");
+      setChatStatusUi("done", "「" + kind + "」回复完成，总用时 " + total + " 秒。");
       window.setTimeout(function () {
         if (gen !== _chatFeedbackGen) return;
         setChatStatusUi("idle", "");
@@ -1898,7 +1946,7 @@
       errDetail && String(errDetail).trim()
         ? String(errDetail).trim().slice(0, 160)
         : "未知错误";
-    setChatStatusUi("error", "回复失败（约 " + total + " 秒）：" + errShort);
+    setChatStatusUi("error", "「" + kind + "」回复失败（约 " + total + " 秒）：" + errShort);
     window.setTimeout(function () {
       if (gen !== _chatFeedbackGen) return;
       setChatStatusUi("idle", "");
@@ -1940,6 +1988,85 @@
     return { root: wrap, body: body };
   }
 
+  /**
+   * 剧情 AI 成功后：请求状态 AI（储物袋等），状态栏计时与剧情一致。
+   * @returns {Promise<void>}
+   */
+  function runStateInventoryAiTurn(G, textarea, storyReply) {
+    var ST = global.MortalJourneyStateGenerate;
+    if (!ST || typeof ST.sendTurn !== "function" || typeof ST.buildMessages !== "function") {
+      if (global.GameLog && typeof global.GameLog.warn === "function") {
+        global.GameLog.warn("[主界面] MortalJourneyStateGenerate 未加载，跳过储物袋状态同步。");
+      }
+      return Promise.resolve();
+    }
+    var reply = storyReply != null ? String(storyReply) : "";
+    var useStreamState = getBridgeUseStreamingChat();
+    var feedbackGenState = startAiReplyFeedback(textarea, false, {
+      kind: "状态",
+      wholeResponseWait: !useStreamState,
+    });
+    var streamStateNotified = false;
+    var stateMsgs = ST.buildMessages({
+      storyText: reply,
+      extraUserHint:
+        "以上正文为刚生成的剧情段落。请根据剧情同步储物袋：新增用 op:add，支付或消耗堆叠物（含下品灵石等）用 op:remove；若袋内数量无变化请输出空数组标签。",
+      game: G,
+    });
+    if (stateMsgs && global.GameLog && typeof global.GameLog.info === "function") {
+      try {
+        global.GameLog.info(
+          "[状态→AI] 本次请求\n\n—— 原始 JSON ——\n" + JSON.stringify(stateMsgs, null, 2),
+        );
+      } catch (logSt0) {
+        global.GameLog.info("[状态→AI] 请求已发起（messages 无法序列化）");
+      }
+    }
+    return ST.sendTurn({
+      messages: stateMsgs,
+      shouldStream: useStreamState,
+      onDelta: useStreamState
+        ? function () {
+            if (!streamStateNotified) {
+              streamStateNotified = true;
+              markAiStreamStarted();
+            }
+          }
+        : undefined,
+    })
+      .then(function (stateFull) {
+        var raw = stateFull != null ? String(stateFull) : "";
+        var app = ST.applyInventoryOpsFromAssistantText(G, raw);
+        ensureGameRuntimeDefaults(G);
+        persistBootstrapSnapshot();
+        renderLeftPanel(G.fateChoice, G);
+        finishAiReplyFeedback(feedbackGenState, textarea, "done", undefined, { kind: "状态" });
+        if (global.GameLog && typeof global.GameLog.info === "function") {
+          var parts = ["[状态←AI] 完成"];
+          if (app.parseError) parts.push("解析：" + app.parseError);
+          else {
+            if (app.parseVia) parts.push("途径：" + app.parseVia);
+            var pn = (app.placed && app.placed.length) || 0;
+            var rn = (app.removed && app.removed.length) || 0;
+            parts.push("已应用 放入 " + pn + " 条、扣除 " + rn + " 条");
+            if (app.failed && app.failed.length) parts.push("失败 " + app.failed.length + " 条");
+          }
+          global.GameLog.info(parts.join("；") + "\n" + raw.slice(0, 2000));
+        }
+      })
+      .catch(function (err) {
+        var msg =
+          err && err.message
+            ? String(err.message)
+            : "状态请求失败。若未配置 API，请检查 silly_tarven/bridge-config.js。";
+        finishAiReplyFeedback(feedbackGenState, textarea, "error", msg, { kind: "状态" });
+        appendChatBubble("error", "状态 AI：" + msg);
+        if (global.GameLog && typeof global.GameLog.info === "function") {
+          global.GameLog.info("[状态←AI] 失败：" + msg.slice(0, 300));
+        }
+      });
+  }
+
   function handleChatSend(textarea, sendBtn) {
     var text = String(textarea.value || "").trim();
     if (!text) return;
@@ -1961,7 +2088,11 @@
     textarea.value = "";
     appendChatBubble("user", text);
 
-    var feedbackGen = startAiReplyFeedback(textarea, false);
+    var useStreamChat = getBridgeUseStreamingChat();
+    var feedbackGenStory = startAiReplyFeedback(textarea, false, {
+      kind: "剧情",
+      wholeResponseWait: !useStreamChat,
+    });
     var streamNotified = false;
 
     var messages =
@@ -1995,22 +2126,70 @@
       messages: messages,
       userText: text,
       priorHistory: prior,
-      shouldStream: true,
-      onDelta: function (_delta, full) {
-        if (!streamNotified) {
-          streamNotified = true;
-          markAiStreamStarted();
-        }
-        if (assistantBody) assistantBody.textContent = full || "";
-        scrollChatLog();
-      },
+      shouldStream: useStreamChat,
+      onDelta: useStreamChat
+        ? function (_delta, full) {
+            if (!streamNotified) {
+              streamNotified = true;
+              markAiStreamStarted();
+            }
+            if (assistantBody) assistantBody.textContent = full || "";
+            scrollChatLog();
+          }
+        : undefined,
     })
       .then(function (full) {
         var reply = full != null ? String(full) : "";
+        var trimmed = reply.replace(/^\uFEFF/, "").trim();
+        if (trimmed === "") {
+          var hadStream = streamNotified;
+          var emptyMsg =
+            "【剧情 AI 回复为空】\n\n" +
+            (!useStreamChat
+              ? "当前为「非流式」整段请求，但解析后正文仍为空。可能原因：\n" +
+                "· 上游 JSON 里 choices[0].message 无 content / reasoning_content\n" +
+                "· 网关返回体被截断或非正常 JSON\n\n"
+              : hadStream
+                ? "流式连接已结束，但拼接后的正文长度为 0。可能原因：\n" +
+                  "· 上游把可见文本写在非标准字段（桥接已尝试多种 delta 字段）\n" +
+                  "· 内容被服务商安全策略拦截或未下发\n" +
+                  "· 模型异常结束、仅返回空白 token\n\n"
+                : "未收到任何文本块（可能未进入流式输出或首包即结束）。可能原因：\n" +
+                  "· 代理/网关截断或返回体异常\n" +
+                  "· 流式包里没有可用正文字段\n\n") +
+            "建议：展开左下角日志查看「剧情→AI」请求；检查 silly_tarven/bridge-config.js 的 API、模型；可将 useStreamingChat 设为 false 使用整段模式；在浏览器控制台查看 [ST Bridge] 提示。";
+          G.chatHistory.push({ role: "assistant", content: emptyMsg });
+          if (assistantBody) assistantBody.textContent = emptyMsg;
+          if (assistantRoot) {
+            assistantRoot.classList.add("mj-chat-msg--assistant-empty");
+            var rlab = assistantRoot.querySelector(".mj-chat-role-label");
+            if (rlab) rlab.textContent = "剧情（无内容）";
+          }
+          scrollChatLog();
+          finishAiReplyFeedback(
+            feedbackGenStory,
+            textarea,
+            "error",
+            "剧情 AI 返回空正文",
+            { kind: "剧情" },
+          );
+          if (global.GameLog && typeof global.GameLog.info === "function") {
+            global.GameLog.info(
+              "[剧情←AI] 空回复：hadStream=" +
+                String(hadStream) +
+                "，raw 字符串长度=" +
+                String(reply.length) +
+                "。",
+            );
+          }
+          return Promise.resolve();
+        }
+        if (assistantRoot) assistantRoot.classList.remove("mj-chat-msg--assistant-empty");
         G.chatHistory.push({ role: "assistant", content: reply });
         if (assistantBody) assistantBody.textContent = reply;
         scrollChatLog();
-        finishAiReplyFeedback(feedbackGen, textarea, "done");
+        finishAiReplyFeedback(feedbackGenStory, textarea, "done", undefined, { kind: "剧情" });
+        return runStateInventoryAiTurn(G, textarea, reply);
       })
       .catch(function (err) {
         if (
@@ -2025,7 +2204,7 @@
           err && err.message
             ? String(err.message)
             : "请求失败。若未配置 API，请检查 silly_tarven/bridge-config.js 中的 fixedPreset。";
-        finishAiReplyFeedback(feedbackGen, textarea, "error", msg);
+        finishAiReplyFeedback(feedbackGenStory, textarea, "error", msg, { kind: "剧情" });
         appendChatBubble("error", msg);
         console.warn("[主界面] 剧情请求失败", err);
         if (global.GameLog && typeof global.GameLog.info === "function") {
@@ -2545,6 +2724,10 @@
       desc: desc || undefined,
       equipType: payload.equipType,
       grade: payload.grade,
+      value: payload.value,
+      type: payload.type,
+      bonus: payload.bonus,
+      effects: payload.effects,
     });
     return true;
   }
@@ -2565,6 +2748,95 @@
     else window.alert(msg);
   }
 
+  /** 功法栏格子 → 入袋 payload（保留品级、类型、修炼加成、价值） */
+  function gongfaSlotItemToBagPayload(item) {
+    if (!item) return null;
+    var nm =
+      item.name != null
+        ? String(item.name).trim()
+        : item.label != null
+          ? String(item.label).trim()
+          : "";
+    if (!nm) return null;
+    var cfgGf = lookupGongfaConfigDef(nm);
+    var descStr =
+      item.desc != null && String(item.desc).trim() !== ""
+        ? String(item.desc).trim()
+        : cfgGf && cfgGf.desc != null
+          ? String(cfgGf.desc).trim()
+          : "";
+    var o = { name: nm, count: 1, desc: descStr };
+    var gr =
+      item.grade != null && String(item.grade).trim() !== ""
+        ? String(item.grade).trim()
+        : cfgGf && cfgGf.grade != null
+          ? String(cfgGf.grade).trim()
+          : "";
+    if (gr) o.grade = gr;
+    var ty =
+      item.type != null && String(item.type).trim() !== ""
+        ? String(item.type).trim()
+        : cfgGf && cfgGf.type != null
+          ? String(cfgGf.type).trim()
+          : "";
+    if (ty) o.type = ty;
+    if (item.bonus && typeof item.bonus === "object" && Object.keys(item.bonus).length > 0) {
+      o.bonus = Object.assign({}, item.bonus);
+    } else if (
+      cfgGf &&
+      cfgGf.bonus &&
+      typeof cfgGf.bonus === "object" &&
+      Object.keys(cfgGf.bonus).length > 0
+    ) {
+      o.bonus = Object.assign({}, cfgGf.bonus);
+    }
+    if (typeof item.value === "number" && isFinite(item.value)) {
+      o.value = Math.max(0, Math.floor(item.value));
+    } else if (cfgGf && typeof cfgGf.value === "number" && isFinite(cfgGf.value)) {
+      o.value = Math.floor(cfgGf.value);
+    }
+    return o;
+  }
+
+  /** 储物袋功法书 → 功法栏对象（合并格子与功法表） */
+  function bagItemToGongfaBarObject(it, cfgGf) {
+    var nm = String(it.name).trim();
+    var ty =
+      it.type != null && String(it.type).trim() !== ""
+        ? String(it.type).trim()
+        : cfgGf && cfgGf.type != null
+          ? String(cfgGf.type).trim()
+          : "";
+    var descStr = "";
+    if (it.desc != null && String(it.desc).trim() !== "") descStr = String(it.desc).trim();
+    else if (cfgGf && cfgGf.desc != null) descStr = String(cfgGf.desc).trim();
+    var gfObj = { name: nm, desc: descStr };
+    if (ty) gfObj.type = ty;
+    var gGr =
+      it.grade != null && String(it.grade).trim() !== ""
+        ? String(it.grade).trim()
+        : cfgGf && cfgGf.grade != null
+          ? String(cfgGf.grade).trim()
+          : "";
+    if (gGr) gfObj.grade = gGr;
+    if (it.bonus && typeof it.bonus === "object" && Object.keys(it.bonus).length > 0) {
+      gfObj.bonus = Object.assign({}, it.bonus);
+    } else if (
+      cfgGf &&
+      cfgGf.bonus &&
+      typeof cfgGf.bonus === "object" &&
+      Object.keys(cfgGf.bonus).length > 0
+    ) {
+      gfObj.bonus = Object.assign({}, cfgGf.bonus);
+    }
+    if (typeof it.value === "number" && isFinite(it.value)) {
+      gfObj.value = Math.max(0, Math.floor(it.value));
+    } else if (cfgGf && typeof cfgGf.value === "number" && isFinite(cfgGf.value)) {
+      gfObj.value = Math.floor(cfgGf.value);
+    }
+    return gfObj;
+  }
+
   /**
    * 从功法栏卸下放入储物袋。
    * @param {number} gfIdx 0～11
@@ -2577,29 +2849,8 @@
     var gi = Number(gfIdx);
     if (!isFinite(gi) || gi < 0 || gi >= GONGFA_SLOT_COUNT) return false;
     var item = G.gongfaSlots[gi];
-    var nm =
-      item && item.name != null
-        ? String(item.name).trim()
-        : item && item.label != null
-          ? String(item.label).trim()
-          : "";
-    if (!nm) return false;
-    var cfgGf = lookupGongfaConfigDef(nm);
-    var descStr =
-      item.desc != null && String(item.desc).trim() !== ""
-        ? String(item.desc).trim()
-        : cfgGf && cfgGf.desc != null
-          ? String(cfgGf.desc).trim()
-          : "";
-    var payload = { name: nm, count: 1, desc: descStr };
-    var gr =
-      item && item.grade != null && String(item.grade).trim() !== ""
-        ? String(item.grade).trim()
-        : cfgGf && cfgGf.grade != null
-          ? String(cfgGf.grade).trim()
-          : "";
-    if (gr) payload.grade = gr;
-    if (!tryPlaceItemInBag(G, payload)) {
+    var payload = gongfaSlotItemToBagPayload(item);
+    if (!payload || !tryPlaceItemInBag(G, payload)) {
       notifyBagFull();
       return false;
     }
@@ -2635,34 +2886,12 @@
     var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(0, Math.floor(it.count)) : 1;
     if (cnt < 1) return false;
 
-    var ty =
-      it.type != null && String(it.type).trim() !== ""
-        ? String(it.type).trim()
-        : cfgGf.type != null
-          ? String(cfgGf.type).trim()
-          : "";
-    var descStr = "";
-    if (it.desc != null && String(it.desc).trim() !== "") descStr = String(it.desc).trim();
-    else if (cfgGf.desc != null) descStr = String(cfgGf.desc).trim();
-
-    var gfObj = { name: nm, desc: descStr };
-    if (ty) gfObj.type = ty;
-    var gGr =
-      it.grade != null && String(it.grade).trim() !== ""
-        ? String(it.grade).trim()
-        : cfgGf.grade != null
-          ? String(cfgGf.grade).trim()
-          : "";
-    if (gGr) gfObj.grade = gGr;
+    var gfObj = bagItemToGongfaBarObject(it, cfgGf);
 
     if (cnt > 1) {
-      G.inventorySlots[bi] = normalizeBagItem({
-        name: it.name,
-        count: cnt - 1,
-        desc: it.desc,
-        equipType: it.equipType,
-        grade: it.grade,
-      });
+      G.inventorySlots[bi] = normalizeBagItem(
+        Object.assign({ name: it.name, count: cnt - 1 }, continuityFieldsFromBagItem(it)),
+      );
     } else {
       G.inventorySlots[bi] = null;
     }
@@ -2694,6 +2923,67 @@
     else window.alert(msg);
   }
 
+  /** 佩戴栏对象 → 入袋 payload（保留 AI/表外 grade、bonus、value） */
+  function equippedItemToBagPayload(item) {
+    if (!item) return null;
+    var nm = item.name != null ? String(item.name).trim() : "";
+    if (!nm) return null;
+    var o = {
+      name: nm,
+      count: 1,
+      desc: item.desc != null ? String(item.desc) : "",
+      equipType: item.equipType,
+    };
+    if (item.grade != null && String(item.grade).trim() !== "") o.grade = String(item.grade).trim();
+    if (item.bonus && typeof item.bonus === "object" && Object.keys(item.bonus).length > 0) {
+      o.bonus = Object.assign({}, item.bonus);
+    }
+    if (typeof item.value === "number" && isFinite(item.value)) {
+      o.value = Math.max(0, Math.floor(item.value));
+    }
+    return o;
+  }
+
+  /** 背包格装备 → 佩戴栏对象（合并格子与装备表元数据） */
+  function bagItemToEquippedObject(it, eqMeta) {
+    var ty =
+      it.equipType != null && String(it.equipType).trim() !== ""
+        ? String(it.equipType).trim()
+        : eqMeta && eqMeta.type != null
+          ? String(eqMeta.type).trim()
+          : "";
+    var descStr = "";
+    if (it.desc != null && String(it.desc).trim() !== "") descStr = String(it.desc).trim();
+    else if (eqMeta && eqMeta.desc != null) descStr = String(eqMeta.desc).trim();
+
+    var equipObj = {
+      name: String(it.name).trim(),
+      desc: descStr,
+      equipType: ty,
+    };
+    if (it.grade != null && String(it.grade).trim() !== "") {
+      equipObj.grade = String(it.grade).trim();
+    } else if (eqMeta && eqMeta.grade != null && String(eqMeta.grade).trim() !== "") {
+      equipObj.grade = String(eqMeta.grade).trim();
+    }
+    if (it.bonus && typeof it.bonus === "object" && Object.keys(it.bonus).length > 0) {
+      equipObj.bonus = Object.assign({}, it.bonus);
+    } else if (
+      eqMeta &&
+      eqMeta.bonus &&
+      typeof eqMeta.bonus === "object" &&
+      Object.keys(eqMeta.bonus).length > 0
+    ) {
+      equipObj.bonus = Object.assign({}, eqMeta.bonus);
+    }
+    if (typeof it.value === "number" && isFinite(it.value)) {
+      equipObj.value = Math.max(0, Math.floor(it.value));
+    } else if (eqMeta && typeof eqMeta.value === "number" && isFinite(eqMeta.value)) {
+      equipObj.value = Math.floor(eqMeta.value);
+    }
+    return equipObj;
+  }
+
   /**
    * 从佩戴栏卸下放入储物袋。
    * @param {number} equipIdx 0～2
@@ -2707,14 +2997,8 @@
     if (!isFinite(ei) || ei < 0 || ei >= EQUIP_SLOT_COUNT) return false;
     var item = G.equippedSlots[ei];
     if (!item) return false;
-    var nm = item.name != null ? String(item.name).trim() : "";
-    if (!nm) return false;
-    var payload = {
-      name: nm,
-      count: 1,
-      desc: item.desc != null ? String(item.desc) : "",
-      equipType: item.equipType,
-    };
+    var payload = equippedItemToBagPayload(item);
+    if (!payload) return false;
     if (!tryPlaceItemInBag(G, payload)) {
       notifyBagFull();
       return false;
@@ -2743,14 +3027,8 @@
 
     var prev = G.equippedSlots[slotIdx];
     if (prev && prev.name) {
-      if (
-        !tryPlaceItemInBag(G, {
-          name: String(prev.name).trim(),
-          count: 1,
-          desc: prev.desc != null ? String(prev.desc) : "",
-          equipType: prev.equipType,
-        })
-      ) {
+      var prevPayload = equippedItemToBagPayload(prev);
+      if (!prevPayload || !tryPlaceItemInBag(G, prevPayload)) {
         notifyBagFull();
         return false;
       }
@@ -2760,29 +3038,12 @@
     if (cnt < 1) return false;
 
     var eqMeta = lookupEquipmentMetaByItemName(String(it.name).trim());
-    var ty =
-      it.equipType != null && String(it.equipType).trim() !== ""
-        ? String(it.equipType).trim()
-        : eqMeta && eqMeta.type != null
-          ? String(eqMeta.type).trim()
-          : "";
-    var descStr = "";
-    if (it.desc != null && String(it.desc).trim() !== "") descStr = String(it.desc).trim();
-    else if (eqMeta && eqMeta.desc != null) descStr = String(eqMeta.desc).trim();
-
-    var equipObj = {
-      name: String(it.name).trim(),
-      desc: descStr,
-      equipType: ty,
-    };
+    var equipObj = bagItemToEquippedObject(it, eqMeta);
 
     if (cnt > 1) {
-      G.inventorySlots[bi] = normalizeBagItem({
-        name: it.name,
-        count: cnt - 1,
-        desc: it.desc,
-        equipType: it.equipType,
-      });
+      G.inventorySlots[bi] = normalizeBagItem(
+        Object.assign({ name: it.name, count: cnt - 1 }, continuityFieldsFromBagItem(it)),
+      );
     } else {
       G.inventorySlots[bi] = null;
     }
@@ -2929,11 +3190,23 @@
     var sections = [];
     if (tyShow) sections.push({ label: "类型", text: tyShow });
     if (desc) sections.push({ label: "简介", text: desc });
+    else sections.push({ label: "简介", text: "暂无详细描述。" });
+    if (item.grade != null && String(item.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(item.grade).trim() });
+    } else if (cfgDef && cfgDef.grade != null && String(cfgDef.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(cfgDef.grade).trim() });
+    }
     var bonusLine = cfgDef && cfgDef.bonus ? formatZhBonusObject(cfgDef.bonus) : "";
+    if (!bonusLine && item.bonus && typeof item.bonus === "object") {
+      bonusLine = formatZhBonusObject(item.bonus);
+    }
     if (bonusLine) sections.push({ label: "修炼加成", text: bonusLine });
-    var refGf = formatReferenceValueLine(cfgDef);
+    var refNumGf =
+      typeof item.value === "number" && isFinite(item.value)
+        ? item.value
+        : pickDescribeValueFromMetas(cfgDef);
+    var refGf = formatReferenceValueFromNumber(refNumGf);
     if (refGf) sections.push({ label: "价值", text: refGf });
-    if (!sections.length) sections.push({ label: "说明", text: "暂无详细描述。" });
     openItemDetailModal(
       name,
       "功法",
@@ -2975,6 +3248,8 @@
     else sections.push({ label: "简介", text: "暂无详细描述。" });
     if (stuffMeta && stuffMeta.grade != null && String(stuffMeta.grade).trim() !== "") {
       sections.push({ label: "品级", text: String(stuffMeta.grade).trim() });
+    } else if (it.grade != null && String(it.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(it.grade).trim() });
     } else if (gfMeta && gfMeta.grade != null && String(gfMeta.grade).trim() !== "") {
       sections.push({ label: "品级", text: String(gfMeta.grade).trim() });
     }
@@ -2985,6 +3260,8 @@
       !eqMeta
     ) {
       sections.push({ label: "类型", text: String(stuffMeta.type).trim() });
+    } else if (!eqMeta && it.type != null && String(it.type).trim() !== "") {
+      sections.push({ label: "类型", text: String(it.type).trim() });
     }
     var wearSlot = resolveWearableSlotIndexForBagItem(it);
     if (wearSlot != null) {
@@ -2996,10 +3273,19 @@
       sections.push({ label: "佩戴部位", text: tyShow });
     }
     var bonusStuff = stuffMeta && stuffMeta.bonus ? formatStuffBonusForDisplay(stuffMeta.bonus) : "";
+    if (!bonusStuff && wearSlot == null && !eqMeta && it.bonus && typeof it.bonus === "object") {
+      bonusStuff = formatStuffBonusForDisplay(it.bonus);
+    }
     var bonusEq = eqMeta && eqMeta.bonus ? formatZhBonusObject(eqMeta.bonus) : "";
+    if (!bonusEq && wearSlot != null && it.bonus && typeof it.bonus === "object") {
+      bonusEq = formatZhBonusObject(it.bonus);
+    }
     if (bonusStuff) sections.push({ label: "效果", text: bonusStuff });
     var pillFx =
       stuffMeta && stuffMeta.effects ? formatPillEffectsForUi(stuffMeta.effects) : "";
+    if (!pillFx && it.effects && typeof it.effects === "object") {
+      pillFx = formatPillEffectsForUi(it.effects);
+    }
     if (pillFx) sections.push({ label: "药效", text: pillFx });
     if (bonusEq) sections.push({ label: "属性加成", text: bonusEq });
     if (gfMeta) {
@@ -3009,7 +3295,10 @@
       var gfBonusLine = gfMeta.bonus ? formatZhBonusObject(gfMeta.bonus) : "";
       if (gfBonusLine) sections.push({ label: "修炼加成", text: gfBonusLine });
     }
-    var refNum = pickDescribeValueFromMetas(stuffMeta, eqMeta, gfMeta);
+    var refNum =
+      typeof it.value === "number" && isFinite(it.value)
+        ? it.value
+        : pickDescribeValueFromMetas(stuffMeta, eqMeta, gfMeta);
     var refBag = formatReferenceValueFromNumber(refNum);
     if (refBag) sections.push({ label: "价值", text: refBag });
     sections.push({ label: "持有数量", text: String(cnt) });
@@ -3094,9 +3383,21 @@
     sections.push({ label: "佩戴部位", text: tyLabel });
     if (desc) sections.push({ label: "简介", text: desc });
     else sections.push({ label: "简介", text: "暂无详细描述。" });
+    if (item.grade != null && String(item.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(item.grade).trim() });
+    } else if (meta && meta.grade != null && String(meta.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(meta.grade).trim() });
+    }
     var bonusLine = meta && meta.bonus ? formatZhBonusObject(meta.bonus) : "";
+    if (!bonusLine && item.bonus && typeof item.bonus === "object") {
+      bonusLine = formatZhBonusObject(item.bonus);
+    }
     if (bonusLine) sections.push({ label: "属性加成", text: bonusLine });
-    var refEq = formatReferenceValueLine(meta);
+    var refNum =
+      typeof item.value === "number" && isFinite(item.value)
+        ? item.value
+        : pickDescribeValueFromMetas(meta);
+    var refEq = formatReferenceValueFromNumber(refNum);
     if (refEq) sections.push({ label: "价值", text: refEq });
     openItemDetailModal(name, "装备", sections, [
       {
@@ -3126,11 +3427,23 @@
     var sections = [];
     if (tyShow) sections.push({ label: "类型", text: tyShow });
     if (desc) sections.push({ label: "简介", text: desc });
-    var bonusLine = cfgDef && cfgDef.bonus ? formatZhBonusObject(cfgDef.bonus) : "";
-    if (bonusLine) sections.push({ label: "修炼加成", text: bonusLine });
-    var refGf = formatReferenceValueLine(cfgDef);
-    if (refGf) sections.push({ label: "价值", text: refGf });
-    if (!sections.length) sections.push({ label: "说明", text: "暂无详细描述。" });
+    else sections.push({ label: "简介", text: "暂无详细描述。" });
+    if (item.grade != null && String(item.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(item.grade).trim() });
+    } else if (cfgDef && cfgDef.grade != null && String(cfgDef.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(cfgDef.grade).trim() });
+    }
+    var bonusLineRoGf = cfgDef && cfgDef.bonus ? formatZhBonusObject(cfgDef.bonus) : "";
+    if (!bonusLineRoGf && item.bonus && typeof item.bonus === "object") {
+      bonusLineRoGf = formatZhBonusObject(item.bonus);
+    }
+    if (bonusLineRoGf) sections.push({ label: "修炼加成", text: bonusLineRoGf });
+    var refNumRoGf =
+      typeof item.value === "number" && isFinite(item.value)
+        ? item.value
+        : pickDescribeValueFromMetas(cfgDef);
+    var refGfRo = formatReferenceValueFromNumber(refNumRoGf);
+    if (refGfRo) sections.push({ label: "价值", text: refGfRo });
     openItemDetailModal(name, "功法", sections, [], resolveGongfaTraitRarity(name, item, cfgDef));
   }
 
@@ -3149,10 +3462,22 @@
     sections.push({ label: "佩戴部位", text: tyLabel });
     if (desc) sections.push({ label: "简介", text: desc });
     else sections.push({ label: "简介", text: "暂无详细描述。" });
-    var bonusLine = meta && meta.bonus ? formatZhBonusObject(meta.bonus) : "";
-    if (bonusLine) sections.push({ label: "属性加成", text: bonusLine });
-    var refEq = formatReferenceValueLine(meta);
-    if (refEq) sections.push({ label: "价值", text: refEq });
+    if (item.grade != null && String(item.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(item.grade).trim() });
+    } else if (meta && meta.grade != null && String(meta.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(meta.grade).trim() });
+    }
+    var bonusLineRo = meta && meta.bonus ? formatZhBonusObject(meta.bonus) : "";
+    if (!bonusLineRo && item.bonus && typeof item.bonus === "object") {
+      bonusLineRo = formatZhBonusObject(item.bonus);
+    }
+    if (bonusLineRo) sections.push({ label: "属性加成", text: bonusLineRo });
+    var refNumRo =
+      typeof item.value === "number" && isFinite(item.value)
+        ? item.value
+        : pickDescribeValueFromMetas(meta);
+    var refEqRo = formatReferenceValueFromNumber(refNumRo);
+    if (refEqRo) sections.push({ label: "价值", text: refEqRo });
     openItemDetailModal(name, "装备", sections, [], resolveEquipTraitRarity(name, item));
   }
 
@@ -3175,6 +3500,8 @@
     else sections.push({ label: "简介", text: "暂无详细描述。" });
     if (stuffMeta && stuffMeta.grade != null && String(stuffMeta.grade).trim() !== "") {
       sections.push({ label: "品级", text: String(stuffMeta.grade).trim() });
+    } else if (it.grade != null && String(it.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(it.grade).trim() });
     } else if (gfMeta && gfMeta.grade != null && String(gfMeta.grade).trim() !== "") {
       sections.push({ label: "品级", text: String(gfMeta.grade).trim() });
     }
@@ -3185,6 +3512,8 @@
       !eqMeta
     ) {
       sections.push({ label: "类型", text: String(stuffMeta.type).trim() });
+    } else if (!eqMeta && it.type != null && String(it.type).trim() !== "") {
+      sections.push({ label: "类型", text: String(it.type).trim() });
     }
     var wearSlot = resolveWearableSlotIndexForBagItem(it);
     if (wearSlot != null) {
@@ -3196,10 +3525,19 @@
       sections.push({ label: "佩戴部位", text: tyShow });
     }
     var bonusStuff = stuffMeta && stuffMeta.bonus ? formatStuffBonusForDisplay(stuffMeta.bonus) : "";
+    if (!bonusStuff && wearSlot == null && !eqMeta && it.bonus && typeof it.bonus === "object") {
+      bonusStuff = formatStuffBonusForDisplay(it.bonus);
+    }
     var bonusEq = eqMeta && eqMeta.bonus ? formatZhBonusObject(eqMeta.bonus) : "";
+    if (!bonusEq && wearSlot != null && it.bonus && typeof it.bonus === "object") {
+      bonusEq = formatZhBonusObject(it.bonus);
+    }
     if (bonusStuff) sections.push({ label: "效果", text: bonusStuff });
     var pillFx =
       stuffMeta && stuffMeta.effects ? formatPillEffectsForUi(stuffMeta.effects) : "";
+    if (!pillFx && it.effects && typeof it.effects === "object") {
+      pillFx = formatPillEffectsForUi(it.effects);
+    }
     if (pillFx) sections.push({ label: "药效", text: pillFx });
     if (bonusEq) sections.push({ label: "属性加成", text: bonusEq });
     if (gfMeta) {
@@ -3209,7 +3547,10 @@
       var gfBonusLine = gfMeta.bonus ? formatZhBonusObject(gfMeta.bonus) : "";
       if (gfBonusLine) sections.push({ label: "修炼加成", text: gfBonusLine });
     }
-    var refNum = pickDescribeValueFromMetas(stuffMeta, eqMeta, gfMeta);
+    var refNum =
+      typeof it.value === "number" && isFinite(it.value)
+        ? it.value
+        : pickDescribeValueFromMetas(stuffMeta, eqMeta, gfMeta);
     var refBag = formatReferenceValueFromNumber(refNum);
     if (refBag) sections.push({ label: "价值", text: refBag });
     sections.push({ label: "持有数量", text: String(cnt) });
@@ -4043,6 +4384,9 @@
         var o = { name: x.name, count: x.count, desc: x.desc };
         if (x.equipType) o.equipType = x.equipType;
         if (x.grade) o.grade = x.grade;
+        if (typeof x.value === "number" && isFinite(x.value)) o.value = x.value;
+        if (x.type) o.type = x.type;
+        if (x.bonus && typeof x.bonus === "object") o.bonus = Object.assign({}, x.bonus);
         return o;
       });
     },

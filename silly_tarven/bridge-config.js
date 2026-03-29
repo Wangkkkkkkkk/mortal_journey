@@ -18,7 +18,11 @@
      * 全局默认超时（可被单个 preset 上的 requestTimeoutMs / streamIdleTimeoutMs / streamMaxTotalMs 覆盖）
      */
     timeouts: {
-      /** 非流式：从发起到收齐整段回复的上限（毫秒） */
+      /**
+       * 非流式：从发起到读完整段 JSON 正文的总上限（毫秒）。
+       * 界面在收到完整 body 前不会显示一个字，大 prompt + 慢模型等几分钟属正常；超时才会报错。
+       * 也可在 fixedPreset 上单独设 requestTimeoutMs 覆盖本值。
+       */
       nonStreamMs: 900000,
       /** 流式：两次收到数据之间的最大间隔（毫秒） */
       streamChunkIdleMs: 900000,
@@ -32,6 +36,13 @@
      */
     useFixedPreset: true,
 
+    /**
+     * 主界面「剧情 / 状态」对话是否走 SSE 流式。
+     * false：整段生成完成后一次性显示（部分中转/模型更稳定，推荐）。
+     * true：逐字流式输出。
+     */
+    useStreamingChat: false,
+
     /** useFixedPreset 为 true 时使用的唯一预设 */
     fixedPreset: {
       id: "default",
@@ -39,6 +50,8 @@
       apiUrl: "https://api.gemai.cc/v1",
       apiKey: "sk-dGgtjVkFkojAGTh1G7lIgtOU94AlmWUDwvvJbWZqMJqd6VXD",
       model: "[CodeA]gemini-3.1-pro-preview",
+      /** 可选：非流式总超时（毫秒），不设则用 timeouts.nonStreamMs */
+      // requestTimeoutMs: 480000,
       systemPrompt: "",
       temperature: 0.7,
     },

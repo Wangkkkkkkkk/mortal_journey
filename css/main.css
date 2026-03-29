@@ -1429,6 +1429,17 @@ body.mj-main-body {
   border: 1px solid var(--mj-border);
 }
 
+/** 剧情 AI 成功返回但正文为空时的提示气泡 */
+.mj-chat-msg--assistant.mj-chat-msg--assistant-empty {
+  background: rgba(90, 55, 35, 0.42);
+  border: 1px solid rgba(200, 120, 70, 0.45);
+  color: #e8c4a0;
+}
+
+.mj-chat-msg--assistant.mj-chat-msg--assistant-empty .mj-chat-role-label {
+  color: rgba(220, 160, 120, 0.88);
+}
+
 .mj-chat-msg--error {
   margin-right: 8%;
   background: rgba(120, 40, 40, 0.35);
