@@ -43,8 +43,8 @@
         },
         equipment: ["木剑", "七玄戒", "布衣"],
         stuff: {
-          七玄门令牌: {},
-          下品灵石: { bonus: { 下品灵石: 1 } },
+          七玄门令牌: 1,
+          下品灵石: 100,
         },
         gongfa: ["长春功", "眨眼剑法"],
         desc: "你是凡人武林门派中的一名弟子，跟随一位医术高明但性情古怪的师父学习。",
@@ -58,8 +58,9 @@
         },
         equipment: ["铁剑", "青叶", "布衣"],
         stuff: {
-          黄枫谷令牌: {},
-          下品灵石: { bonus: { 下品灵石: 2 } },
+          黄枫谷令牌: 1,
+          下品灵石: 200,
+          筑基丹: 2,
         },
         gongfa: ["凝元功", "青元剑诀"],
         desc: "你通过了升仙大会，侥幸成为越国七派之一的黄枫谷入门弟子，一切都从头开始。",
@@ -153,6 +154,37 @@
     防具: 2,
   };
 
+  function cloneDescribeEffects(eff) {
+    if (!eff || typeof eff !== "object") return null;
+    var out = {};
+    if (eff.recover && typeof eff.recover === "object") {
+      var rc = {};
+      if (typeof eff.recover.hp === "number" && isFinite(eff.recover.hp) && eff.recover.hp > 0) {
+        rc.hp = Math.floor(eff.recover.hp);
+      }
+      if (typeof eff.recover.mp === "number" && isFinite(eff.recover.mp) && eff.recover.mp > 0) {
+        rc.mp = Math.floor(eff.recover.mp);
+      }
+      if (rc.hp != null || rc.mp != null) out.recover = rc;
+    }
+    if (Array.isArray(eff.breakthrough)) {
+      var arr = [];
+      for (var i = 0; i < eff.breakthrough.length; i++) {
+        var b = eff.breakthrough[i];
+        if (!b || typeof b !== "object") continue;
+        var cb = b.chanceBonus;
+        if (typeof cb !== "number" || !isFinite(cb) || cb <= 0) continue;
+        arr.push({
+          from: b.from != null ? String(b.from).trim() : "",
+          to: b.to != null ? String(b.to).trim() : "",
+          chanceBonus: cb,
+        });
+      }
+      if (arr.length) out.breakthrough = arr;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
   function shallowDescribeClone(src) {
     if (!src || typeof src !== "object") return null;
     var out = {
@@ -162,6 +194,11 @@
     if (src.type != null && String(src.type).trim() !== "") out.type = String(src.type).trim();
     if (typeof src.value === "number" && isFinite(src.value)) out.value = src.value;
     if (src.grade != null && String(src.grade).trim() !== "") out.grade = String(src.grade).trim();
+    var eff = cloneDescribeEffects(src.effects);
+    if (eff) out.effects = eff;
+    if (src.property && typeof src.property === "object") {
+      out.property = Object.assign({}, src.property);
+    }
     return out;
   }
 
@@ -215,8 +252,13 @@
    */
   cfg.resolveStuffEntry = function resolveStuffEntry(keyStr, meta) {
     var bonus = meta && meta.bonus && typeof meta.bonus === "object" ? meta.bonus : {};
-    var lingFromBonus =
-      typeof bonus.灵石 === "number" && isFinite(bonus.灵石) ? Math.max(0, Math.floor(bonus.灵石)) : 0;
+    /** 出身 stuff 可写 bonus: { 灵石: n }（旧）或 bonus: { 下品灵石: n }（与 LINGSHI_STACK_ITEM_NAME 同名） */
+    var lingFromBonus = 0;
+    if (typeof bonus.灵石 === "number" && isFinite(bonus.灵石)) {
+      lingFromBonus = Math.max(0, Math.floor(bonus.灵石));
+    } else if (typeof bonus[LINGSHI_ITEM_NAME] === "number" && isFinite(bonus[LINGSHI_ITEM_NAME])) {
+      lingFromBonus = Math.max(0, Math.floor(bonus[LINGSHI_ITEM_NAME]));
+    }
     var parsed = cfg.parseStuffLine(keyStr);
     var lingFromKey =
       parsed && parsed.kind === "lingshi" ? Math.max(0, parsed.amount || 0) : 0;
@@ -255,6 +297,10 @@
     var desc = meta && meta.desc != null ? String(meta.desc).trim() : "";
     var gItem =
       meta && meta.grade != null && String(meta.grade).trim() !== "" ? String(meta.grade).trim() : "";
+    if (meta && typeof meta.count === "number" && isFinite(meta.count)) {
+      var oc = Math.max(0, Math.floor(meta.count));
+      if (oc > 0) count = oc;
+    }
     return {
       type: "item",
       name: name,
@@ -290,7 +336,35 @@
       base && base.grade != null && String(base.grade).trim() !== "" ? String(base.grade).trim() : "";
     if (gPatch) out.grade = gPatch;
     else if (gBase) out.grade = gBase;
+    if (patch.count != null && typeof patch.count === "number" && isFinite(patch.count)) {
+      out.count = Math.max(0, Math.floor(patch.count));
+    }
     return out;
+  }
+
+  /**
+   * 出身 BIRTHS.stuff 对象：键为物品名，值可为
+   * - 数字：该物品数量（「下品灵石」/ LINGSHI_STACK_ITEM_NAME /「灵石」→ 灵石堆叠数；其余 → 普通物品堆叠）；
+   * - true / null：等价 {}；
+   * - 对象：{ desc, bonus, grade, count } 等与 mergeStuffEntryMeta 兼容的覆盖。
+   */
+  function normalizeBirthStuffPatch(key, raw) {
+    if (typeof raw === "number" && isFinite(raw)) {
+      var n = Math.max(0, Math.floor(raw));
+      var kt = String(key == null ? "" : key).trim();
+      if (kt === LINGSHI_ITEM_NAME) {
+        var oStone = { bonus: {} };
+        oStone.bonus[LINGSHI_ITEM_NAME] = n;
+        return oStone;
+      }
+      if (kt === "灵石") {
+        return { bonus: { 灵石: n } };
+      }
+      return { count: n };
+    }
+    if (raw == null || raw === true) return {};
+    if (typeof raw !== "object") return {};
+    return raw;
   }
 
   function mergeGongfaMeta(title, birthGi) {
@@ -314,7 +388,7 @@
     return { desc: desc, bonus: bonus, type: ty };
   }
 
-  /** 按出身生成储物袋 12 格（均为物品格，灵石类为「下品灵石」堆叠）；stuff 为 { 键: 覆盖? } 或字符串数组 */
+  /** 按出身生成储物袋 12 格；stuff 为字符串数组，或对象 { 物品名: 数量 | 覆盖对象 } */
   cfg.buildStartingInventorySlots = function buildStartingInventorySlots(birthKey) {
     var slots = [];
     for (var s = 0; s < START_BAG_SLOTS; s++) slots.push(null);
@@ -326,29 +400,35 @@
       for (var j = 0; j < birth.stuff.length; j++) {
         var mergedA = mergeStuffEntryMeta(birth.stuff[j], {});
         var resolvedA = cfg.resolveStuffEntry(birth.stuff[j], mergedA);
-        if (resolvedA.type === "item" && resolvedA.name)
+        if (resolvedA.type === "item" && resolvedA.name) {
+          var ca =
+            typeof resolvedA.count === "number" && isFinite(resolvedA.count) ? resolvedA.count : 1;
+          if (ca < 1) continue;
           items.push({
             name: resolvedA.name,
-            count: resolvedA.count,
+            count: ca,
             desc: resolvedA.desc,
             grade: resolvedA.grade,
           });
+        }
       }
     } else if (typeof birth.stuff === "object") {
       for (var key in birth.stuff) {
         if (!Object.prototype.hasOwnProperty.call(birth.stuff, key)) continue;
         var rawMeta = birth.stuff[key];
-        var patch = rawMeta == null || rawMeta === true ? {} : rawMeta;
-        if (typeof patch !== "object") patch = {};
+        var patch = normalizeBirthStuffPatch(key, rawMeta);
         var merged = mergeStuffEntryMeta(key, patch);
         var resolved = cfg.resolveStuffEntry(key, merged);
-        if (resolved.type === "item" && resolved.name)
+        if (resolved.type === "item" && resolved.name) {
+          var c0 = typeof resolved.count === "number" && isFinite(resolved.count) ? resolved.count : 1;
+          if (c0 < 1) continue;
           items.push({
             name: resolved.name,
-            count: resolved.count,
+            count: c0,
             desc: resolved.desc,
             grade: resolved.grade,
           });
+        }
       }
     }
 
@@ -385,6 +465,7 @@
     function pushMergedBonus(merged) {
       var b = Object.assign({}, merged.bonus && typeof merged.bonus === "object" ? merged.bonus : {});
       delete b.灵石;
+      delete b[LINGSHI_ITEM_NAME];
       if (Object.keys(b).length) list.push(b);
     }
     if (Array.isArray(birth.stuff)) {
@@ -397,8 +478,7 @@
     for (var key in birth.stuff) {
       if (!Object.prototype.hasOwnProperty.call(birth.stuff, key)) continue;
       var raw = birth.stuff[key];
-      var patch = raw == null || raw === true ? {} : raw;
-      if (typeof patch !== "object") patch = {};
+      var patch = normalizeBirthStuffPatch(key, raw);
       pushMergedBonus(mergeStuffEntryMeta(key, patch));
     }
     return list;

@@ -8,7 +8,8 @@
  *   RealmState.getCultivationRequired("练气", "初期"); // → 100
  *   RealmState.getCultivationRequired("化神"); // → 1000000
  *   RealmState.getMajorBreakthroughChance("练气", "筑基"); // → 0.3
- *   RealmState.rollMajorBreakthrough("元婴", "化神"); // 按 1% 随机 boolean
+ *   RealmState.rollMajorBreakthrough("元婴", "化神"); // 按表概率随机 boolean
+ *   RealmState.rollBreakthroughWithProbability(0.65); // 自定义总成功率（弹窗内丹药加成后）
  */
 (function (global) {
   "use strict";
@@ -277,6 +278,21 @@
     return rnd < p;
   }
 
+  /**
+   * 按给定成功概率 p∈[0,1] 掷一次（与 rollMajorBreakthrough 判定规则一致：rnd < p）
+   * @param {number} p
+   * @param {function(): number} [randomFn]
+   * @returns {boolean}
+   */
+  function rollBreakthroughWithProbability(p, randomFn) {
+    if (p == null || typeof p !== "number" || !isFinite(p)) return false;
+    var cap = Math.min(1, Math.max(0, p));
+    if (cap <= 0) return false;
+    var rnd = typeof randomFn === "function" ? randomFn() : Math.random();
+    if (typeof rnd !== "number" || !isFinite(rnd)) rnd = Math.random();
+    return rnd < cap;
+  }
+
   /** @returns {readonly MajorBreakthroughRow[]} */
   function getMajorBreakthroughTable() {
     return MAJOR_BREAKTHROUGH_TABLE;
@@ -299,6 +315,7 @@
     getCultivationTable: getCultivationTable,
     getMajorBreakthroughChance: getMajorBreakthroughChance,
     rollMajorBreakthrough: rollMajorBreakthrough,
+    rollBreakthroughWithProbability: rollBreakthroughWithProbability,
     getMajorBreakthroughTable: getMajorBreakthroughTable,
   };
 })(typeof window !== "undefined" ? window : globalThis);

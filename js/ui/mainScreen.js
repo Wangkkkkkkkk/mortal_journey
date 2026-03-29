@@ -24,6 +24,19 @@
     return Math.max(0, Math.min(100, n));
   }
 
+  function mjClearBodyOverflowIfNoModal() {
+    var traitRoot = document.getElementById("mj-trait-detail-root");
+    var itemRoot = document.getElementById("mj-item-detail-root");
+    var majorRoot = document.getElementById("mj-major-breakthrough-root");
+    if (
+      (!traitRoot || traitRoot.classList.contains("hidden")) &&
+      (!itemRoot || itemRoot.classList.contains("hidden")) &&
+      (!majorRoot || majorRoot.classList.contains("hidden"))
+    ) {
+      document.body.style.overflow = "";
+    }
+  }
+
   /** getStuffDescribe 中带 value 的条目（灵石、丹药等）→ 每件炼化获得的修为 */
   function getSpiritStoneCultivationValue(itemName) {
     var nm = String(itemName || "").trim();
@@ -75,6 +88,221 @@
     return null;
   }
 
+  /**
+   * 大境界前「后期」修为不得超过本阶段需求（否则会出现 1100/1000）；突破成功前不能靠灵石继续堆。
+   * @returns {number|null} 上限修为，非此情形返回 null
+   */
+  function getLateStageMajorBottleneckXiuweiCap(G, fc) {
+    if (!G) return null;
+    var RS = global.RealmState;
+    if (!RS || typeof RS.getCultivationRequired !== "function") return null;
+    var r = (G && G.realm) || (fc && fc.realm) || {};
+    var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+    var minor = r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
+    if (major === "化神") return null;
+    if (minor !== "后期") return null;
+    var req = RS.getCultivationRequired(major, minor);
+    if (req == null || req <= 0) return null;
+    return req;
+  }
+
+  function clampXiuweiToLateStageCapIfNeeded(G, fc) {
+    var cap = getLateStageMajorBottleneckXiuweiCap(G, fc != null ? fc : G && G.fateChoice);
+    if (cap == null) return;
+    var X = typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? Math.floor(G.xiuwei) : 0;
+    if (X > cap) G.xiuwei = cap;
+  }
+
+  /**
+   * 模拟修为经小境界连环突破后的结果（不写回 G；遇大境界卡点同 applyRealmBreakthroughs）。
+   * @returns {{ xiuwei: number, major: string, minor: string }}
+   */
+  function simulateSmallBreakthroughsFromState(fc, xiuwei, major, minor) {
+    var RS = global.RealmState;
+    var maj =
+      major != null && String(major).trim() !== "" ? String(major).trim() : "练气";
+    var min =
+      minor != null && String(minor).trim() !== "" ? String(minor).trim() : "初期";
+    var X = typeof xiuwei === "number" && isFinite(xiuwei) ? Math.floor(xiuwei) : 0;
+    if (!RS || typeof RS.getCultivationRequired !== "function") {
+      return { xiuwei: Math.max(0, X), major: maj, minor: min };
+    }
+    var guard = 0;
+    while (guard++ < 48) {
+      if (maj === "化神") break;
+      var req = RS.getCultivationRequired(maj, min);
+      if (req == null || req <= 0) break;
+      if (X < req) break;
+      var nextMinor = getNextMinorStage(min);
+      if (nextMinor != null) {
+        X = X - req;
+        min = nextMinor;
+        continue;
+      }
+      if (min !== "后期") break;
+      if (getNextMajorRealm(maj) == null) break;
+      break;
+    }
+    return { xiuwei: Math.max(0, Math.floor(X)), major: maj, minor: min };
+  }
+
+  /** 灵石炼化后、经小境界突破并卡在后期时，修为是否未超过本阶段上限 */
+  function spiritStoneGainWithinLateStageCap(fc, curXiuwei, major, minor, valPerPiece, stoneCount) {
+    if (stoneCount <= 0) return true;
+    if (valPerPiece <= 0) return false;
+    var sim = simulateSmallBreakthroughsFromState(
+      fc,
+      curXiuwei + stoneCount * valPerPiece,
+      major,
+      minor,
+    );
+    if (sim.major === "化神") return true;
+    if (sim.minor !== "后期") return true;
+    var RS = global.RealmState;
+    if (!RS || typeof RS.getCultivationRequired !== "function") return true;
+    var req = RS.getCultivationRequired(sim.major, sim.minor);
+    if (req == null || req <= 0) return true;
+    return sim.xiuwei <= req;
+  }
+
+  /**
+   * 尽数修炼等：先按小境界连环突破模拟终点，再限制「后期」不得超过本阶段 req（含从中期一吸顶满的情况）。
+   * @returns {number} 实际可消耗件数
+   */
+  function clampSpiritStoneUseNForLateStageCap(G, fc, valPerPiece, useN) {
+    if (!G || valPerPiece <= 0 || useN <= 0) return 0;
+    var r = (G && G.realm) || (fc && fc.realm) || {};
+    var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+    var minor = r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
+    var cur = typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? Math.floor(G.xiuwei) : 0;
+    if (!spiritStoneGainWithinLateStageCap(fc, cur, major, minor, valPerPiece, useN)) {
+      var lo = 0;
+      var hi = useN;
+      var best = 0;
+      while (lo <= hi) {
+        var mid = (lo + hi) >> 1;
+        if (spiritStoneGainWithinLateStageCap(fc, cur, major, minor, valPerPiece, mid)) {
+          best = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      return best;
+    }
+    return useN;
+  }
+
+  /** 大境界失败时剩余修为 = 当前 × 该系数（即损失 30%） */
+  var MAJOR_BREAK_FAIL_XIUWEI_FACTOR = 0.7;
+  var majorBreakModalSlots = [null, null, null];
+
+  function majorBreakPropertyKey(fromRealm, toRealm) {
+    return String(fromRealm || "").trim() + "-" + String(toRealm || "").trim() + "概率";
+  }
+
+  function getPillBreakthroughBonusDelta(itemName, fromRealm, toRealm) {
+    var nm = String(itemName || "").trim();
+    if (!nm) return 0;
+    var C = global.MjCreationConfig;
+    if (!C || typeof C.getStuffDescribe !== "function") return 0;
+    var d = C.getStuffDescribe(nm);
+    if (!d) return 0;
+    var fromS = String(fromRealm || "").trim();
+    var toS = String(toRealm || "").trim();
+    if (d.effects && Array.isArray(d.effects.breakthrough)) {
+      for (var i = 0; i < d.effects.breakthrough.length; i++) {
+        var b = d.effects.breakthrough[i];
+        if (!b) continue;
+        if (String(b.from || "").trim() === fromS && String(b.to || "").trim() === toS) {
+          var c = b.chanceBonus;
+          return typeof c === "number" && isFinite(c) ? Math.max(0, c) : 0;
+        }
+      }
+      return 0;
+    }
+    if (d.property && typeof d.property === "object") {
+      var k = majorBreakPropertyKey(fromRealm, toRealm);
+      var v = d.property[k];
+      return typeof v === "number" && isFinite(v) ? Math.max(0, v) : 0;
+    }
+    return 0;
+  }
+
+  /** 背包详情：丹药 effects → 可读文本 */
+  function formatPillEffectsForUi(eff) {
+    if (!eff || typeof eff !== "object") return "";
+    var lines = [];
+    if (eff.recover && typeof eff.recover === "object") {
+      var parts = [];
+      if (typeof eff.recover.hp === "number" && eff.recover.hp > 0) {
+        parts.push("生命 +" + Math.floor(eff.recover.hp));
+      }
+      if (typeof eff.recover.mp === "number" && eff.recover.mp > 0) {
+        parts.push("法力 +" + Math.floor(eff.recover.mp));
+      }
+      if (parts.length) lines.push("服用回复：" + parts.join("，"));
+    }
+    if (Array.isArray(eff.breakthrough)) {
+      for (var j = 0; j < eff.breakthrough.length; j++) {
+        var br = eff.breakthrough[j];
+        if (!br) continue;
+        var add = typeof br.chanceBonus === "number" && isFinite(br.chanceBonus) ? br.chanceBonus : 0;
+        if (add <= 0) continue;
+        var pct = (Math.round(add * 10000) / 100).toString();
+        lines.push(
+          "大境界「" + String(br.from || "") + "→" + String(br.to || "") + "」突破成功率 +" + pct + "%",
+        );
+      }
+    }
+    return lines.join("\n");
+  }
+
+  /**
+   * 当前是否处于「后期修为已满、可尝试下一跳大境界」
+   * @returns {{ major: string, minor: string, nextMaj: string, req: number, baseP: number } | null}
+   */
+  function getMajorBreakthroughReadyContext(G, fc) {
+    if (!G) return null;
+    var RS = global.RealmState;
+    if (!RS || typeof RS.getCultivationRequired !== "function") return null;
+    var r = (G && G.realm) || (fc && fc.realm) || {};
+    var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+    var minor = r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
+    if (major === "化神") return null;
+    if (minor !== "后期") return null;
+    var req = RS.getCultivationRequired(major, minor);
+    if (req == null || req <= 0) return null;
+    var X = typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? Math.floor(G.xiuwei) : 0;
+    if (X < req) return null;
+    var nextMaj = getNextMajorRealm(major);
+    if (nextMaj == null) return null;
+    var baseP =
+      typeof RS.getMajorBreakthroughChance === "function" ? RS.getMajorBreakthroughChance(major, nextMaj) : null;
+    if (baseP == null || baseP <= 0) return null;
+    return { major: major, minor: minor, nextMaj: nextMaj, req: req, baseP: baseP };
+  }
+
+  function consumeOneFromInventorySlot(G, bagIdx) {
+    if (!G || !G.inventorySlots) return false;
+    var bi = Number(bagIdx);
+    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    var it = G.inventorySlots[bi];
+    if (!it || !it.name) return false;
+    var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
+    if (cnt <= 1) G.inventorySlots[bi] = null;
+    else {
+      G.inventorySlots[bi] = normalizeBagItem({
+        name: it.name,
+        count: cnt - 1,
+        desc: it.desc,
+        equipType: it.equipType,
+        grade: it.grade,
+      });
+    }
+    return true;
+  }
+
   function writeRealmToGameAndFate(G, fc, major, minor) {
     if (!G) return;
     if (!G.realm || typeof G.realm !== "object") G.realm = {};
@@ -88,8 +316,9 @@
   }
 
   /**
-   * 小境界：修为 ≥ 本阶段需求则直接进阶并扣除需求；大境界：仅在「后期」满足需求时掷概率，失败不扣修为。
-   * 应在修为变化后或读档后调用；勿在每次 renderLeftPanel 调用（避免大境界失败时反复掷骰）。
+   * 小境界：修为 ≥ 本阶段需求则直接进阶并扣除需求。
+   * 大境界：须在左栏「突破」弹窗内手动掷骰；此处遇「后期」且修为已满则不再自动处理（避免偷跑）。
+   * 应在修为变化后或读档后调用；勿在每次 renderLeftPanel 调用。
    * @returns {{ changed: boolean, messages: string[] }}
    */
   function applyRealmBreakthroughs(G) {
@@ -129,21 +358,7 @@
       var nextMaj = getNextMajorRealm(major);
       if (nextMaj == null) break;
 
-      if (typeof RS.rollMajorBreakthrough !== "function") break;
-      var p = typeof RS.getMajorBreakthroughChance === "function" ? RS.getMajorBreakthroughChance(major, nextMaj) : null;
-      if (p == null || p <= 0) break;
-
-      var ok = RS.rollMajorBreakthrough(major, nextMaj);
-      if (!ok) {
-        var pctStr = (Math.round(p * 10000) / 100).toString();
-        msgs.push("大境界突破失败：「" + major + "」→「" + nextMaj + "」（成功率 " + pctStr + "%）");
-        break;
-      }
-      G.xiuwei = X - req;
-      writeRealmToGameAndFate(G, fc, nextMaj, "初期");
-      changed = true;
-      msgs.push("大境界突破成功：已进入「" + nextMaj + "初期」");
-      continue;
+      break;
     }
 
     G.xiuwei = Math.max(0, Math.floor(G.xiuwei));
@@ -160,11 +375,301 @@
     }
   }
 
+  function computeMajorBreakModalTotalP(ctx) {
+    if (!ctx) return 0;
+    var add = 0;
+    for (var i = 0; i < majorBreakModalSlots.length; i++) {
+      var s = majorBreakModalSlots[i];
+      if (!s || s.name == null) continue;
+      add += getPillBreakthroughBonusDelta(s.name, ctx.major, ctx.nextMaj);
+    }
+    return Math.min(1, ctx.baseP + add);
+  }
+
+  function syncMajorBreakthroughModalUI(ctx) {
+    var G = global.MortalJourneyGame;
+    var fc = G && G.fateChoice;
+    var c = ctx || getMajorBreakthroughReadyContext(G, fc);
+    var chanceEl = document.getElementById("mj-major-break-chance");
+    if (chanceEl && c) {
+      var p = computeMajorBreakModalTotalP(c);
+      chanceEl.textContent = "突破概率：" + (Math.round(p * 10000) / 100).toString() + "%";
+    }
+    for (var si = 0; si < 3; si++) {
+      var el = document.getElementById("mj-major-break-slot-" + si);
+      if (!el) continue;
+      var s = majorBreakModalSlots[si];
+      var nameEl = el.querySelector(".mj-major-break-slot-name");
+      if (nameEl) nameEl.textContent = s && s.name ? String(s.name) : "空";
+      el.classList.toggle("mj-major-break-slot--filled", !!(s && s.name));
+    }
+  }
+
+  function closeMajorBreakthroughModal() {
+    var root = document.getElementById("mj-major-breakthrough-root");
+    if (!root) return;
+    root.classList.add("hidden");
+    root.setAttribute("aria-hidden", "true");
+    var pick = document.getElementById("mj-major-break-pick");
+    if (pick) {
+      pick.classList.add("hidden");
+      pick.innerHTML = "";
+    }
+    mjClearBodyOverflowIfNoModal();
+  }
+
+  function openMajorBreakthroughModal() {
+    var G = global.MortalJourneyGame;
+    var fc = G && G.fateChoice;
+    var ctx = getMajorBreakthroughReadyContext(G, fc);
+    if (!ctx) return;
+    majorBreakModalSlots = [null, null, null];
+    var root = document.getElementById("mj-major-breakthrough-root");
+    var subEl = document.getElementById("mj-major-break-subtitle");
+    var pick = document.getElementById("mj-major-break-pick");
+    if (!root) return;
+    if (subEl) subEl.textContent = "「" + ctx.major + "」→「" + ctx.nextMaj + "」";
+    if (pick) {
+      pick.classList.add("hidden");
+      pick.innerHTML = "";
+    }
+    syncMajorBreakthroughModalUI(ctx);
+    root.classList.remove("hidden");
+    root.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+  }
+
+  /** 突破弹窗里，除 excludeSlotIndex 外已占用同一背包格的次数（防止 2 颗却占 3 格） */
+  function countMajorBreakModalUsesOfBagIdx(excludeSlotIndex, bagIdx) {
+    var bi = Number(bagIdx);
+    if (!isFinite(bi)) return 0;
+    var n = 0;
+    for (var j = 0; j < majorBreakModalSlots.length; j++) {
+      if (j === excludeSlotIndex) continue;
+      var s = majorBreakModalSlots[j];
+      if (s && Number(s.bagIdx) === bi) n++;
+    }
+    return n;
+  }
+
+  function showMajorBreakPillPickList(slotIndex) {
+    var G = global.MortalJourneyGame;
+    var fc = G && G.fateChoice;
+    var ctx = getMajorBreakthroughReadyContext(G, fc);
+    var pick = document.getElementById("mj-major-break-pick");
+    if (!pick || !ctx) return;
+    pick.innerHTML = "";
+    pick.classList.remove("hidden");
+    var hint = document.createElement("div");
+    hint.className = "mj-major-break-pick-hint";
+    hint.textContent = "选择放入本格的丹药（须对「" + ctx.major + "→" + ctx.nextMaj + "」有效）：";
+    pick.appendChild(hint);
+    var found = 0;
+    for (var b = 0; b < INVENTORY_SLOT_COUNT; b++) {
+      var it = G.inventorySlots[b];
+      if (!it || !it.name) continue;
+      var bonus = getPillBreakthroughBonusDelta(it.name, ctx.major, ctx.nextMaj);
+      if (bonus <= 0) continue;
+      var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
+      var reserved = countMajorBreakModalUsesOfBagIdx(slotIndex, b);
+      var avail = cnt - reserved;
+      if (avail <= 0) continue;
+      found++;
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "mj-major-break-pick-btn";
+      var pctAdd = (Math.round(bonus * 10000) / 100).toString();
+      btn.textContent =
+        it.name +
+        " 可用 ×" +
+        avail +
+        (reserved > 0 ? "（本窗已占 " + reserved + "，格 " + (b + 1) + "）" : "（格 " + (b + 1) + "）") +
+        "，+" +
+        pctAdd +
+        "%";
+      (function (bagIdx, pillName, si) {
+        btn.addEventListener("click", function () {
+          var itClick = G.inventorySlots[bagIdx];
+          var cap =
+            itClick && typeof itClick.count === "number" && isFinite(itClick.count)
+              ? Math.max(1, Math.floor(itClick.count))
+              : 1;
+          if (countMajorBreakModalUsesOfBagIdx(si, bagIdx) >= cap) return;
+          majorBreakModalSlots[si] = { bagIdx: bagIdx, name: pillName };
+          pick.classList.add("hidden");
+          pick.innerHTML = "";
+          syncMajorBreakthroughModalUI(null);
+        });
+      })(b, String(it.name).trim(), slotIndex);
+      pick.appendChild(btn);
+    }
+    if (!found) {
+      var empty = document.createElement("div");
+      empty.className = "mj-major-break-pick-empty";
+      empty.textContent =
+        "没有可放入本格的丹药（储物袋无对应丹药，或其余两格已占满该格堆叠）。";
+      pick.appendChild(empty);
+    }
+  }
+
+  function performMajorBreakthroughRollFromModal() {
+    var G = global.MortalJourneyGame;
+    var fc = G && G.fateChoice;
+    if (!G || !fc) return;
+    var ctx = getMajorBreakthroughReadyContext(G, fc);
+    if (!ctx) {
+      closeMajorBreakthroughModal();
+      return;
+    }
+    ensureGameRuntimeDefaults(G);
+    var needByBag = {};
+    for (var i = 0; i < majorBreakModalSlots.length; i++) {
+      var s = majorBreakModalSlots[i];
+      if (!s) continue;
+      var bi = Number(s.bagIdx);
+      if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) {
+        logBreakthroughMessages(["大境界突破取消：丹药格配置无效。"]);
+        return;
+      }
+      var it = G.inventorySlots[bi];
+      if (!it || String(it.name).trim() !== String(s.name).trim()) {
+        logBreakthroughMessages(["大境界突破取消：储物袋与所选丹药不一致。"]);
+        return;
+      }
+      var bonus = getPillBreakthroughBonusDelta(it.name, ctx.major, ctx.nextMaj);
+      if (bonus <= 0) {
+        logBreakthroughMessages(["大境界突破取消：「" + it.name + "」对当前进阶无效。"]);
+        return;
+      }
+      needByBag[bi] = (needByBag[bi] || 0) + 1;
+    }
+    for (var k in needByBag) {
+      var idx = Number(k);
+      var it2 = G.inventorySlots[idx];
+      var c2 = it2 && typeof it2.count === "number" && isFinite(it2.count) ? Math.max(1, Math.floor(it2.count)) : 1;
+      if (!it2 || c2 < needByBag[k]) {
+        logBreakthroughMessages(["大境界突破取消：丹药数量不足。"]);
+        return;
+      }
+    }
+    var pRoll = computeMajorBreakModalTotalP(ctx);
+    var RS = global.RealmState;
+    if (!RS || typeof RS.rollBreakthroughWithProbability !== "function") {
+      closeMajorBreakthroughModal();
+      return;
+    }
+
+    var pillPlaced = false;
+    for (var pi = 0; pi < majorBreakModalSlots.length; pi++) {
+      if (majorBreakModalSlots[pi]) {
+        pillPlaced = true;
+        break;
+      }
+    }
+    if (pillPlaced) {
+      var invBeforeRoll = JSON.parse(JSON.stringify(G.inventorySlots));
+      var consumePillsOk = true;
+      for (var j = 0; j < majorBreakModalSlots.length; j++) {
+        var sj = majorBreakModalSlots[j];
+        if (!sj) continue;
+        if (!consumeOneFromInventorySlot(G, sj.bagIdx)) {
+          consumePillsOk = false;
+          break;
+        }
+      }
+      if (!consumePillsOk) {
+        G.inventorySlots = invBeforeRoll;
+        logBreakthroughMessages(["大境界突破异常：扣除丹药失败，已回滚背包。"]);
+        closeMajorBreakthroughModal();
+        persistBootstrapSnapshot();
+        renderLeftPanel(fc, G);
+        renderBagSlots(G);
+        return;
+      }
+    }
+
+    var ok = RS.rollBreakthroughWithProbability(pRoll);
+    var X2 = typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? Math.floor(G.xiuwei) : 0;
+    if (ok) {
+      G.xiuwei = Math.max(0, X2 - ctx.req);
+      writeRealmToGameAndFate(G, fc, ctx.nextMaj, "初期");
+      var br = applyRealmBreakthroughs(G);
+      var msgOk = ["大境界突破成功：已进入「" + ctx.nextMaj + "初期」"];
+      if (br.messages && br.messages.length) msgOk = msgOk.concat(br.messages);
+      logBreakthroughMessages(msgOk);
+    } else {
+      G.xiuwei = Math.max(0, Math.floor(X2 * MAJOR_BREAK_FAIL_XIUWEI_FACTOR));
+      var pctStr = (Math.round(pRoll * 10000) / 100).toString();
+      var failParts = [
+        "大境界突破失败：「" + ctx.major + "」→「" + ctx.nextMaj + "」（成功率 " + pctStr + "%）",
+        "修为受挫，修炼进度损失约三成",
+      ];
+      if (pillPlaced) failParts.push("所选丹药已在突破中消耗");
+      logBreakthroughMessages([failParts.join("；") + "。"]);
+      bumpLateStageBreakFailCount(G, fc);
+    }
+    closeMajorBreakthroughModal();
+    var ui = computeCultivationUi(G, fc);
+    G.cultivationProgress = ui.pct;
+    persistBootstrapSnapshot();
+    renderLeftPanel(fc, G);
+    renderBagSlots(G);
+  }
+
+  var majorBreakUiBound = false;
+  function bindMajorBreakthroughUi() {
+    if (majorBreakUiBound) return;
+    majorBreakUiBound = true;
+    var brBtn = document.getElementById("mj-major-breakthrough-btn");
+    if (brBtn) {
+      brBtn.addEventListener("click", function () {
+        openMajorBreakthroughModal();
+      });
+    }
+    var root = document.getElementById("mj-major-breakthrough-root");
+    if (root) {
+      root.querySelectorAll("[data-mj-major-break-close]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          closeMajorBreakthroughModal();
+        });
+      });
+    }
+    var confirmBtn = document.getElementById("mj-major-break-confirm");
+    if (confirmBtn) {
+      confirmBtn.addEventListener("click", function () {
+        performMajorBreakthroughRollFromModal();
+      });
+    }
+    for (var s = 0; s < 3; s++) {
+      var slot = document.getElementById("mj-major-break-slot-" + s);
+      if (!slot) continue;
+      (function (idx) {
+        slot.addEventListener("click", function () {
+          var GG = global.MortalJourneyGame;
+          if (!getMajorBreakthroughReadyContext(GG, GG && GG.fateChoice)) return;
+          var cur = majorBreakModalSlots[idx];
+          if (cur && cur.name) {
+            majorBreakModalSlots[idx] = null;
+            var pick = document.getElementById("mj-major-break-pick");
+            if (pick) {
+              pick.classList.add("hidden");
+              pick.innerHTML = "";
+            }
+            syncMajorBreakthroughModalUI(null);
+            return;
+          }
+          showMajorBreakPillPickList(idx);
+        });
+      })(s);
+    }
+  }
+
   function persistBootstrapSnapshot() {
     try {
       var G = global.MortalJourneyGame;
       if (!G || !G.fateChoice) return;
       ensureGameRuntimeDefaults(G);
+      var ls = G.lateStageBreakSuffix;
       var data = {
         fateChoice: G.fateChoice,
         startedAt: G.startedAt || 0,
@@ -172,6 +677,13 @@
         inventorySlots: JSON.parse(JSON.stringify(G.inventorySlots)),
         gongfaSlots: JSON.parse(JSON.stringify(G.gongfaSlots || [])),
         equippedSlots: JSON.parse(JSON.stringify(G.equippedSlots || [])),
+        lateStageBreakSuffix:
+          ls && typeof ls === "object"
+            ? {
+                realmKey: String(ls.realmKey != null ? ls.realmKey : ""),
+                failCount: Math.max(0, Math.floor(Number(ls.failCount) || 0)),
+              }
+            : { realmKey: "", failCount: 0 },
       };
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch (e) {
@@ -181,10 +693,11 @@
 
   /**
    * 消耗背包格中的灵石类物品增加修为（每件增加额 = describe.value）。
-   * @param {boolean} consumeAll 是否消耗该格全部堆叠
+   * @param {boolean} consumeAll 是否消耗该格全部堆叠（与 customCount 二选一）
+   * @param {number} [customCount] 指定件数：四舍五入，与当前堆叠取较小值；≤0 不执行
    * @returns {boolean}
    */
-  function performAbsorbSpiritStonesFromBag(G, bagIdx, consumeAll) {
+  function performAbsorbSpiritStonesFromBag(G, bagIdx, consumeAll, customCount) {
     if (!G || !G.inventorySlots) return false;
     ensureGameRuntimeDefaults(G);
     var bi = Number(bagIdx);
@@ -194,7 +707,16 @@
     var val = getSpiritStoneCultivationValue(it.name);
     if (val <= 0) return false;
     var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
-    var useN = consumeAll ? cnt : 1;
+    var useN;
+    if (typeof customCount === "number" && isFinite(customCount)) {
+      useN = Math.round(customCount);
+      if (useN <= 0) return false;
+      useN = Math.min(cnt, useN);
+    } else {
+      useN = consumeAll ? cnt : 1;
+    }
+    useN = clampSpiritStoneUseNForLateStageCap(G, G.fateChoice, val, useN);
+    if (useN <= 0) return false;
     var gain = val * useN;
     G.xiuwei = (typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? G.xiuwei : 0) + gain;
     var left = cnt - useN;
@@ -209,6 +731,7 @@
       });
     }
     var br = applyRealmBreakthroughs(G);
+    clampXiuweiToLateStageCapIfNeeded(G, G.fateChoice);
     logBreakthroughMessages(br.messages);
     var ui = computeCultivationUi(G, G.fateChoice);
     G.cultivationProgress = ui.pct;
@@ -270,6 +793,13 @@
         global.MortalJourneyGame.xiuwei = Math.max(0, Math.floor(data.xiuwei));
       }
 
+      if (data.lateStageBreakSuffix && typeof data.lateStageBreakSuffix === "object") {
+        global.MortalJourneyGame.lateStageBreakSuffix = {
+          realmKey: String(data.lateStageBreakSuffix.realmKey != null ? data.lateStageBreakSuffix.realmKey : ""),
+          failCount: Math.max(0, Math.floor(Number(data.lateStageBreakSuffix.failCount) || 0)),
+        };
+      }
+
       return fc;
     } catch (e) {
       console.warn("[主界面] 无法读取开局存档", e);
@@ -289,6 +819,7 @@
       G.xiuwei = 0;
     }
     G.xiuwei = Math.max(0, Math.floor(G.xiuwei));
+    clampXiuweiToLateStageCapIfNeeded(G, G.fateChoice);
     if (G.cultivationProgress == null || typeof G.cultivationProgress !== "number") {
       G.cultivationProgress = 0;
     }
@@ -314,6 +845,7 @@
     ensureEquippedSlots(G);
     ensureGongfaSlots(G);
     ensureInventorySlots(G);
+    syncLateStageBreakSuffixState(G, G.fateChoice);
   }
 
   function ensureEquippedSlots(G) {
@@ -645,11 +1177,57 @@
       });
   }
 
+  /**
+   * 大境界前「后期」：切换境界段时重置；同一段内记录突破失败次数（影响圆满/巅峰显示）。
+   */
+  function syncLateStageBreakSuffixState(G, fc) {
+    if (!G) return;
+    if (!G.lateStageBreakSuffix || typeof G.lateStageBreakSuffix !== "object") {
+      G.lateStageBreakSuffix = { realmKey: "", failCount: 0 };
+    }
+    var r = (G && G.realm) || (fc && fc.realm) || {};
+    var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+    var minor = r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
+    var currentKey = "";
+    if (major !== "化神" && minor === "后期") {
+      currentKey = major + "|" + minor;
+    }
+    if (G.lateStageBreakSuffix.realmKey !== currentKey) {
+      G.lateStageBreakSuffix.realmKey = currentKey;
+      G.lateStageBreakSuffix.failCount = 0;
+    }
+  }
+
+  function bumpLateStageBreakFailCount(G, fc) {
+    if (!G) return;
+    syncLateStageBreakSuffixState(G, fc);
+    if (!G.lateStageBreakSuffix || !G.lateStageBreakSuffix.realmKey) return;
+    var n = G.lateStageBreakSuffix.failCount;
+    G.lateStageBreakSuffix.failCount =
+      (typeof n === "number" && isFinite(n) ? Math.max(0, Math.floor(n)) : 0) + 1;
+  }
+
   function formatRealmLine(fc, G) {
     var r = (fc && fc.realm) || (G && G.realm) || {};
     var major = r.major || "练气";
     var minor = r.minor || "初期";
-    return "境界：" + major + minor;
+    var line = "境界：" + major + minor;
+    if (G && fc) {
+      syncLateStageBreakSuffixState(G, fc);
+      var cult = computeCultivationUi(G, fc);
+      var atLateFull =
+        minor === "后期" &&
+        major !== "化神" &&
+        cult.req != null &&
+        cult.req > 0 &&
+        cult.cur >= cult.req;
+      if (atLateFull && G.lateStageBreakSuffix) {
+        var fails = G.lateStageBreakSuffix.failCount;
+        var fcNum = typeof fails === "number" && isFinite(fails) ? Math.max(0, Math.floor(fails)) : 0;
+        line += fcNum <= 0 ? "*圆满" : "*巅峰";
+      }
+    }
+    return line;
   }
 
   function numOrDash(v) {
@@ -1377,12 +1955,52 @@
     if (wrap.childNodes.length) bodyEl.appendChild(wrap);
   }
 
+  /** 灵石修炼：数量输入 + 修炼按钮（在操作按钮区上方） */
+  function appendSpiritStoneCultivateRow(bodyEl, bagIdx, maxCnt) {
+    if (!bodyEl || maxCnt < 1) return;
+    var row = document.createElement("div");
+    row.className = "mj-item-detail-cultivate-row";
+    var field = document.createElement("div");
+    field.className = "mj-item-detail-cultivate-field";
+    var lab = document.createElement("span");
+    lab.className = "mj-item-detail-cultivate-label";
+    lab.textContent = "修炼数量";
+    var inp = document.createElement("input");
+    inp.type = "number";
+    inp.className = "mj-item-detail-cultivate-input";
+    inp.min = "1";
+    inp.max = String(maxCnt);
+    inp.step = "any";
+    inp.value = "";
+    inp.placeholder = "1～" + String(maxCnt);
+    inp.setAttribute("inputmode", "decimal");
+    field.appendChild(lab);
+    field.appendChild(inp);
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mj-item-detail-action-btn mj-item-detail-action-btn--primary";
+    btn.textContent = "修炼";
+    btn.addEventListener("click", function () {
+      var GG = global.MortalJourneyGame;
+      if (!GG) return;
+      var raw = parseFloat(String(inp.value).trim(), 10);
+      var n = Math.round(raw);
+      if (!isFinite(n) || n <= 0) return;
+      if (!performAbsorbSpiritStonesFromBag(GG, bagIdx, false, n)) return;
+      closeItemDetailModal();
+    });
+    row.appendChild(field);
+    row.appendChild(btn);
+    bodyEl.appendChild(row);
+  }
+
   /**
    * @param {{ label: string, text: string }[]} sections
    * @param {{ label: string, primary?: boolean, onClick?: function(): void }[]} [actionButtons]
    * @param {string} [modalTraitRarity] 与天赋槽 data-rarity 一致，用于物品详情弹窗描边
+   * @param {function(HTMLElement): void} [appendExtra] 在操作按钮之前追加内容（如灵石数量输入）
    */
-  function openItemDetailModal(title, subtitle, sections, actionButtons, modalTraitRarity) {
+  function openItemDetailModal(title, subtitle, sections, actionButtons, modalTraitRarity, appendExtra) {
     var root = document.getElementById("mj-item-detail-root");
     var titleEl = document.getElementById("mj-item-detail-title");
     var subEl = document.getElementById("mj-item-detail-subtitle");
@@ -1401,6 +2019,7 @@
         appendTraitModalSection(bodyEl, lab, txt);
       }
     }
+    if (typeof appendExtra === "function") appendExtra(bodyEl);
     appendItemDetailActionButtons(bodyEl, actionButtons);
     var itemPanel = root.querySelector(".mj-item-detail-panel");
     if (itemPanel) {
@@ -1423,10 +2042,7 @@
     if (itemPanel) itemPanel.removeAttribute("data-rarity");
     root.classList.add("hidden");
     root.setAttribute("aria-hidden", "true");
-    var traitRoot = document.getElementById("mj-trait-detail-root");
-    if (!traitRoot || traitRoot.classList.contains("hidden")) {
-      document.body.style.overflow = "";
-    }
+    mjClearBodyOverflowIfNoModal();
   }
 
   function tryOpenGongfaFromSlot(slotEl) {
@@ -1521,6 +2137,9 @@
     var bonusStuff = stuffMeta && stuffMeta.bonus ? formatStuffBonusForDisplay(stuffMeta.bonus) : "";
     var bonusEq = eqMeta && eqMeta.bonus ? formatZhBonusObject(eqMeta.bonus) : "";
     if (bonusStuff) sections.push({ label: "效果", text: bonusStuff });
+    var pillFx =
+      stuffMeta && stuffMeta.effects ? formatPillEffectsForUi(stuffMeta.effects) : "";
+    if (pillFx) sections.push({ label: "药效", text: pillFx });
     if (bonusEq) sections.push({ label: "属性加成", text: bonusEq });
     if (gfMeta) {
       if (gfMeta.type != null && String(gfMeta.type).trim() !== "") {
@@ -1563,30 +2182,33 @@
         },
       });
     }
-    if (stoneVal > 0) {
+    if (stoneVal > 0 && cnt > 1) {
       actions.push({
-        label: "修炼（1件）",
+        label: "尽数修炼",
         primary: true,
         onClick: function () {
           var GG = global.MortalJourneyGame;
           if (!GG) return;
-          if (!performAbsorbSpiritStonesFromBag(GG, idx, false)) return;
+          if (!performAbsorbSpiritStonesFromBag(GG, idx, true)) return;
           closeItemDetailModal();
         },
       });
-      if (cnt > 1) {
-        actions.push({
-          label: "尽数修炼",
-          onClick: function () {
-            var GG = global.MortalJourneyGame;
-            if (!GG) return;
-            if (!performAbsorbSpiritStonesFromBag(GG, idx, true)) return;
-            closeItemDetailModal();
-          },
-        });
-      }
     }
-    openItemDetailModal(String(it.name), "物品", sections, actions, resolveBagItemTraitRarity(it.name, it));
+    var appendExtra = null;
+    if (stoneVal > 0) {
+      var cntFloor = Math.max(1, Math.floor(typeof cnt === "number" && isFinite(cnt) ? cnt : 1));
+      appendExtra = function (bodyEl) {
+        appendSpiritStoneCultivateRow(bodyEl, idx, cntFloor);
+      };
+    }
+    openItemDetailModal(
+      String(it.name),
+      "物品",
+      sections,
+      actions,
+      resolveBagItemTraitRarity(it.name, it),
+      appendExtra,
+    );
   }
 
   function tryOpenEquipFromSlotEl(slotEl) {
@@ -1640,6 +2262,12 @@
     }
     document.addEventListener("keydown", function (ev) {
       if (ev.key !== "Escape") return;
+      var rMajor = document.getElementById("mj-major-breakthrough-root");
+      if (rMajor && !rMajor.classList.contains("hidden")) {
+        closeMajorBreakthroughModal();
+        ev.preventDefault();
+        return;
+      }
       var rItem = document.getElementById("mj-item-detail-root");
       if (rItem && !rItem.classList.contains("hidden")) {
         closeItemDetailModal();
@@ -1759,7 +2387,7 @@
     if (modalPanel) modalPanel.removeAttribute("data-rarity");
     root.classList.add("hidden");
     root.setAttribute("aria-hidden", "true");
-    document.body.style.overflow = "";
+    mjClearBodyOverflowIfNoModal();
   }
 
   function tryOpenTraitFromSlotEl(slot) {
@@ -1923,6 +2551,18 @@
         : Math.round(cultCtx.cur) + " / —";
     setBarFill(cultFill, cultBar, cultCtx.pct, cultTxt, cultLabel);
 
+    var brBtn = document.getElementById("mj-major-breakthrough-btn");
+    if (brBtn) {
+      var mctx = getMajorBreakthroughReadyContext(G, fc);
+      if (mctx) {
+        brBtn.classList.remove("hidden");
+        brBtn.setAttribute("aria-hidden", "false");
+      } else {
+        brBtn.classList.add("hidden");
+        brBtn.setAttribute("aria-hidden", "true");
+      }
+    }
+
     var hpFill = document.getElementById("mj-hp-bar-fill");
     var hpBar = document.getElementById("mj-hp-bar");
     var hpTxt = document.getElementById("mj-hp-text");
@@ -2000,6 +2640,7 @@
   function init() {
     bindTraitDetailModalUi();
     bindGongfaBagDetailUi();
+    bindMajorBreakthroughUi();
     var fc = restoreBootstrap();
     var G = global.MortalJourneyGame;
     if (!G) {
@@ -2211,6 +2852,7 @@
       ensureGameRuntimeDefaults(G);
       G.xiuwei = Math.max(0, Math.floor(Number(n) || 0));
       var br = applyRealmBreakthroughs(G);
+      clampXiuweiToLateStageCapIfNeeded(G, G.fateChoice);
       logBreakthroughMessages(br.messages);
       var ui = computeCultivationUi(G, G.fateChoice);
       G.cultivationProgress = ui.pct;
@@ -2219,7 +2861,7 @@
       return true;
     },
     /**
-     * 在修为已满条时再次尝试突破（小境界直接进；大境界按表概率，失败不扣修为）。
+     * 在修为已满条时再次尝试突破：仅处理小境界自动晋升；大境界须点左栏「突破」在弹窗内掷骰。
      * @returns {{ changed: boolean, messages: string[] }}
      */
     applyRealmBreakthroughsNow: function () {
@@ -2239,12 +2881,16 @@
     /**
      * 消耗背包一格灵石类物品增加修为（每件 = describe.value）
      * @param {number} bagIndex 0～11
-     * @param {boolean} [consumeAll] 默认 false 只消耗 1 件
+     * @param {boolean} [consumeAll] 与 pieceCount 二选一：true 为整堆
+     * @param {number} [pieceCount] 指定件数：四舍五入，超过堆叠则按堆叠上限；≤0 不执行
      * @returns {boolean}
      */
-    absorbSpiritStonesFromBag: function (bagIndex, consumeAll) {
+    absorbSpiritStonesFromBag: function (bagIndex, consumeAll, pieceCount) {
       var G = global.MortalJourneyGame;
       if (!G) return false;
+      if (typeof pieceCount === "number" && isFinite(pieceCount)) {
+        return performAbsorbSpiritStonesFromBag(G, bagIndex, false, pieceCount);
+      }
       return performAbsorbSpiritStonesFromBag(G, bagIndex, !!consumeAll);
     },
     /** @returns {Array} 12 格：{ name, count, desc? } 或 null */
