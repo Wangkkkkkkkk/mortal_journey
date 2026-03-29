@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>凡人修仙传 · 修行</title>
+    <link rel="stylesheet" href="./css/main.css" />
+    <link rel="stylesheet" href="./css/logPanel.css" />
+  </head>
+  <body class="mj-main-body">
+    <script src="./js/log/logPanel.js"></script>
+    <header class="mj-main-header">
+      <h1>凡人修仙传</h1>
+      <span class="mj-sub">AI 剧情 · 骨架界面</span>
+    </header>
+
+    <div class="mj-main-layout" id="mj-main-layout">
+      <!-- 左侧：角色信息 -->
+      <aside class="mj-pane mj-pane--player" aria-label="角色信息">
+        <div class="mj-player-world-fixed" aria-label="世界时间">
+          <div class="mj-world-time" id="mj-world-time">0001年 01月 01日 08:00</div>
+        </div>
+        <div class="mj-pane-header">角色信息</div>
+        <div class="mj-pane-body mj-player-body">
+          <div class="mj-player-body-fixed">
+          <div class="mj-player-avatar-wrap">
+            <img class="mj-player-avatar hidden" id="mj-player-avatar" src="" alt="角色" width="96" height="96" />
+            <div class="mj-player-avatar mj-player-avatar--placeholder" id="mj-player-avatar-placeholder" aria-hidden="true">
+              立绘
+            </div>
+          </div>
+
+          <div class="mj-realm-line" id="mj-realm-line">境界：练气初期</div>
+
+          <div class="mj-resource-row mj-resource-row--cultivation">
+            <div class="mj-cultivation-head">
+              <div class="mj-resource-label mj-resource-label--cultivation">
+                <span>修炼进度</span>
+                <span class="mj-resource-nums" id="mj-cultivation-pct-text">0%</span>
+              </div>
+              <button
+                type="button"
+                class="mj-major-breakthrough-btn hidden"
+                id="mj-major-breakthrough-btn"
+                aria-hidden="true"
+              >
+                突破
+              </button>
+            </div>
+            <div class="mj-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="mj-cultivation-bar">
+              <div class="mj-bar-fill mj-bar-fill--cultivation" id="mj-cultivation-bar-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="mj-player-identity">
+            <div class="mj-stat-pair-row">
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">性别</span><span class="mj-stat-v" id="mj-stat-gender">—</span>
+              </div>
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">灵根</span><span class="mj-stat-v" id="mj-stat-linggen">—</span>
+              </div>
+            </div>
+            <div class="mj-stat-pair-row">
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">年龄</span><span class="mj-stat-v" id="mj-stat-age">—</span>
+              </div>
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">寿元</span><span class="mj-stat-v" id="mj-stat-shouyuan">—</span>
+              </div>
+            </div>
+            <div class="mj-talent-block" aria-label="逆天改命天赋">
+              <div class="mj-talent-heading">天赋</div>
+              <div class="mj-talent-row" id="mj-talent-row" role="group" aria-label="五个天赋槽位">
+                <div class="mj-trait-slot mj-trait-slot--empty" data-trait-slot="0">
+                  <span class="mj-trait-slot-inner">—</span>
+                </div>
+                <div class="mj-trait-slot mj-trait-slot--empty" data-trait-slot="1">
+                  <span class="mj-trait-slot-inner">—</span>
+                </div>
+                <div class="mj-trait-slot mj-trait-slot--empty" data-trait-slot="2">
+                  <span class="mj-trait-slot-inner">—</span>
+                </div>
+                <div class="mj-trait-slot mj-trait-slot--empty" data-trait-slot="3">
+                  <span class="mj-trait-slot-inner">—</span>
+                </div>
+                <div class="mj-trait-slot mj-trait-slot--empty" data-trait-slot="4">
+                  <span class="mj-trait-slot-inner">—</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <h3 class="mj-attr-section-title mj-attr-section-title--first">属性</h3>
+
+          <div class="mj-resource-row">
+            <div class="mj-resource-label">
+              <span>血量</span>
+              <span class="mj-resource-nums" id="mj-hp-text">— / —</span>
+            </div>
+            <div class="mj-bar" role="progressbar" id="mj-hp-bar">
+              <div class="mj-bar-fill mj-bar-fill--hp" id="mj-hp-bar-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="mj-resource-row">
+            <div class="mj-resource-label">
+              <span>法力</span>
+              <span class="mj-resource-nums" id="mj-mp-text">— / —</span>
+            </div>
+            <div class="mj-bar" role="progressbar" id="mj-mp-bar">
+              <div class="mj-bar-fill mj-bar-fill--mp" id="mj-mp-bar-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="mj-combat-stats">
+            <div class="mj-stat-pair-row">
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">物攻</span><span class="mj-stat-v" id="mj-stat-patk">—</span>
+              </div>
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">物防</span><span class="mj-stat-v" id="mj-stat-pdef">—</span>
+              </div>
+            </div>
+            <div class="mj-stat-pair-row">
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">法攻</span><span class="mj-stat-v" id="mj-stat-matk">—</span>
+              </div>
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">法防</span><span class="mj-stat-v" id="mj-stat-mdef">—</span>
+              </div>
+            </div>
+            <div class="mj-stat-pair-row">
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">神识</span><span class="mj-stat-v" id="mj-stat-sense">—</span>
+              </div>
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">脚力</span><span class="mj-stat-v" id="mj-stat-foot">—</span>
+              </div>
+            </div>
+            <div class="mj-stat-pair-row">
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">魅力</span><span class="mj-stat-v" id="mj-stat-charm">—</span>
+              </div>
+              <div class="mj-stat-cell">
+                <span class="mj-stat-k">气运</span><span class="mj-stat-v" id="mj-stat-luck">—</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mj-equip-block">
+            <h3 class="mj-attr-section-title">装备佩戴</h3>
+            <div class="mj-equip-row" id="mj-equip-row" role="group" aria-label="已装备栏位：武器、法器、防具">
+              <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="0" title="武器空位（剑、刀等）">
+                <span class="mj-equip-slot-k">武器</span>
+                <span class="mj-equip-slot-name">—</span>
+              </div>
+              <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="1" title="法器空位（戒指、手环、飞行法等）">
+                <span class="mj-equip-slot-k">法器</span>
+                <span class="mj-equip-slot-name">—</span>
+              </div>
+              <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="2" title="防具空位">
+                <span class="mj-equip-slot-k">防具</span>
+                <span class="mj-equip-slot-name">—</span>
+              </div>
+            </div>
+          </div>
+          </div>
+
+          <div class="mj-player-bag-stack">
+            <h3 class="mj-attr-section-title">功法</h3>
+            <div class="mj-bag-grid-scroll" aria-label="功法格子区域，可上下滚动">
+              <div class="mj-inventory-grid mj-gongfa-grid" id="mj-gongfa-grid" aria-label="功法栏，3行4列共12格"></div>
+            </div>
+
+            <h3 class="mj-attr-section-title">储物袋</h3>
+            <div class="mj-bag-grid-scroll" aria-label="储物袋格子区域，可上下滚动">
+              <div class="mj-inventory-grid" id="mj-inventory-grid" aria-label="储物袋，12 格物品"></div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 中间：聊天 -->
+      <section class="mj-pane mj-pane--chat" aria-label="聊天">
+        <div class="mj-pane-header">剧情对话</div>
+        <div class="mj-chat-log" id="mj-chat-log">
+          <p class="mj-chat-placeholder">
+            此处将展示与 AI 的剧情对话。<br />
+            发送时会合并 js/worldbook 中的系统预设、世界书与当前存档摘要（需已加载酒馆桥接与有效 API）。
+          </p>
+        </div>
+        <div id="mj-chat-status" class="mj-chat-status mj-chat-status--idle" role="status" aria-live="polite" aria-atomic="true"></div>
+        <div class="mj-chat-composer">
+          <textarea id="mj-chat-input" rows="2" placeholder="输入行动或想法…（将附带预设与世界书上下文发送）"></textarea>
+          <button type="button" id="mj-chat-send">发送</button>
+        </div>
+      </section>
+
+      <!-- 右侧：周围人物（顶条与左侧世界时间对齐） -->
+      <aside class="mj-pane mj-pane--npc" aria-label="周围人物">
+        <div class="mj-npc-location-fixed" aria-label="当前地点">
+          <div class="mj-world-time" id="mj-current-location">—</div>
+        </div>
+        <div class="mj-pane-header">周围人物</div>
+        <div class="mj-pane-body mj-npc-panel-body" id="mj-npc-panel">
+          <div class="mj-npc-list" id="mj-npc-list" aria-label="周围人物列表"></div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- 顺序：NPC 在下层，天赋/物品在上层，便于在 NPC 弹窗内再点开详情 -->
+    <div id="mj-npc-detail-root" class="mj-trait-modal-root hidden" aria-hidden="true">
+      <div class="mj-trait-modal-backdrop" data-mj-npc-detail-close tabindex="-1"></div>
+      <div
+        class="mj-trait-modal mj-npc-detail-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mj-npc-detail-title"
+      >
+        <button type="button" class="mj-trait-modal-close" data-mj-npc-detail-close aria-label="关闭">×</button>
+        <h4 id="mj-npc-detail-title" class="mj-trait-modal-title"></h4>
+        <div id="mj-npc-detail-subtitle" class="mj-trait-modal-rarity"></div>
+        <div id="mj-npc-detail-body" class="mj-trait-modal-body mj-npc-detail-body"></div>
+      </div>
+    </div>
+
+    <div id="mj-trait-detail-root" class="mj-trait-modal-root hidden" aria-hidden="true">
+      <div class="mj-trait-modal-backdrop" data-mj-trait-modal-close tabindex="-1"></div>
+      <div class="mj-trait-modal" role="dialog" aria-modal="true" aria-labelledby="mj-trait-modal-title">
+        <button type="button" class="mj-trait-modal-close" data-mj-trait-modal-close aria-label="关闭">×</button>
+        <h4 id="mj-trait-modal-title" class="mj-trait-modal-title"></h4>
+        <div id="mj-trait-modal-rarity" class="mj-trait-modal-rarity"></div>
+        <div id="mj-trait-modal-body" class="mj-trait-modal-body"></div>
+      </div>
+    </div>
+
+    <div id="mj-item-detail-root" class="mj-trait-modal-root hidden" aria-hidden="true">
+      <div class="mj-trait-modal-backdrop" data-mj-item-detail-close tabindex="-1"></div>
+      <div class="mj-trait-modal mj-item-detail-panel" role="dialog" aria-modal="true" aria-labelledby="mj-item-detail-title">
+        <button type="button" class="mj-trait-modal-close" data-mj-item-detail-close aria-label="关闭">×</button>
+        <h4 id="mj-item-detail-title" class="mj-trait-modal-title"></h4>
+        <div id="mj-item-detail-subtitle" class="mj-trait-modal-rarity"></div>
+        <div id="mj-item-detail-body" class="mj-trait-modal-body"></div>
+      </div>
+    </div>
+
+    <div id="mj-major-breakthrough-root" class="mj-trait-modal-root hidden" aria-hidden="true">
+      <div class="mj-trait-modal-backdrop" data-mj-major-break-close tabindex="-1"></div>
+      <div class="mj-trait-modal mj-major-break-modal" role="dialog" aria-modal="true" aria-labelledby="mj-major-break-title">
+        <button type="button" class="mj-trait-modal-close" data-mj-major-break-close aria-label="关闭">×</button>
+        <h4 id="mj-major-break-title" class="mj-trait-modal-title">大境界突破</h4>
+        <div id="mj-major-break-subtitle" class="mj-major-break-subtitle"></div>
+        <div id="mj-major-break-chance" class="mj-major-break-chance"></div>
+        <div class="mj-major-break-slots" role="group" aria-label="突破辅助丹药，最多三格">
+          <button type="button" class="mj-major-break-slot" id="mj-major-break-slot-0" aria-label="丹药格 1">
+            <span class="mj-major-break-slot-k">丹药</span>
+            <span class="mj-major-break-slot-name">空</span>
+          </button>
+          <button type="button" class="mj-major-break-slot" id="mj-major-break-slot-1" aria-label="丹药格 2">
+            <span class="mj-major-break-slot-k">丹药</span>
+            <span class="mj-major-break-slot-name">空</span>
+          </button>
+          <button type="button" class="mj-major-break-slot" id="mj-major-break-slot-2" aria-label="丹药格 3">
+            <span class="mj-major-break-slot-k">丹药</span>
+            <span class="mj-major-break-slot-name">空</span>
+          </button>
+        </div>
+        <div id="mj-major-break-pick" class="mj-major-break-pick hidden"></div>
+        <button
+          type="button"
+          class="mj-major-break-confirm mj-item-detail-action-btn mj-item-detail-action-btn--primary"
+          id="mj-major-break-confirm"
+        >
+          突破
+        </button>
+      </div>
+    </div>
+
+    <script src="./js/data/leegen_state.js"></script>
+    <script src="./js/worldbook/preset_content.js"></script>
+    <script src="./js/worldbook/preset.js"></script>
+    <script src="./js/worldbook/world_book_entries.js"></script>
+    <script src="./js/worldbook/world_book.js"></script>
+    <script src="./js/stuff_describe/equipment.js"></script>
+    <script src="./js/stuff_describe/gong_fa.js"></script>
+    <script src="./js/stuff_describe/spirit_stone.js"></script>
+    <script src="./js/stuff_describe/pill.js"></script>
+    <script src="./js/stuff_describe/common_stuff.js"></script>
+    <script src="./js/data/mjCreationConfig.js"></script>
+    <script src="./js/data/realm_state.js"></script>
+    <script src="./js/game/player_base_runtime.js"></script>
+    <script src="./js/game/mj_character_sheet.js"></script>
+    <script src="./js/ai_server/story_generate.js"></script>
+    <script src="./silly_tarven/bridge-config.js"></script>
+    <script src="./silly_tarven/bridge.js"></script>
+    <script src="./js/ui/mainScreen.js"></script>
+  </body>
+</html>
