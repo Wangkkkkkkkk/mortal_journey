@@ -603,6 +603,193 @@ body.mj-main-body {
   color: var(--mj-text);
 }
 
+/* NPC 详情：加宽面板，标题固定、正文滚动 */
+.mj-trait-modal.mj-npc-detail-panel {
+  max-width: min(440px, 96vw);
+  max-height: min(88vh, 760px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mj-npc-detail-panel .mj-trait-modal-body.mj-npc-detail-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
+.mj-npc-detail-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.mj-npc-detail-avatar-wrap {
+  flex-shrink: 0;
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  border: 1px solid rgba(232, 197, 71, 0.35);
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.mj-npc-detail-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mj-npc-detail-avatar-ph {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--mj-muted);
+}
+
+.mj-npc-detail-head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.mj-npc-detail-realm-big {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--mj-gold-dim);
+  line-height: 1.4;
+}
+
+.mj-npc-detail-id-line {
+  font-size: 0.72rem;
+  color: var(--mj-muted);
+  margin-top: 6px;
+}
+
+.mj-npc-detail-identity {
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.mj-npc-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mj-npc-detail-slot {
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 4px;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  text-align: center;
+  word-break: break-all;
+  min-height: 2.6em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mj-npc-detail-slot--empty {
+  color: var(--mj-muted);
+  opacity: 0.75;
+}
+
+.mj-npc-detail-slot--filled {
+  color: var(--mj-text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* NPC 详情 · 储物袋（与左栏 #mj-inventory-grid 同结构） */
+#mj-npc-detail-bag-grid .mj-inventory-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 5px 18px;
+  box-sizing: border-box;
+}
+
+#mj-npc-detail-bag-grid .mj-inventory-slot-label {
+  font-size: var(--mj-player-content-font);
+  line-height: 1.15;
+  text-align: center;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  color: var(--mj-text);
+}
+
+#mj-npc-detail-bag-grid .mj-inventory-slot--empty .mj-inventory-slot-label {
+  color: transparent;
+}
+
+#mj-npc-detail-bag-grid .mj-inventory-slot-qty {
+  position: absolute;
+  bottom: 3px;
+  right: 4px;
+  font-size: var(--mj-player-content-font);
+  font-weight: 600;
+  color: var(--mj-gold-dim);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+#mj-npc-detail-bag-grid .mj-inventory-slot--filled {
+  border-style: solid;
+  border-color: rgba(232, 197, 71, 0.35);
+  background: rgba(232, 197, 71, 0.05);
+  cursor: pointer;
+}
+
+#mj-npc-detail-bag-grid .mj-inventory-slot--filled[data-rarity="平庸"] {
+  border-color: #808080;
+  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.25);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+#mj-npc-detail-bag-grid .mj-inventory-slot--filled[data-rarity="普通"] {
+  border-color: #b0b0b0;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+#mj-npc-detail-bag-grid .mj-inventory-slot--filled[data-rarity="稀有"] {
+  border-color: #4fc3f7;
+  background: rgba(79, 195, 247, 0.08);
+}
+
+#mj-npc-detail-bag-grid .mj-inventory-slot--filled[data-rarity="史诗"] {
+  border-color: #ba68c8;
+  background: rgba(186, 104, 200, 0.1);
+}
+
+#mj-npc-detail-bag-grid .mj-inventory-slot--filled[data-rarity="传说"] {
+  border-color: #e8c547;
+  background: rgba(232, 197, 71, 0.12);
+}
+
+#mj-npc-detail-bag-grid .mj-inventory-slot--filled[data-rarity="神迹"] {
+  border-color: #ff5252;
+  background: rgba(255, 82, 82, 0.12);
+}
+
+.mj-npc-detail-body .mj-player-bag-stack {
+  margin-top: 6px;
+}
+
 /* 弹窗品质色：与左侧天赋槽 data-rarity 一致 */
 .mj-trait-modal[data-rarity="平庸"] {
   border-color: #808080;
@@ -1348,12 +1535,141 @@ body.mj-main-body {
 }
 
 /* 右栏 · 周围人物 */
+.mj-npc-panel-body {
+  padding-top: 8px;
+}
+
+.mj-npc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .mj-npc-card {
   padding: 10px 12px;
-  margin-bottom: 10px;
   border: 1px solid var(--mj-border);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.2);
+}
+
+button.mj-npc-card.mj-npc-card--sheet {
+  width: 100%;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+button.mj-npc-card.mj-npc-card--sheet:hover {
+  border-color: rgba(232, 197, 71, 0.55);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+button.mj-npc-card.mj-npc-card--sheet:focus-visible {
+  outline: 2px solid var(--mj-gold);
+  outline-offset: 2px;
+}
+
+.mj-npc-card--sheet {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.mj-npc-card-lead {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 64px;
+}
+
+.mj-npc-card-realm-below {
+  font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color: rgba(232, 197, 71, 0.92);
+  text-align: center;
+  width: 100%;
+  word-break: break-all;
+}
+
+.mj-npc-card-avatar {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  border: 1px solid rgba(232, 197, 71, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  color: var(--mj-muted);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.mj-npc-card-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mj-npc-card-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mj-npc-card-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--mj-gold-dim);
+  line-height: 1.35;
+  word-break: break-all;
+}
+
+.mj-npc-card-title .mj-npc-name {
+  color: var(--mj-gold);
+}
+
+/* NPC 血/法：与左栏相同的横向 .mj-bar */
+.mj-npc-bars-h {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mj-npc-resource-row {
+  margin-bottom: 0;
+}
+
+.mj-npc-resource-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.76rem;
+  color: var(--mj-muted);
+  margin-bottom: 3px;
+}
+
+.mj-npc-resource-nums {
+  font-size: 0.72rem;
+  color: var(--mj-gold);
+  font-variant-numeric: tabular-nums;
 }
 
 .mj-npc-card h3 {

@@ -27,10 +27,12 @@
   function mjClearBodyOverflowIfNoModal() {
     var traitRoot = document.getElementById("mj-trait-detail-root");
     var itemRoot = document.getElementById("mj-item-detail-root");
+    var npcRoot = document.getElementById("mj-npc-detail-root");
     var majorRoot = document.getElementById("mj-major-breakthrough-root");
     if (
       (!traitRoot || traitRoot.classList.contains("hidden")) &&
       (!itemRoot || itemRoot.classList.contains("hidden")) &&
+      (!npcRoot || npcRoot.classList.contains("hidden")) &&
       (!majorRoot || majorRoot.classList.contains("hidden"))
     ) {
       document.body.style.overflow = "";
@@ -115,7 +117,7 @@
     return Math.round(b * f * n);
   }
 
-  /** 当前修为、本阶段需求、进度条百分比（0～100，可已满） */
+  /** 当前修为、本阶段需求、进度条百分比（0～100，已满封顶）；displayCur 用于「当前/需求」文案，不超过本阶段需求 */
   function computeCultivationUi(G, fc) {
     var r = (G && G.realm) || (fc && fc.realm) || {};
     var major = r.major || "";
@@ -128,7 +130,8 @@
     var cur = G && typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? Math.max(0, Math.floor(G.xiuwei)) : 0;
     var pct = 0;
     if (req != null && req > 0) pct = (cur / req) * 100;
-    return { cur: cur, req: req, pct: clampPct(pct) };
+    var displayCur = req != null && req > 0 ? Math.min(cur, req) : cur;
+    return { cur: cur, req: req, pct: clampPct(pct), displayCur: displayCur };
   }
 
   function getNextMinorStage(minor) {
@@ -176,6 +179,25 @@
     cap = Math.max(0, Math.floor(cap));
     var cur = typeof G.shouyuan === "number" && isFinite(G.shouyuan) ? Math.floor(G.shouyuan) : 0;
     G.shouyuan = Math.max(cur, cap);
+  }
+
+  /** 周围 NPC：与主角相同规则，寿元不低于境界表参考（剧情可更高，不会压低） */
+  function syncNpcShouyuanFromRealmState(npc) {
+    if (!npc || typeof npc !== "object") return;
+    var RS = global.RealmState;
+    if (!RS || typeof RS.getShouyuanForRealm !== "function") return;
+    var r = npc.realm && typeof npc.realm === "object" ? npc.realm : {};
+    var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+    var minorRaw =
+      r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
+    var cap =
+      major === "化神"
+        ? RS.getShouyuanForRealm(major)
+        : RS.getShouyuanForRealm(major, minorRaw);
+    if (cap == null || !isFinite(cap)) return;
+    cap = Math.max(0, Math.floor(cap));
+    var cur = typeof npc.shouyuan === "number" && isFinite(npc.shouyuan) ? Math.floor(npc.shouyuan) : 0;
+    npc.shouyuan = Math.max(cur, cap);
   }
 
   /**
@@ -772,6 +794,7 @@
                 failCount: Math.max(0, Math.floor(Number(ls.failCount) || 0)),
               }
             : { realmKey: "", failCount: 0 },
+        nearbyNpcs: JSON.parse(JSON.stringify(Array.isArray(G.nearbyNpcs) ? G.nearbyNpcs : [])),
       };
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch (e) {
@@ -900,6 +923,10 @@
         };
       }
 
+      if (Array.isArray(data.nearbyNpcs)) {
+        global.MortalJourneyGame.nearbyNpcs = JSON.parse(JSON.stringify(data.nearbyNpcs));
+      }
+
       return fc;
     } catch (e) {
       console.warn("[主界面] 无法读取开局存档", e);
@@ -947,6 +974,739 @@
     ensureGongfaSlots(G);
     ensureInventorySlots(G);
     syncLateStageBreakSuffixState(G, G.fateChoice);
+    ensureNearbyNpcsArray(G);
+    normalizeNearbyNpcListInPlace(G);
+  }
+
+  function ensureNearbyNpcsArray(G) {
+    if (!G) return;
+    if (!Array.isArray(G.nearbyNpcs)) G.nearbyNpcs = [];
+  }
+
+  function normalizeNearbyNpcListInPlace(G) {
+    if (!G || !Array.isArray(G.nearbyNpcs)) return;
+    var MCS = global.MjCharacterSheet;
+    var PBR = global.PlayerBaseRuntime;
+    if (!MCS || typeof MCS.normalize !== "function") return;
+    var next = [];
+    for (var i = 0; i < G.nearbyNpcs.length; i++) {
+      try {
+        var n = MCS.normalize(G.nearbyNpcs[i]);
+        if (PBR && typeof PBR.applyComputedPlayerBaseToCharacterSheet === "function") {
+          PBR.applyComputedPlayerBaseToCharacterSheet(n);
+        }
+        syncNpcShouyuanFromRealmState(n);
+        next.push(n);
+      } catch (err) {
+        console.warn("[主界面] 周围人物条目已跳过", err);
+      }
+    }
+    G.nearbyNpcs = next;
+  }
+
+  /**
+   * 示例 NPC：功法 / 装备名称均来自 MjDescribeGongfa、MjDescribeEquipment（可被 PlayerBaseRuntime 查表加成）。
+   * 天赋词条与 trait_samples 一致（中文 bonus 键）。
+   * 期望面板（与 Node 拉取 PlayerBaseRuntime.computePlayerBaseFromCharacterSheet 一致）：hp320 mp190 patk50 pdef20 matk83 mdef15 foot25 sense50；金灵根仅对物攻/法攻乘 1.1；天赋「避魔之体」的 法防 计入法防而非物防。
+   */
+  function buildDemoNearbyNpcSheet() {
+    var MCS = global.MjCharacterSheet;
+    if (MCS && typeof MCS.normalize === "function") {
+      var demoGongfa = [];
+      for (var dg = 0; dg < 12; dg++) demoGongfa.push(null);
+      demoGongfa[0] = { name: "长春功" };
+      demoGongfa[1] = { name: "眨眼剑法" };
+      demoGongfa[2] = { name: "凝元功" };
+      var demoInv = [];
+      for (var di = 0; di < 12; di++) demoInv.push(null);
+      demoInv[0] = { name: "回气丹", count: 3 };
+      demoInv[1] = { name: "下品灵石", count: 12 };
+      return MCS.normalize({
+        id: "demo_npc_passerby",
+        displayName: "路人甲（演算）",
+        realm: { major: "筑基", minor: "初期" },
+        gender: "男",
+        linggen: "金",
+        age: 32,
+        shouyuan: 200,
+        xiuwei: 4200,
+        traits: [
+          { name: "势大力沉", rarity: "平庸", desc: "天生力量惊人，攻击力强大。", bonus: { 物攻: 10 } },
+          { name: "龟甲之躯", rarity: "平庸", desc: "如灵龟附体，防御惊人。", bonus: { 物防: 5 } },
+          { name: "法力源泉", rarity: "平庸", desc: "法力深厚，如泉涌不息。", bonus: { 法力: 30 } },
+          { name: "破法之瞳", rarity: "平庸", desc: "看破弱点，法术伤害提升。", bonus: { 法攻: 10 } },
+          { name: "避魔之体", rarity: "平庸", desc: "天生对法术有抗性。", bonus: { 法防: 5 } },
+        ],
+        equippedSlots: [{ name: "铁剑" }, { name: "青叶" }, { name: "布衣" }],
+        gongfaSlots: demoGongfa,
+        inventorySlots: demoInv,
+      });
+    }
+    var gfa = [];
+    for (var g = 0; g < 12; g++) {
+      gfa.push(g === 0 ? { name: "长春功" } : g === 1 ? { name: "眨眼剑法" } : g === 2 ? { name: "凝元功" } : null);
+    }
+    var inv = [];
+    for (var v = 0; v < 12; v++) inv.push(v === 0 ? { name: "回气丹", count: 3 } : v === 1 ? { name: "下品灵石", count: 12 } : null);
+    return {
+      id: "demo_npc_passerby",
+      displayName: "路人甲（演算）",
+      realm: { major: "筑基", minor: "初期" },
+      gender: "男",
+      linggen: "金",
+      age: 32,
+      shouyuan: 200,
+      xiuwei: 4200,
+      traits: [
+        { name: "势大力沉", rarity: "平庸", bonus: { 物攻: 10 } },
+        { name: "龟甲之躯", rarity: "平庸", bonus: { 物防: 5 } },
+        { name: "法力源泉", rarity: "平庸", bonus: { 法力: 30 } },
+        { name: "破法之瞳", rarity: "平庸", bonus: { 法攻: 10 } },
+        { name: "避魔之体", rarity: "平庸", bonus: { 法防: 5 } },
+      ],
+      equippedSlots: [{ name: "铁剑" }, { name: "青叶" }, { name: "布衣" }],
+      gongfaSlots: gfa,
+      inventorySlots: inv,
+    };
+  }
+
+  function renderNearbyNpcsPanel(G) {
+    var host = document.getElementById("mj-npc-list");
+    if (!host) return;
+    host.innerHTML = "";
+    ensureNearbyNpcsArray(G);
+    if (!G || !G.nearbyNpcs.length) {
+      var empty = document.createElement("p");
+      empty.className = "mj-npc-list-empty";
+      empty.style.cssText = "text-align:center;font-size:0.82rem;opacity:0.72;margin:14px 10px;color:var(--mj-muted, #999);";
+      empty.textContent = "近处暂无其他人。";
+      host.appendChild(empty);
+      return;
+    }
+    var MCS = global.MjCharacterSheet;
+    for (var i = 0; i < G.nearbyNpcs.length; i++) {
+      var rawNpc = G.nearbyNpcs[i];
+      var npc =
+        MCS && typeof MCS.normalize === "function"
+          ? MCS.normalize(rawNpc)
+          : rawNpc;
+      if (!npc || !npc.id) continue;
+
+      var card = document.createElement("button");
+      card.type = "button";
+      card.className = "mj-npc-card mj-npc-card--sheet";
+      card.setAttribute("data-npc-id", String(npc.id));
+
+      var realmLine =
+        MCS && typeof MCS.formatRealmLine === "function"
+          ? MCS.formatRealmLine(npc.realm)
+          : "—";
+
+      var av = document.createElement("div");
+      av.className = "mj-npc-card-avatar";
+      if (npc.avatarUrl) {
+        var im = document.createElement("img");
+        im.src = npc.avatarUrl;
+        im.alt = (npc.displayName || "NPC") + " " + realmLine;
+        av.appendChild(im);
+      } else {
+        av.textContent = "头像";
+        av.setAttribute("aria-hidden", "true");
+      }
+
+      var realmBelow = document.createElement("div");
+      realmBelow.className = "mj-npc-card-realm-below";
+      realmBelow.textContent = realmLine;
+
+      var lead = document.createElement("div");
+      lead.className = "mj-npc-card-lead";
+      lead.appendChild(av);
+      lead.appendChild(realmBelow);
+
+      var main = document.createElement("div");
+      main.className = "mj-npc-card-main";
+
+      var title = document.createElement("div");
+      title.className = "mj-npc-card-title";
+      var nameSp = document.createElement("span");
+      nameSp.className = "mj-npc-name";
+      nameSp.textContent = npc.displayName || "—";
+      title.appendChild(nameSp);
+
+      card.setAttribute(
+        "aria-label",
+        (npc.displayName || "NPC") + "，" + realmLine + "，点击查看详情",
+      );
+
+      var maxH = typeof npc.maxHp === "number" && isFinite(npc.maxHp) ? Math.max(1, npc.maxHp) : 1;
+      var maxM = typeof npc.maxMp === "number" && isFinite(npc.maxMp) ? Math.max(1, npc.maxMp) : 1;
+      var curH = typeof npc.currentHp === "number" && isFinite(npc.currentHp) ? npc.currentHp : maxH;
+      var curM = typeof npc.currentMp === "number" && isFinite(npc.currentMp) ? npc.currentMp : maxM;
+      curH = Math.max(0, Math.min(maxH, Math.round(curH)));
+      curM = Math.max(0, Math.min(maxM, Math.round(curM)));
+      var hpPct = maxH > 0 ? (curH / maxH) * 100 : 0;
+      var mpPct = maxM > 0 ? (curM / maxM) * 100 : 0;
+
+      var barsCol = document.createElement("div");
+      barsCol.className = "mj-npc-bars-h";
+
+      function appendHBar(kind, labelZh, pct, cur, max) {
+        var row = document.createElement("div");
+        row.className = "mj-npc-resource-row";
+        var head = document.createElement("div");
+        head.className = "mj-npc-resource-label";
+        var spLabel = document.createElement("span");
+        spLabel.textContent = labelZh;
+        var spNums = document.createElement("span");
+        spNums.className = "mj-npc-resource-nums";
+        spNums.textContent = cur + "/" + max;
+        head.appendChild(spLabel);
+        head.appendChild(spNums);
+        var bar = document.createElement("div");
+        bar.className = "mj-bar";
+        bar.setAttribute("role", "progressbar");
+        bar.setAttribute("aria-valuemin", "0");
+        bar.setAttribute("aria-valuemax", "100");
+        bar.setAttribute("aria-valuenow", String(Math.round(clampPct(pct))));
+        var fill = document.createElement("div");
+        fill.className = "mj-bar-fill mj-bar-fill--" + kind;
+        fill.style.width = clampPct(pct) + "%";
+        bar.appendChild(fill);
+        row.appendChild(head);
+        row.appendChild(bar);
+        barsCol.appendChild(row);
+      }
+
+      appendHBar("hp", "血量", hpPct, curH, maxH);
+      appendHBar("mp", "法力", mpPct, curM, maxM);
+
+      main.appendChild(title);
+      main.appendChild(barsCol);
+      card.appendChild(lead);
+      card.appendChild(main);
+      (function (npcData) {
+        card.addEventListener("click", function () {
+          openNpcDetailModal(npcData);
+        });
+      })(rawNpc);
+      host.appendChild(card);
+    }
+  }
+
+  function ensureNpcDetailSlotsClone(npcRaw) {
+    var MCS = global.MjCharacterSheet;
+    var n = MCS && typeof MCS.normalize === "function" ? MCS.normalize(npcRaw) : Object.assign({}, npcRaw);
+    if (!n) return null;
+    if (!Array.isArray(n.equippedSlots) || n.equippedSlots.length !== EQUIP_SLOT_COUNT) {
+      n.equippedSlots = [null, null, null];
+    } else {
+      n.equippedSlots = JSON.parse(JSON.stringify(n.equippedSlots));
+    }
+    if (!Array.isArray(n.gongfaSlots) || n.gongfaSlots.length !== GONGFA_SLOT_COUNT) {
+      var gfa = [];
+      for (var g = 0; g < GONGFA_SLOT_COUNT; g++) gfa.push(null);
+      n.gongfaSlots = gfa;
+    } else {
+      n.gongfaSlots = JSON.parse(JSON.stringify(n.gongfaSlots));
+    }
+    if (!Array.isArray(n.inventorySlots) || n.inventorySlots.length !== INVENTORY_SLOT_COUNT) {
+      var inv = [];
+      for (var iv = 0; iv < INVENTORY_SLOT_COUNT; iv++) inv.push(null);
+      n.inventorySlots = inv;
+    } else {
+      n.inventorySlots = JSON.parse(JSON.stringify(n.inventorySlots));
+    }
+    if (!Array.isArray(n.traits)) n.traits = [];
+    else n.traits = n.traits.slice();
+    return n;
+  }
+
+  function appendNpcDetailSectionTitle(parent, text, useFirstStyle) {
+    var h = document.createElement("h3");
+    h.className = "mj-attr-section-title" + (useFirstStyle ? " mj-attr-section-title--first" : "");
+    h.textContent = text;
+    parent.appendChild(h);
+  }
+
+  function buildNpcDetailModalBody(bodyEl, npc) {
+    var MCS = global.MjCharacterSheet;
+    var RS = global.RealmState;
+    var realmLine = MCS && MCS.formatRealmLine ? MCS.formatRealmLine(npc.realm) : "—";
+    var major =
+      npc.realm && npc.realm.major != null && String(npc.realm.major).trim() !== ""
+        ? String(npc.realm.major).trim()
+        : "练气";
+    var minor =
+      npc.realm && npc.realm.minor != null && String(npc.realm.minor).trim() !== ""
+        ? String(npc.realm.minor).trim()
+        : "初期";
+    var minorForReq = major === "化神" ? undefined : minor;
+
+    function makeStatCell(k, v) {
+      var cell = document.createElement("div");
+      cell.className = "mj-stat-cell";
+      var kEl = document.createElement("span");
+      kEl.className = "mj-stat-k";
+      kEl.textContent = k;
+      var vEl = document.createElement("span");
+      vEl.className = "mj-stat-v";
+      vEl.textContent = v;
+      cell.appendChild(kEl);
+      cell.appendChild(vEl);
+      return cell;
+    }
+
+    var head = document.createElement("div");
+    head.className = "mj-npc-detail-head";
+    var avWrap = document.createElement("div");
+    avWrap.className = "mj-npc-detail-avatar-wrap";
+    if (npc.avatarUrl) {
+      var img = document.createElement("img");
+      img.className = "mj-npc-detail-avatar-img";
+      img.src = npc.avatarUrl;
+      img.alt = npc.displayName || "";
+      avWrap.appendChild(img);
+    } else {
+      var ph = document.createElement("div");
+      ph.className = "mj-npc-detail-avatar-ph";
+      ph.textContent = "立绘";
+      avWrap.appendChild(ph);
+    }
+    var headText = document.createElement("div");
+    headText.className = "mj-npc-detail-head-text";
+    var realmBig = document.createElement("div");
+    realmBig.className = "mj-npc-detail-realm-big";
+    realmBig.textContent = "境界：" + realmLine;
+    var idHint = document.createElement("div");
+    idHint.className = "mj-npc-detail-id-line";
+    idHint.textContent = "标识：" + (npc.id || "—");
+    headText.appendChild(realmBig);
+    headText.appendChild(idHint);
+    head.appendChild(avWrap);
+    head.appendChild(headText);
+    bodyEl.appendChild(head);
+
+    var req =
+      RS && typeof RS.getCultivationRequired === "function"
+        ? RS.getCultivationRequired(major, minorForReq)
+        : null;
+    var curX =
+      typeof npc.xiuwei === "number" && isFinite(npc.xiuwei) ? Math.max(0, Math.floor(npc.xiuwei)) : 0;
+    var displayX = req != null && req > 0 ? Math.min(curX, req) : curX;
+    var cultPct = req != null && req > 0 ? clampPct((curX / req) * 100) : 0;
+    var cultLabel =
+      req != null && req > 0 ? Math.round(displayX) + " / " + Math.round(req) : Math.round(curX) + " / —";
+    var cultRow = document.createElement("div");
+    cultRow.className = "mj-resource-row";
+    var cultHead = document.createElement("div");
+    cultHead.className = "mj-resource-label";
+    var cLab = document.createElement("span");
+    cLab.textContent = "修炼进度";
+    var cNums = document.createElement("span");
+    cNums.className = "mj-resource-nums";
+    cNums.textContent = cultLabel;
+    cultHead.appendChild(cLab);
+    cultHead.appendChild(cNums);
+    var cultBar = document.createElement("div");
+    cultBar.className = "mj-bar";
+    cultBar.setAttribute("role", "progressbar");
+    cultBar.setAttribute("aria-valuenow", String(Math.round(clampPct(cultPct))));
+    var cultFill = document.createElement("div");
+    cultFill.className = "mj-bar-fill mj-bar-fill--cultivation";
+    cultBar.appendChild(cultFill);
+    cultRow.appendChild(cultHead);
+    cultRow.appendChild(cultBar);
+    bodyEl.appendChild(cultRow);
+    setBarFill(cultFill, cultBar, cultPct, cNums, cultLabel);
+    if (req != null && req > 0 && curX > req) {
+      cultBar.setAttribute(
+        "title",
+        "本阶段修为已足，当前累计 " + Math.round(curX) + "（可突破后计入下阶段）",
+      );
+    }
+
+    var idBlock = document.createElement("div");
+    idBlock.className = "mj-player-identity mj-npc-detail-identity";
+    var rowA = document.createElement("div");
+    rowA.className = "mj-stat-pair-row";
+    rowA.appendChild(makeStatCell("性别", npc.gender != null ? String(npc.gender) : "—"));
+    rowA.appendChild(makeStatCell("灵根", formatLinggenPanelText(npc.linggen)));
+    var rowB = document.createElement("div");
+    rowB.className = "mj-stat-pair-row";
+    var syStr = "—";
+    if (typeof npc.shouyuan === "number" && isFinite(npc.shouyuan)) {
+      syStr = String(Math.round(npc.shouyuan));
+    } else if (RS && typeof RS.getShouyuanForRealm === "function") {
+      var syCap0 = RS.getShouyuanForRealm(major, minorForReq);
+      if (syCap0 != null) syStr = String(Math.round(syCap0));
+    }
+    var syCell = makeStatCell("寿元", syStr);
+    if (RS && typeof RS.getShouyuanRow === "function") {
+      var syRow = RS.getShouyuanRow(major, minorForReq);
+      if (syRow && syRow.note) {
+        var stg = syRow.stage != null && String(syRow.stage) !== "" ? String(syRow.stage) : "";
+        var syVEl = syCell.querySelector(".mj-stat-v");
+        if (syVEl) {
+          syVEl.setAttribute(
+            "title",
+            major + stg + " 寿元参考 " + syRow.shouyuan + " 岁：" + syRow.note,
+          );
+        }
+      }
+    }
+    rowB.appendChild(makeStatCell("年龄", npc.age != null ? String(npc.age) : "—"));
+    rowB.appendChild(syCell);
+    idBlock.appendChild(rowA);
+    idBlock.appendChild(rowB);
+    bodyEl.appendChild(idBlock);
+
+    var tb = document.createElement("div");
+    tb.className = "mj-talent-block";
+    var th = document.createElement("div");
+    th.className = "mj-talent-heading";
+    th.textContent = "天赋";
+    var tr = document.createElement("div");
+    tr.className = "mj-talent-row";
+    tr.setAttribute("role", "group");
+    var traits = npc.traits || [];
+    for (var ti = 0; ti < 5; ti++) {
+      var tslot = document.createElement("div");
+      tslot.setAttribute("data-trait-slot", String(ti));
+      var trt = traits[ti];
+      if (trt && trt.name) {
+        tslot.className = "mj-trait-slot mj-trait-slot--filled";
+        if (trt.rarity) tslot.setAttribute("data-rarity", String(trt.rarity));
+        var tin = document.createElement("span");
+        tin.className = "mj-trait-slot-inner";
+        tin.textContent = String(trt.name);
+        tslot.appendChild(tin);
+        tslot.setAttribute("title", buildTraitSlotTooltip(trt));
+        tslot.setAttribute("role", "button");
+        tslot.setAttribute("tabindex", "0");
+        tslot.setAttribute("aria-label", "查看天赋：" + String(trt.name));
+      } else {
+        tslot.className = "mj-trait-slot mj-trait-slot--empty";
+        var tin2 = document.createElement("span");
+        tin2.className = "mj-trait-slot-inner";
+        tin2.textContent = "—";
+        tslot.appendChild(tin2);
+      }
+      tr.appendChild(tslot);
+    }
+    tb.appendChild(th);
+    tb.appendChild(tr);
+    bodyEl.appendChild(tb);
+
+    var pb = npc.playerBase || {};
+    appendNpcDetailSectionTitle(bodyEl, "属性", true);
+
+    var maxH = typeof npc.maxHp === "number" && isFinite(npc.maxHp) ? Math.max(1, npc.maxHp) : 1;
+    var maxM = typeof npc.maxMp === "number" && isFinite(npc.maxMp) ? Math.max(1, npc.maxMp) : 1;
+    var curH = typeof npc.currentHp === "number" && isFinite(npc.currentHp) ? npc.currentHp : maxH;
+    var curM = typeof npc.currentMp === "number" && isFinite(npc.currentMp) ? npc.currentMp : maxM;
+    curH = Math.max(0, Math.min(maxH, Math.round(curH)));
+    curM = Math.max(0, Math.min(maxM, Math.round(curM)));
+    var pctH = maxH > 0 ? (curH / maxH) * 100 : 0;
+    var pctM = maxM > 0 ? (curM / maxM) * 100 : 0;
+
+    function appendHpMpRow(kind, label, pct, cur, maxV) {
+      var row = document.createElement("div");
+      row.className = "mj-resource-row";
+      var hd = document.createElement("div");
+      hd.className = "mj-resource-label";
+      var l = document.createElement("span");
+      l.textContent = label;
+      var nums = document.createElement("span");
+      nums.className = "mj-resource-nums";
+      nums.textContent = cur + " / " + maxV;
+      hd.appendChild(l);
+      hd.appendChild(nums);
+      var bar = document.createElement("div");
+      bar.className = "mj-bar";
+      bar.setAttribute("role", "progressbar");
+      var fl = document.createElement("div");
+      fl.className = "mj-bar-fill mj-bar-fill--" + kind;
+      bar.appendChild(fl);
+      row.appendChild(hd);
+      row.appendChild(bar);
+      bodyEl.appendChild(row);
+      setBarFill(fl, bar, pct, nums, cur + " / " + maxV);
+    }
+    appendHpMpRow("hp", "血量", pctH, curH, maxH);
+    appendHpMpRow("mp", "法力", pctM, curM, maxM);
+
+    var combat = document.createElement("div");
+    combat.className = "mj-combat-stats";
+    var r1 = document.createElement("div");
+    r1.className = "mj-stat-pair-row";
+    r1.appendChild(makeStatCell("物攻", numOrDash(pb.patk)));
+    r1.appendChild(makeStatCell("物防", numOrDash(pb.pdef)));
+    var r2 = document.createElement("div");
+    r2.className = "mj-stat-pair-row";
+    r2.appendChild(makeStatCell("法攻", numOrDash(pb.matk)));
+    r2.appendChild(makeStatCell("法防", numOrDash(pb.mdef)));
+    var r3 = document.createElement("div");
+    r3.className = "mj-stat-pair-row";
+    r3.appendChild(makeStatCell("神识", numOrDash(pb.sense)));
+    r3.appendChild(makeStatCell("脚力", numOrDash(pb.foot)));
+    var r4 = document.createElement("div");
+    r4.className = "mj-stat-pair-row";
+    var ch = pb.charm != null ? pb.charm : null;
+    var lk = pb.luck != null ? pb.luck : null;
+    r4.appendChild(makeStatCell("魅力", numOrDash(ch)));
+    r4.appendChild(makeStatCell("气运", numOrDash(lk)));
+    combat.appendChild(r1);
+    combat.appendChild(r2);
+    combat.appendChild(r3);
+    combat.appendChild(r4);
+    bodyEl.appendChild(combat);
+
+    var eqWrap = document.createElement("div");
+    eqWrap.className = "mj-equip-block";
+    var eqH = document.createElement("h3");
+    eqH.className = "mj-attr-section-title";
+    eqH.textContent = "装备佩戴";
+    var eqRow = document.createElement("div");
+    eqRow.className = "mj-equip-row";
+    eqRow.setAttribute("role", "group");
+    for (var ei = 0; ei < EQUIP_SLOT_COUNT; ei++) {
+      var eqSlot = document.createElement("div");
+      eqSlot.setAttribute("data-equip-slot", String(ei));
+      var eit = npc.equippedSlots[ei];
+      var eLabel = EQUIP_SLOT_KIND_LABELS[ei] || "装备";
+      if (eit && (eit.name != null ? eit.name : eit.label)) {
+        var en = String(eit.name != null ? eit.name : eit.label);
+        eqSlot.className = "mj-equip-slot mj-equip-slot--filled";
+        var ek = document.createElement("span");
+        ek.className = "mj-equip-slot-k";
+        ek.textContent = eLabel;
+        var enm = document.createElement("span");
+        enm.className = "mj-equip-slot-name";
+        enm.textContent = en;
+        eqSlot.appendChild(ek);
+        eqSlot.appendChild(enm);
+        eqSlot.setAttribute("title", en + "（点击查看详情）");
+        eqSlot.setAttribute("role", "button");
+        eqSlot.setAttribute("tabindex", "0");
+        eqSlot.setAttribute("aria-label", "查看装备：" + en);
+        setSlotRarityDataAttr(eqSlot, resolveEquipTraitRarity(en, eit));
+      } else {
+        eqSlot.className = "mj-equip-slot mj-equip-slot--empty";
+        var ek2 = document.createElement("span");
+        ek2.className = "mj-equip-slot-k";
+        ek2.textContent = eLabel;
+        var en2 = document.createElement("span");
+        en2.className = "mj-equip-slot-name";
+        en2.textContent = "—";
+        eqSlot.appendChild(ek2);
+        eqSlot.appendChild(en2);
+        eqSlot.setAttribute("title", EQUIP_SLOT_EMPTY_TITLE[ei] || "空位");
+      }
+      eqRow.appendChild(eqSlot);
+    }
+    eqWrap.appendChild(eqH);
+    eqWrap.appendChild(eqRow);
+    bodyEl.appendChild(eqWrap);
+
+    var bagStack = document.createElement("div");
+    bagStack.className = "mj-player-bag-stack";
+    var gfH = document.createElement("h3");
+    gfH.className = "mj-attr-section-title";
+    gfH.textContent = "功法";
+    var gfScroll = document.createElement("div");
+    gfScroll.className = "mj-bag-grid-scroll";
+    gfScroll.setAttribute("aria-label", "功法格子");
+    var gfGrid = document.createElement("div");
+    gfGrid.className = "mj-inventory-grid mj-gongfa-grid";
+    gfGrid.id = "mj-npc-detail-gongfa-grid";
+    gfGrid.setAttribute("aria-label", "NPC 功法栏");
+    for (var gi = 0; gi < GONGFA_SLOT_COUNT; gi++) {
+      var gSlot = document.createElement("div");
+      gSlot.className = "mj-inventory-slot";
+      gSlot.setAttribute("data-gongfa-slot", String(gi));
+      gSlot.setAttribute("title", "功法空位");
+      var gStack = document.createElement("div");
+      gStack.className = "mj-gongfa-slot-stack";
+      var gInner = document.createElement("span");
+      gInner.className = "mj-gongfa-slot-label";
+      gInner.setAttribute("aria-hidden", "true");
+      var gType = document.createElement("span");
+      gType.className = "mj-gongfa-slot-type";
+      gType.setAttribute("aria-hidden", "true");
+      gStack.appendChild(gInner);
+      gStack.appendChild(gType);
+      gSlot.appendChild(gStack);
+      var gs = npc.gongfaSlots[gi];
+      var glab = gs && (gs.name != null ? gs.name : gs.label) ? String(gs.name != null ? gs.name : gs.label) : "";
+      if (glab) {
+        gSlot.classList.add("mj-gongfa-slot--filled");
+        gInner.textContent = glab;
+        var cfgGf = lookupGongfaConfigDef(String(glab));
+        var tyRaw =
+          gs && gs.type != null && String(gs.type).trim() !== ""
+            ? String(gs.type).trim()
+            : cfgGf && cfgGf.type != null
+              ? String(cfgGf.type).trim()
+              : "";
+        if (tyRaw) {
+          gType.textContent = tyRaw;
+          gType.className = "mj-gongfa-slot-type";
+          if (tyRaw === "辅助") gType.classList.add("mj-gongfa-slot-type--support");
+          else if (tyRaw === "攻击") gType.classList.add("mj-gongfa-slot-type--attack");
+          else gType.classList.add("mj-gongfa-slot-type--other");
+        }
+        var gTip = String(glab);
+        if (tyRaw) gTip += "\n类型：" + tyRaw;
+        if (gs.desc) gTip += "\n" + String(gs.desc);
+        gTip += "\n（点击查看详情）";
+        gSlot.setAttribute("title", gTip);
+        gSlot.setAttribute("role", "button");
+        gSlot.setAttribute("tabindex", "0");
+        gSlot.setAttribute("aria-label", "查看功法：" + String(glab) + (tyRaw ? "，" + tyRaw : ""));
+        setSlotRarityDataAttr(gSlot, resolveGongfaTraitRarity(String(glab), gs, cfgGf));
+      } else {
+        gSlot.classList.remove("mj-gongfa-slot--filled");
+        gInner.textContent = "";
+        gType.textContent = "";
+        gType.className = "mj-gongfa-slot-type";
+        gSlot.removeAttribute("role");
+        gSlot.removeAttribute("tabindex");
+        gSlot.removeAttribute("aria-label");
+        setSlotRarityDataAttr(gSlot, null);
+      }
+      gfGrid.appendChild(gSlot);
+    }
+    gfScroll.appendChild(gfGrid);
+    bagStack.appendChild(gfH);
+    bagStack.appendChild(gfScroll);
+
+    var bagH = document.createElement("h3");
+    bagH.className = "mj-attr-section-title";
+    bagH.textContent = "储物袋";
+    var bagScroll = document.createElement("div");
+    bagScroll.className = "mj-bag-grid-scroll";
+    bagScroll.setAttribute("aria-label", "储物袋格子");
+    var bagGrid = document.createElement("div");
+    bagGrid.className = "mj-inventory-grid";
+    bagGrid.id = "mj-npc-detail-bag-grid";
+    bagGrid.setAttribute("aria-label", "NPC 储物袋");
+    for (var bi = 0; bi < INVENTORY_SLOT_COUNT; bi++) {
+      var bSlot = document.createElement("div");
+      bSlot.className = "mj-inventory-slot mj-inventory-slot--empty";
+      bSlot.setAttribute("data-slot", String(bi));
+      var bLab = document.createElement("span");
+      bLab.className = "mj-inventory-slot-label";
+      var bQty = document.createElement("span");
+      bQty.className = "mj-inventory-slot-qty";
+      bQty.setAttribute("aria-label", "数量");
+      bSlot.appendChild(bLab);
+      bSlot.appendChild(bQty);
+      var bit = npc.inventorySlots[bi];
+      if (bit && bit.name) {
+        bSlot.classList.add("mj-inventory-slot--filled");
+        bSlot.classList.remove("mj-inventory-slot--empty");
+        bLab.textContent = bit.name;
+        var bcnt = typeof bit.count === "number" && isFinite(bit.count) ? bit.count : 1;
+        bQty.textContent = String(bcnt);
+        bQty.classList.remove("hidden");
+        var bTip = bit.name;
+        if (bit.desc) bTip += "\n" + bit.desc;
+        bTip += "\n数量：" + bcnt + "（点击查看详情）";
+        bSlot.setAttribute("title", bTip);
+        bSlot.setAttribute("aria-label", bit.name + "，数量 " + bcnt);
+        bSlot.setAttribute("role", "button");
+        bSlot.setAttribute("tabindex", "0");
+        setSlotRarityDataAttr(bSlot, resolveBagItemTraitRarity(bit.name, bit));
+      } else {
+        bSlot.setAttribute("title", "空位");
+        bQty.classList.add("hidden");
+        setSlotRarityDataAttr(bSlot, null);
+      }
+      bagGrid.appendChild(bSlot);
+    }
+    bagScroll.appendChild(bagGrid);
+    bagStack.appendChild(bagH);
+    bagStack.appendChild(bagScroll);
+    bodyEl.appendChild(bagStack);
+  }
+
+  function openNpcDetailModal(npcRaw) {
+    var root = document.getElementById("mj-npc-detail-root");
+    var titleEl = document.getElementById("mj-npc-detail-title");
+    var subEl = document.getElementById("mj-npc-detail-subtitle");
+    var bodyEl = document.getElementById("mj-npc-detail-body");
+    if (!root || !titleEl || !subEl || !bodyEl) return;
+    var npc = ensureNpcDetailSlotsClone(npcRaw);
+    if (!npc) return;
+    titleEl.textContent = npc.displayName || "—";
+    var MCS = global.MjCharacterSheet;
+    subEl.textContent =
+      MCS && MCS.formatRealmLine ? "境界：" + MCS.formatRealmLine(npc.realm) : "境界：—";
+    bodyEl.textContent = "";
+    buildNpcDetailModalBody(bodyEl, npc);
+    root._mjNpcInspect = npc;
+    root.classList.remove("hidden");
+    root.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    var closeBtn = root.querySelector("[data-mj-npc-detail-close].mj-trait-modal-close");
+    if (!closeBtn) closeBtn = root.querySelector(".mj-trait-modal-close");
+    if (closeBtn) closeBtn.focus();
+  }
+
+  function closeNpcDetailModal() {
+    var root = document.getElementById("mj-npc-detail-root");
+    if (!root) return;
+    root._mjNpcInspect = null;
+    root.classList.add("hidden");
+    root.setAttribute("aria-hidden", "true");
+    mjClearBodyOverflowIfNoModal();
+  }
+
+  var _npcDetailModalUiBound = false;
+
+  function bindNpcDetailModalUi() {
+    if (_npcDetailModalUiBound) return;
+    _npcDetailModalUiBound = true;
+    var root = document.getElementById("mj-npc-detail-root");
+    if (root) {
+      root.querySelectorAll("[data-mj-npc-detail-close]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          closeNpcDetailModal();
+        });
+      });
+      root.addEventListener("click", function (e) {
+        if (root.classList.contains("hidden")) return;
+        var body = document.getElementById("mj-npc-detail-body");
+        if (!body || !body.contains(e.target)) return;
+        tryOpenNpcDetailSubInspect(e.target);
+      });
+      root.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        if (root.classList.contains("hidden")) return;
+        var body = document.getElementById("mj-npc-detail-body");
+        if (!body || !body.contains(e.target)) return;
+        if (e.key === " ") e.preventDefault();
+        tryOpenNpcDetailSubInspect(e.target);
+      });
+    }
+    document.addEventListener(
+      "keydown",
+      function (ev) {
+        if (ev.key !== "Escape") return;
+        var rMajor = document.getElementById("mj-major-breakthrough-root");
+        if (rMajor && !rMajor.classList.contains("hidden")) return;
+        var rItem = document.getElementById("mj-item-detail-root");
+        if (rItem && !rItem.classList.contains("hidden")) return;
+        var rTrait = document.getElementById("mj-trait-detail-root");
+        if (rTrait && !rTrait.classList.contains("hidden")) return;
+        var r = document.getElementById("mj-npc-detail-root");
+        if (r && !r.classList.contains("hidden")) {
+          closeNpcDetailModal();
+          ev.preventDefault();
+        }
+      },
+      true,
+    );
   }
 
   function ensureEquippedSlots(G) {
@@ -2349,6 +3109,181 @@
     ], resolveEquipTraitRarity(name, item));
   }
 
+  /** NPC 详情内：只读功法详情（无卸下等操作） */
+  function openReadOnlyGongfaItemDetail(item) {
+    if (!item || !(item.name != null ? item.name : item.label)) return;
+    var name = String(item.name != null ? item.name : item.label);
+    var cfgDef = lookupGongfaConfigDef(name);
+    var descRuntime = item.desc != null ? String(item.desc).trim() : "";
+    var descCfg = cfgDef && cfgDef.desc != null ? String(cfgDef.desc).trim() : "";
+    var desc = descRuntime || descCfg || "";
+    var tyShow =
+      item.type != null && String(item.type).trim() !== ""
+        ? String(item.type).trim()
+        : cfgDef && cfgDef.type != null
+          ? String(cfgDef.type).trim()
+          : "";
+    var sections = [];
+    if (tyShow) sections.push({ label: "类型", text: tyShow });
+    if (desc) sections.push({ label: "简介", text: desc });
+    var bonusLine = cfgDef && cfgDef.bonus ? formatZhBonusObject(cfgDef.bonus) : "";
+    if (bonusLine) sections.push({ label: "修炼加成", text: bonusLine });
+    var refGf = formatReferenceValueLine(cfgDef);
+    if (refGf) sections.push({ label: "价值", text: refGf });
+    if (!sections.length) sections.push({ label: "说明", text: "暂无详细描述。" });
+    openItemDetailModal(name, "功法", sections, [], resolveGongfaTraitRarity(name, item, cfgDef));
+  }
+
+  /** NPC 详情内：只读装备详情 */
+  function openReadOnlyEquipItemDetail(item, slotIdx) {
+    if (!item || !(item.name != null ? item.name : item.label)) return;
+    var name = String(item.name != null ? item.name : item.label);
+    var meta = lookupEquipmentMetaByItemName(name);
+    var descRuntime = item.desc != null ? String(item.desc).trim() : "";
+    var descCfg = meta && meta.desc != null ? String(meta.desc).trim() : "";
+    var desc = descRuntime || descCfg || "";
+    var tyLabel = item.equipType
+      ? formatEquipTypeLabel(item.equipType)
+      : EQUIP_SLOT_KIND_LABELS[slotIdx] || "装备";
+    var sections = [];
+    sections.push({ label: "佩戴部位", text: tyLabel });
+    if (desc) sections.push({ label: "简介", text: desc });
+    else sections.push({ label: "简介", text: "暂无详细描述。" });
+    var bonusLine = meta && meta.bonus ? formatZhBonusObject(meta.bonus) : "";
+    if (bonusLine) sections.push({ label: "属性加成", text: bonusLine });
+    var refEq = formatReferenceValueLine(meta);
+    if (refEq) sections.push({ label: "价值", text: refEq });
+    openItemDetailModal(name, "装备", sections, [], resolveEquipTraitRarity(name, item));
+  }
+
+  /**
+   * NPC 详情内：只读物品详情（无穿戴/修炼）；fcForStoneEfficiency 传 { linggen } 用于灵石修为说明。
+   */
+  function openReadOnlyBagItemDetail(it, fcForStoneEfficiency) {
+    if (!it || !it.name) return;
+    var cnt = typeof it.count === "number" ? it.count : 1;
+    var stuffMeta = lookupStuffMetaByItemName(it.name);
+    var eqMeta = lookupEquipmentMetaByItemName(it.name);
+    var gfMeta = lookupGongfaConfigDef(String(it.name).trim());
+    var descRuntime = it.desc != null ? String(it.desc).trim() : "";
+    var descCfg =
+      (stuffMeta && stuffMeta.desc != null ? String(stuffMeta.desc).trim() : "") ||
+      (eqMeta && eqMeta.desc != null ? String(eqMeta.desc).trim() : "");
+    var desc = descRuntime || descCfg || "";
+    var sections = [];
+    if (desc) sections.push({ label: "简介", text: desc });
+    else sections.push({ label: "简介", text: "暂无详细描述。" });
+    if (stuffMeta && stuffMeta.grade != null && String(stuffMeta.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(stuffMeta.grade).trim() });
+    } else if (gfMeta && gfMeta.grade != null && String(gfMeta.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(gfMeta.grade).trim() });
+    }
+    if (
+      stuffMeta &&
+      stuffMeta.type != null &&
+      String(stuffMeta.type).trim() !== "" &&
+      !eqMeta
+    ) {
+      sections.push({ label: "类型", text: String(stuffMeta.type).trim() });
+    }
+    var wearSlot = resolveWearableSlotIndexForBagItem(it);
+    if (wearSlot != null) {
+      var tyShow = it.equipType
+        ? formatEquipTypeLabel(it.equipType)
+        : eqMeta && eqMeta.type
+          ? formatEquipTypeLabel(eqMeta.type)
+          : EQUIP_SLOT_KIND_LABELS[wearSlot] || "装备";
+      sections.push({ label: "佩戴部位", text: tyShow });
+    }
+    var bonusStuff = stuffMeta && stuffMeta.bonus ? formatStuffBonusForDisplay(stuffMeta.bonus) : "";
+    var bonusEq = eqMeta && eqMeta.bonus ? formatZhBonusObject(eqMeta.bonus) : "";
+    if (bonusStuff) sections.push({ label: "效果", text: bonusStuff });
+    var pillFx =
+      stuffMeta && stuffMeta.effects ? formatPillEffectsForUi(stuffMeta.effects) : "";
+    if (pillFx) sections.push({ label: "药效", text: pillFx });
+    if (bonusEq) sections.push({ label: "属性加成", text: bonusEq });
+    if (gfMeta) {
+      if (gfMeta.type != null && String(gfMeta.type).trim() !== "") {
+        sections.push({ label: "功法类型", text: String(gfMeta.type).trim() });
+      }
+      var gfBonusLine = gfMeta.bonus ? formatZhBonusObject(gfMeta.bonus) : "";
+      if (gfBonusLine) sections.push({ label: "修炼加成", text: gfBonusLine });
+    }
+    var refNum = pickDescribeValueFromMetas(stuffMeta, eqMeta, gfMeta);
+    var refBag = formatReferenceValueFromNumber(refNum);
+    if (refBag) sections.push({ label: "价值", text: refBag });
+    sections.push({ label: "持有数量", text: String(cnt) });
+
+    var spiritStonePerRaw = getSpiritStoneRawPerPiece(it.name, fcForStoneEfficiency);
+    if (spiritStonePerRaw > 0) {
+      sections.push({
+        label: "修炼",
+        text:
+          "每个灵石可提供约 " +
+          formatSpiritStonePointsForUi(spiritStonePerRaw) +
+          " 点修为（按该角色灵根折算，仅作说明）。",
+      });
+    }
+
+    openItemDetailModal(
+      String(it.name),
+      "物品",
+      sections,
+      [],
+      resolveBagItemTraitRarity(it.name, it),
+      null,
+    );
+  }
+
+  function tryOpenNpcDetailSubInspect(fromEl) {
+    var root = document.getElementById("mj-npc-detail-root");
+    var npc = root && root._mjNpcInspect;
+    if (!npc || !fromEl) return;
+    var body = document.getElementById("mj-npc-detail-body");
+    if (!body || !body.contains(fromEl)) return;
+
+    var tSlot = fromEl.closest(".mj-trait-slot--filled");
+    if (tSlot && body.contains(tSlot) && tSlot.hasAttribute("data-trait-slot")) {
+      var tIdx = parseInt(tSlot.getAttribute("data-trait-slot"), 10);
+      if (!isNaN(tIdx) && npc.traits && npc.traits[tIdx] && npc.traits[tIdx].name) {
+        openTraitDetailModal(npc.traits[tIdx]);
+      }
+      return;
+    }
+
+    var eqSlot = fromEl.closest(".mj-equip-slot--filled");
+    if (eqSlot && body.contains(eqSlot) && eqSlot.hasAttribute("data-equip-slot")) {
+      var eqIdx = parseInt(eqSlot.getAttribute("data-equip-slot"), 10);
+      var eit = npc.equippedSlots && npc.equippedSlots[eqIdx];
+      if (eit && (eit.name != null || eit.label)) {
+        openReadOnlyEquipItemDetail(eit, eqIdx);
+      }
+      return;
+    }
+
+    var gfSlot = fromEl.closest(".mj-inventory-slot.mj-gongfa-slot--filled");
+    if (gfSlot && body.contains(gfSlot) && gfSlot.hasAttribute("data-gongfa-slot")) {
+      var gi = parseInt(gfSlot.getAttribute("data-gongfa-slot"), 10);
+      var git = npc.gongfaSlots && npc.gongfaSlots[gi];
+      if (git) openReadOnlyGongfaItemDetail(git);
+      return;
+    }
+
+    var bagSlot = fromEl.closest(".mj-inventory-slot.mj-inventory-slot--filled");
+    if (bagSlot && body.contains(bagSlot) && bagSlot.hasAttribute("data-slot")) {
+      if (bagSlot.hasAttribute("data-gongfa-slot")) return;
+      var bi = parseInt(bagSlot.getAttribute("data-slot"), 10);
+      var bit = npc.inventorySlots && npc.inventorySlots[bi];
+      if (bit && bit.name) {
+        var fcLike =
+          npc.linggen != null && String(npc.linggen).trim() !== ""
+            ? { linggen: String(npc.linggen) }
+            : null;
+        openReadOnlyBagItemDetail(bit, fcLike);
+      }
+    }
+  }
+
   var _gongfaBagDetailUiBound = false;
 
   function bindGongfaBagDetailUi() {
@@ -2650,9 +3585,15 @@
     if (G) G.cultivationProgress = cultCtx.pct;
     var cultLabel =
       cultCtx.req != null && cultCtx.req > 0
-        ? Math.round(cultCtx.cur) + " / " + Math.round(cultCtx.req)
+        ? Math.round(cultCtx.displayCur) + " / " + Math.round(cultCtx.req)
         : Math.round(cultCtx.cur) + " / —";
     setBarFill(cultFill, cultBar, cultCtx.pct, cultTxt, cultLabel);
+    if (cultBar && cultCtx.req != null && cultCtx.req > 0 && cultCtx.cur > cultCtx.req) {
+      cultBar.setAttribute(
+        "title",
+        "本阶段修为已足，当前累计 " + Math.round(cultCtx.cur) + "（可突破后计入下阶段）",
+      );
+    } else if (cultBar) cultBar.removeAttribute("title");
 
     var brBtn = document.getElementById("mj-major-breakthrough-btn");
     if (brBtn) {
@@ -2757,12 +3698,14 @@
     renderEquipSlots(G);
     renderGongfaSlots(G);
     renderBagSlots(G);
+    renderNearbyNpcsPanel(G);
   }
 
   function init() {
     bindTraitDetailModalUi();
     bindGongfaBagDetailUi();
     bindMajorBreakthroughUi();
+    bindNpcDetailModalUi();
     var fc = restoreBootstrap();
     var G = global.MortalJourneyGame;
     if (!G) {
@@ -2770,6 +3713,29 @@
       global.MortalJourneyGame = G;
     }
     ensureGameRuntimeDefaults(G);
+    var shouldSeedDemoNpc = true;
+    try {
+      var rawSnap = sessionStorage.getItem(STORAGE_KEY);
+      if (rawSnap) {
+        var snap = JSON.parse(rawSnap);
+        if (
+          snap &&
+          Object.prototype.hasOwnProperty.call(snap, "nearbyNpcs") &&
+          Array.isArray(snap.nearbyNpcs)
+        ) {
+          shouldSeedDemoNpc = false;
+        }
+      }
+    } catch (seedErr) {
+      /* 忽略 */
+    }
+    ensureNearbyNpcsArray(G);
+    normalizeNearbyNpcListInPlace(G);
+    if (shouldSeedDemoNpc && (!G.nearbyNpcs || !G.nearbyNpcs.length)) {
+      G.nearbyNpcs = [buildDemoNearbyNpcSheet()];
+      normalizeNearbyNpcListInPlace(G);
+      persistBootstrapSnapshot();
+    }
     var brInit = applyRealmBreakthroughs(G);
     logBreakthroughMessages(brInit.messages);
     if (brInit.changed) {
@@ -2815,6 +3781,54 @@
       var fc = global.MortalJourneyGame && global.MortalJourneyGame.fateChoice;
       ensureGameRuntimeDefaults(global.MortalJourneyGame);
       renderLeftPanel(fc, global.MortalJourneyGame);
+    },
+    /**
+     * 周围人物列表（与 MjCharacterSheet 同构）；写入后持久化并刷新右栏
+     * @param {Object[]} list
+     * @returns {boolean}
+     */
+    setNearbyNpcs: function (list) {
+      var G = global.MortalJourneyGame;
+      if (!G) return false;
+      if (!Array.isArray(list)) return false;
+      ensureGameRuntimeDefaults(G);
+      var MCS = global.MjCharacterSheet;
+      var PBR = global.PlayerBaseRuntime;
+      var out = [];
+      if (MCS && typeof MCS.normalize === "function") {
+        for (var si = 0; si < list.length; si++) {
+          var nn = MCS.normalize(list[si]);
+          if (PBR && typeof PBR.applyComputedPlayerBaseToCharacterSheet === "function") {
+            PBR.applyComputedPlayerBaseToCharacterSheet(nn);
+          }
+          syncNpcShouyuanFromRealmState(nn);
+          out.push(nn);
+        }
+      } else {
+        out = list.slice();
+      }
+      G.nearbyNpcs = out;
+      persistBootstrapSnapshot();
+      renderNearbyNpcsPanel(G);
+      return true;
+    },
+    /** @returns {Object[]} 深拷贝 */
+    getNearbyNpcs: function () {
+      var G = global.MortalJourneyGame;
+      if (!G) return [];
+      ensureGameRuntimeDefaults(G);
+      try {
+        return JSON.parse(JSON.stringify(G.nearbyNpcs || []));
+      } catch (e) {
+        return [];
+      }
+    },
+    /** 仅重绘右栏「周围人物」（不改数据） */
+    refreshNearbyNpcsPanel: function () {
+      var G = global.MortalJourneyGame;
+      if (!G) return;
+      ensureGameRuntimeDefaults(G);
+      renderNearbyNpcsPanel(G);
     },
     /**
      * 右栏顶条「当前地点」；开局默认来自命运抉择 birthLocation，剧情可改写。

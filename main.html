@@ -203,17 +203,26 @@
           <div class="mj-world-time" id="mj-current-location">—</div>
         </div>
         <div class="mj-pane-header">周围人物</div>
-        <div class="mj-pane-body" id="mj-npc-panel">
-          <div class="mj-npc-card">
-            <h3>占位 · 路人甲</h3>
-            <p>身份、境界、关系等摘要将放在此处。</p>
-          </div>
-          <div class="mj-npc-card">
-            <h3>占位 · 商贩</h3>
-            <p>列表与详情交互后续实现。</p>
-          </div>
+        <div class="mj-pane-body mj-npc-panel-body" id="mj-npc-panel">
+          <div class="mj-npc-list" id="mj-npc-list" aria-label="周围人物列表"></div>
         </div>
       </aside>
+    </div>
+
+    <!-- 顺序：NPC 在下层，天赋/物品在上层，便于在 NPC 弹窗内再点开详情 -->
+    <div id="mj-npc-detail-root" class="mj-trait-modal-root hidden" aria-hidden="true">
+      <div class="mj-trait-modal-backdrop" data-mj-npc-detail-close tabindex="-1"></div>
+      <div
+        class="mj-trait-modal mj-npc-detail-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mj-npc-detail-title"
+      >
+        <button type="button" class="mj-trait-modal-close" data-mj-npc-detail-close aria-label="关闭">×</button>
+        <h4 id="mj-npc-detail-title" class="mj-trait-modal-title"></h4>
+        <div id="mj-npc-detail-subtitle" class="mj-trait-modal-rarity"></div>
+        <div id="mj-npc-detail-body" class="mj-trait-modal-body mj-npc-detail-body"></div>
+      </div>
     </div>
 
     <div id="mj-trait-detail-root" class="mj-trait-modal-root hidden" aria-hidden="true">
@@ -281,6 +290,7 @@
     <script src="./js/data/mjCreationConfig.js"></script>
     <script src="./js/data/realm_state.js"></script>
     <script src="./js/game/player_base_runtime.js"></script>
+    <script src="./js/game/mj_character_sheet.js"></script>
     <script src="./js/ai_server/story_generate.js"></script>
     <script src="./silly_tarven/bridge-config.js"></script>
     <script src="./silly_tarven/bridge.js"></script>
