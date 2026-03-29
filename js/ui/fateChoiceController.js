@@ -17,8 +17,6 @@
     selectedBirth: null,
     customBirth: null,
     selectedGender: null,
-    selectedRace: null,
-    customRace: null,
     attributes: {},
     selectedTraits: [],
     currentTraitOptions: [],
@@ -81,8 +79,6 @@
     state.selectedBirth = null;
     state.customBirth = null;
     state.selectedGender = null;
-    state.selectedRace = null;
-    state.customRace = null;
     state.attributes = {};
     state.selectedTraits = [];
     state.currentTraitOptions = [];
@@ -205,7 +201,7 @@
   }
 
   /**
-   * 与主界面一致：境界表 + 灵根 + 难度/出身/种族/天赋/出身 stuff + 当前出身对应的功法栏与佩戴栏快照。
+   * 与主界面一致：境界表 + 灵根 + 难度/出身/天赋/出身 stuff + 当前出身对应的功法栏与佩戴栏快照。
    */
   function recomputePlayerBase() {
     var RS = global.RealmState;
@@ -228,7 +224,6 @@
     var fakeFc = {
       difficulty: state.selectedDifficulty,
       birth: state.selectedBirth,
-      race: state.selectedRace,
       traits: state.selectedTraits,
       linggen: state.selectedLinggen,
       realm: { major: START_REALM_MAJOR, minor: START_REALM_STAGE },
@@ -317,7 +312,7 @@
     return state.selectedDifficulty === "凡人";
   }
 
-  /** 凡人模式：锁定出身/种族并清空天赋；灵根每次进入该模式时随机测定（不可手动再刷） */
+  /** 凡人模式：锁定出身并清空天赋；灵根每次进入该模式时随机测定（不可手动再刷） */
   function applyMortalModeLocks() {
     state.selectedBirth = "凡人";
     state.customBirth = null;
@@ -325,8 +320,6 @@
     var fm = c && c.BIRTHS && c.BIRTHS.凡人;
     var mortalLoc = fm ? resolveBirthLocationNameFromDef(fm) : "";
     if (mortalLoc) state.birthLocation = mortalLoc;
-    state.selectedRace = "人族";
-    state.customRace = null;
     state.currentTraitOptions = [];
     state.selectedTraits = [];
     applyRandomLinggenRollToState();
@@ -577,7 +570,6 @@
       !!state.selectedDifficulty &&
       !!state.selectedBirth &&
       !!state.selectedGender &&
-      !!state.selectedRace &&
       !!state.selectedLinggen &&
       !!state.birthLocation;
 
@@ -605,7 +597,6 @@
       .join("");
 
     var birthKeys = mortal ? ["凡人"] : Object.keys(c.BIRTHS || {});
-    var raceKeys = mortal ? ["人族"] : Object.keys(c.RACES || {});
 
     var lockedTraitCount = (state.currentTraitOptions || []).filter(function (t) {
       return t && t.locked;
@@ -708,46 +699,6 @@
             '<div class="creation-card ' +
             (selected ? "selected" : "") +
             '" data-birth="' +
-            name +
-            '">' +
-            "<h4><span>" +
-            name +
-            "</span></h4>" +
-            "<p>" +
-            (data.desc || "") +
-            "</p>" +
-            "</div>"
-          );
-        })
-        .join("") +
-      "</div>" +
-      '<div class="creation-section-title"><i class="fas fa-dna"></i> 选择种族</div>' +
-      '<div class="creation-grid">' +
-      raceKeys
-        .map(function (name) {
-          var data = c.RACES[name];
-          if (!data) return "";
-          var selected = state.selectedRace === name;
-          if (name === "自定义") {
-            return (
-              '<div class="creation-card ' +
-              (selected ? "selected" : "") +
-              '" data-race="' +
-              name +
-              '">' +
-              "<h4><span>自定义</span></h4>" +
-              "<p>" +
-              (state.selectedRace === "自定义" && state.customRace
-                ? "已选: " + (state.customRace.tag || state.customRace.name || "自定义")
-                : "点击填写自定义种族") +
-              "</p>" +
-              "</div>"
-            );
-          }
-          return (
-            '<div class="creation-card ' +
-            (selected ? "selected" : "") +
-            '" data-race="' +
             name +
             '">' +
             "<h4><span>" +
@@ -929,28 +880,6 @@
       });
     });
 
-    contentEl.querySelectorAll("[data-race]").forEach(function (card) {
-      card.addEventListener("click", function () {
-        var raceName = card.getAttribute("data-race");
-        if (raceName === "自定义") {
-          var tag = window.prompt("自定义种族标识（必填，占位）:", "");
-          if (tag === null) return;
-          tag = String(tag).trim();
-          if (!tag) {
-            window.alert("未填写标识。");
-            return;
-          }
-          state.selectedRace = "自定义";
-          state.customRace = { tag: tag, name: tag };
-          renderPage();
-          return;
-        }
-        state.selectedRace = raceName;
-        state.customRace = null;
-        renderPage();
-      });
-    });
-
     var randomBtn = getEl("randomize-linggen-btn");
     if (randomBtn) randomBtn.addEventListener("click", handleRandomizeLinggen);
 
@@ -1035,8 +964,6 @@
       gender: state.selectedGender,
       birth: state.selectedBirth,
       customBirth: state.customBirth,
-      race: state.selectedRace,
-      customRace: state.customRace,
       traits: state.selectedTraits,
       linggen: state.selectedLinggen,
       worldFactors: state.selectedWorldFactors,

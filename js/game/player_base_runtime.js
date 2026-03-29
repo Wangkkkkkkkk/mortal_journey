@@ -1,5 +1,5 @@
 /**
- * 角色面板八维 + 魅力/气运：由境界表、难度/出身/种族/天赋、出身 stuff、功法栏、佩戴栏
+ * 角色面板八维 + 魅力/气运：由境界表、难度/出身/天赋、出身 stuff、功法栏、佩戴栏
  * 等平面加成先合并，再按灵根五行对大境界倍率做乘法（魅力/气运不参与灵根乘）。
  * NPC / MjCharacterSheet：用 computePlayerBaseFromCharacterSheet 从 realm、linggen、traits、槽位构造与主角相同的 fc+overrides，再走同一套 computePlayerBase。
  * 后续若增加「百分比」类加成，建议先在平面阶段以加减形式累计，最后与本文件的灵根乘法一步统一处理。
@@ -109,9 +109,6 @@
     if (fc.birth && c.BIRTHS && c.BIRTHS[fc.birth] && c.BIRTHS[fc.birth].bonus) {
       list.push(c.BIRTHS[fc.birth].bonus);
     }
-    if (fc.race && c.RACES && c.RACES[fc.race] && c.RACES[fc.race].bonus) {
-      list.push(c.RACES[fc.race].bonus);
-    }
     var traits = fc.traits || [];
     for (var t = 0; t < traits.length; t++) {
       var tr = traits[t];
@@ -217,8 +214,8 @@
   }
 
   /**
-   * 与主角同一公式：境界表底数 +（可选）难度/出身/种族/天赋/birth stuff + 功法/装备槽位平面加成 + 灵根倍率。
-   * @param {Object} sheet 与 MjCharacterSheet 同构：realm、linggen、traits、gongfaSlots、equippedSlots；可选 difficulty、birth、race（与开局 fc 一致时参与静态加成）
+   * 与主角同一公式：境界表底数 +（可选）难度/出身/天赋/birth stuff + 功法/装备槽位平面加成 + 灵根倍率。
+   * @param {Object} sheet 与 MjCharacterSheet 同构：realm、linggen、traits、gongfaSlots、equippedSlots；可选 difficulty、birth（与开局 fc 一致时参与静态加成）
    * @returns {Object|null}
    */
   function computePlayerBaseFromCharacterSheet(sheet) {
@@ -241,9 +238,6 @@
     }
     if (sheet.birth != null && String(sheet.birth).trim() !== "") {
       fc.birth = String(sheet.birth).trim();
-    }
-    if (sheet.race != null && String(sheet.race).trim() !== "") {
-      fc.race = String(sheet.race).trim();
     }
     var overrides = {
       gongfaSlots: Array.isArray(sheet.gongfaSlots) ? sheet.gongfaSlots : [],

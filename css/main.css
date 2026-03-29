@@ -1492,6 +1492,38 @@ body.mj-main-body {
   color: #e57373;
 }
 
+/* 剧情生成 / 状态更新：各保留最新一条完成记录 */
+.mj-ai-process-log-wrap {
+  flex-shrink: 0;
+  border-top: 1px solid rgba(140, 120, 83, 0.15);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.mj-ai-process-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 16px 8px;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: rgba(232, 215, 170, 0.88);
+  font-variant-numeric: tabular-nums;
+}
+
+.mj-ai-process-log__line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mj-ai-process-log__line--done {
+  color: #a5d6a7;
+}
+
+.mj-ai-process-log__line--error {
+  color: #ef9a9a;
+}
+
 .mj-chat-composer {
   flex-shrink: 0;
   display: flex;

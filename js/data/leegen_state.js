@@ -98,7 +98,7 @@
    * 将灵根倍率应用到「已合并平面加成后」的属性（不修改入参，返回新对象）。
    * 多种灵根各乘各负责属性；同一属性被多条规则命中时会多次相乘（当前五行分工下通常不会重叠）。
    * 魅力/气运若存在于入参中会原样拷贝，本函数不修改这两项。
-   * @param {Object} baseStats 已含境界底数 + 难度/出身/种族/天赋/stuff/功法/装备等加成的 hp, mp, …
+   * @param {Object} baseStats 已含境界底数 + 难度/出身/天赋/stuff/功法/装备等加成的 hp, mp, …
    * @param {string} realm 大境界
    * @param {string} linggenText 灵根完整描述
    * @returns {Object}

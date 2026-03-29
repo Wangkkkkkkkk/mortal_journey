@@ -1,5 +1,5 @@
 /**
- * 状态 / 变量向 AI：参考 stage_prompt 的单条 user 载荷形式，先支持「按 stuff_describe 体系向主角储物袋添加物品」。
+ * 状态 / 变量向 AI：储物袋 add/remove，以及世界时间、当前地点写回（见 mj_world_state）。
  * 依赖：MjCreationConfig、全局描述表 MjDescribe*、MortalJourneyGame（应用时）。
  */
 (function (global) {
@@ -12,6 +12,76 @@
   var EQUIP_SLOT_LABELS = ["武器", "法器", "防具"];
   var OPS_TAG_OPEN = "<mj_inventory_ops>";
   var OPS_TAG_CLOSE = "</mj_inventory_ops>";
+  var WORLD_STATE_TAG_OPEN = "<mj_world_state>";
+  var WORLD_STATE_TAG_CLOSE = "</mj_world_state>";
+
+  /** 与 mainScreen / UI 一致：YYYY年 MM月 DD日 HH:MM（月日时辰分可 1～2 位，应用时会规范为零补位） */
+  var WORLD_TIME_STRING_RE = /^\s*(\d+)年\s*(\d{1,2})月\s*(\d{1,2})日\s*(\d{1,2}):(\d{2})\s*$/;
+
+  function pad2(n) {
+    var x = Math.floor(Number(n));
+    if (!isFinite(x)) return "00";
+    var s = String(Math.abs(x));
+    return s.length < 2 ? "0" + s : s;
+  }
+
+  function padYearMin4(y) {
+    var x = Math.floor(Number(y));
+    if (!isFinite(x) || x < 0) return "0000";
+    var s = String(x);
+    while (s.length < 4) s = "0" + s;
+    return s;
+  }
+
+  /**
+   * @param {string} s
+   * @returns {{ y:number,m:number,d:number,h:number,min:number }|null}
+   */
+  function parseWorldTimeComparable(s) {
+    var t = String(s || "").trim();
+    var m = WORLD_TIME_STRING_RE.exec(t);
+    if (!m) return null;
+    var y = parseInt(m[1], 10);
+    var mo = parseInt(m[2], 10);
+    var d = parseInt(m[3], 10);
+    var h = parseInt(m[4], 10);
+    var mi = parseInt(m[5], 10);
+    if (!isFinite(y) || !isFinite(mo) || !isFinite(d) || !isFinite(h) || !isFinite(mi)) return null;
+    if (mo < 1 || mo > 12 || d < 1 || d > 31 || h < 0 || h > 23 || mi < 0 || mi > 59) return null;
+    return { y: y, m: mo, d: d, h: h, min: mi };
+  }
+
+  function formatWorldTimeComparable(c) {
+    if (!c) return "";
+    return (
+      padYearMin4(c.y) + "年 " + pad2(c.m) + "月 " + pad2(c.d) + "日 " + pad2(c.h) + ":" + pad2(c.min)
+    );
+  }
+
+  /**
+   * @param {{y:number,m:number,d:number,h:number,min:number}|null} a
+   * @param {{y:number,m:number,d:number,h:number,min:number}|null} b
+   * @returns {number} -1 a<b；0 相等；1 a>b
+   */
+  function compareWorldTimeComparable(a, b) {
+    if (!a || !b) return 0;
+    if (a.y !== b.y) return a.y < b.y ? -1 : 1;
+    if (a.m !== b.m) return a.m < b.m ? -1 : 1;
+    if (a.d !== b.d) return a.d < b.d ? -1 : 1;
+    if (a.h !== b.h) return a.h < b.h ? -1 : 1;
+    if (a.min !== b.min) return a.min < b.min ? -1 : 1;
+    return 0;
+  }
+
+  /**
+   * 运行时世界时间与地点（供状态 AI 写回对照）。
+   */
+  function buildWorldSnapshotJson(G) {
+    var g = G || global.MortalJourneyGame || {};
+    var wt = g.worldTimeString != null ? String(g.worldTimeString).trim() : "";
+    var loc = g.currentLocation != null ? String(g.currentLocation).trim() : "";
+    return JSON.stringify({ worldTimeString: wt, currentLocation: loc });
+  }
 
   function ensureInventoryShape(G) {
     if (!G) return;
@@ -421,46 +491,77 @@
   }
 
   /**
+   * 可引用物品表中「下品灵石」单颗在灵石等价刻度轴上的 value（与杂物/装备 value 同轴）。
+   * 用于提示模型：合计刻度 ÷ 此数 ≈ 应发下品灵石颗数，避免把刻度直接当颗数。
+   */
+  function lowerSpiritStoneValueUnit() {
+    var s = global.MjDescribeSpiritStones && global.MjDescribeSpiritStones["下品灵石"];
+    if (s && typeof s.value === "number" && isFinite(s.value) && s.value > 0) {
+      return Math.max(1, Math.floor(s.value));
+    }
+    return 10;
+  }
+
+  /**
    * 单独 system 消息：与 user 里的规则双保险，避免模型只写说明不写标签。
    */
   var DEFAULT_STATE_SYSTEM_PROMPT =
-    "你是修仙游戏的「储物袋状态」执行器，只做一件事：根据剧情判断主角储物袋内物品与堆叠数量应如何变化，并输出机器可解析的 JSON 数组（可增加、可减少）。\n" +
+    "你是修仙游戏的状态执行器：根据剧情同步①主角储物袋堆叠（add/remove）②世界时间与当前地点。输出机器可解析的两段标签，禁止用 Markdown 代码围栏包裹标签。\n" +
     "【铁律】\n" +
     "1. 回复正文可以先用一两句中文说明你的判断（可选）。\n" +
-    "2. 全文【必须】包含一对闭合标签（标签名与下列完全一致，区分大小写）：\n" +
-    "   开始行：" +
+    "2. 全文【必须】包含两对闭合标签（名称区分大小写）：\n" +
+    "   第一对储物袋：" +
     OPS_TAG_OPEN +
-    "\n   结束行：" +
+    " … " +
     OPS_TAG_CLOSE +
-    "\n" +
-    "3. 标签内【只有】JSON 数组，禁止 Markdown 代码围栏（不要用 ``` 包裹标签）。\n" +
-    "4. 无变更时标签内写空数组：" +
+    "，内为 JSON 数组（无储物变更时写 []）。\n" +
+    "   第二对世界状态：" +
+    WORLD_STATE_TAG_OPEN +
+    " … " +
+    WORLD_STATE_TAG_CLOSE +
+    "，内为 JSON 对象，须含键 worldTimeString、currentLocation（字符串）。\n" +
+    "3. " +
     OPS_TAG_OPEN +
-    "[]" +
-    OPS_TAG_CLOSE +
-    "\n" +
-    "5. 增加：剧情若明确「获得××× N」「奖励×× N 份」「买入到手」等，用 op:add，name 用表中已有名称（如 下品灵石），count 为新增数量；程序会自动与储物袋同名堆叠合并。\n" +
-    "6. 减少：剧情若明确支付灵石、消费堆叠物、遗失、上缴、赠出、被没收等导致袋内数量减少，必须用 op:remove，name 与快照中一致（如 下品灵石），count 为扣减件数。灵石收支由你负责：买了东西花了灵石就要 remove 灵石；卖了或领到灵石就要 add 灵石。禁止在说明文字里写「灵石扣除不在此范围」——凡影响袋内堆叠数量的，都须写进标签内数组。\n" +
-    "7. op:add 时：表外新物必须对齐「可引用物品表」字段：必填 desc、grade、value；非装备带 type；装备带 type 或 equipType（武器|法器|防具）与 bonus；丹药带 type:\"丹药\" 并尽量带 effects。op:remove 只需 name 与 count，不要求精简字段。\n" +
-    "8. 【禁止重复入库】下方「主角当前佩戴」「主角功法栏」中已出现的物品/功法，视为已在身或已修习。剧情里只是「使用」「驾驭」「运转」它们不算新获得，【禁止】再 op:add 进储物袋；仅当剧情明确新发放、拾取、购买且应进背包时才 add。储物袋与佩戴栏、功法栏是三个独立数据区。";
+    " 内【只有】JSON 数组。\n" +
+    "4. " +
+    WORLD_STATE_TAG_OPEN +
+    " 内【只有】JSON 对象；worldTimeString 格式须为「0001年 01月 01日 08:00」（四位年、月日时分可一位或两位，冒号分隔时分）；【不得早于】user 快照中的世界时间（禁止倒流）；剧情未推进时间则填与快照完全相同。\n" +
+    "5. currentLocation 为主角此刻所在地短名（与界面一致）；未移动则与快照相同。\n" +
+    "6. 增加：剧情若明确「获得××× N」「奖励×× N 份」「买入到手」等，用 op:add，name 用表中已有名称（如 下品灵石），count 为新增数量；程序会自动与储物袋同名堆叠合并。\n" +
+    "7. 减少：剧情若明确支付灵石、消费堆叠物、遗失、上缴、赠出、被没收等导致袋内数量减少，必须用 op:remove，name 与快照中一致（如 下品灵石），count 为扣减件数。灵石收支由你负责：买了东西花了灵石就要 remove 灵石；卖了或领到灵石就要 add 灵石。禁止在说明文字里写「灵石扣除不在此范围」——凡影响袋内堆叠数量的，都须写进第一对标签的数组。\n" +
+    "8. op:add 时：表外新物必须对齐「可引用物品表」字段：必填 desc、grade、value；非装备带 type；装备带 type 或 equipType（武器|法器|防具）与 bonus；丹药带 type:\"丹药\" 并尽量带 effects。op:remove 只需 name 与 count，不要求精简字段。\n" +
+    "9. 【禁止重复入库】下方「主角当前佩戴」「主角功法栏」中已出现的物品/功法，视为已在身或已修习。剧情里只是「使用」「驾驭」「运转」它们不算新获得，【禁止】再 op:add 进储物袋；仅当剧情明确新发放、拾取、购买且应进背包时才 add。储物袋与佩戴栏、功法栏是三个独立数据区。\n" +
+    "10. 【价值与下品灵石】见 user 中「折算下品灵石」说明（单颗下品灵石刻度以可引用物品表为准）。合计的是刻度，不是灵石块数；禁止把合计刻度直接写进 add 下品灵石的 count。";
 
   var DEFAULT_OUTPUT_RULES =
     "【输出要求 · 机器解析】\n" +
-    "■ 无论是否有物品变更，【必须】输出下面这一对标签，且标签内为合法 JSON 数组（不要用 ```json 代码块代替标签）。\n" +
-    "■ 示例（仅增加）：\n" +
+    "■ 【必须】输出两对标签：①储物袋 JSON 数组 ②世界状态 JSON 对象；不要用 ```json 代码块代替标签。\n" +
+    "■ 完整示例（储物袋增加 + 时间推进一格 + 地点不变）：\n" +
     OPS_TAG_OPEN +
     '[{"op":"add","name":"下品灵石","count":3}]' +
     OPS_TAG_CLOSE +
     "\n" +
-    "■ 示例（买装备花灵石：先扣灵石再加新物，顺序可任意）：\n" +
+    WORLD_STATE_TAG_OPEN +
+    '{"worldTimeString":"0001年 01月 01日 09:00","currentLocation":"七玄门"}' +
+    WORLD_STATE_TAG_CLOSE +
+    "\n" +
+    "■ 示例（买装备花灵石；世界状态须同时给出，时间不得早于快照）：\n" +
     OPS_TAG_OPEN +
     '[{"op":"remove","name":"下品灵石","count":11},{"op":"add","name":"铁剑","count":1,"desc":"……","grade":"下品","value":20,"type":"武器","bonus":{"物攻":5}}]' +
     OPS_TAG_CLOSE +
     "\n" +
-    "■ 示例（无变更）：\n" +
+    WORLD_STATE_TAG_OPEN +
+    '{"worldTimeString":"0001年 01月 01日 10:30","currentLocation":"坊市"}' +
+    WORLD_STATE_TAG_CLOSE +
+    "\n" +
+    "■ 示例（储物袋无变更，但仍须输出世界状态；未移动且未过时辰则时间与地点与快照一致）：\n" +
     OPS_TAG_OPEN +
     "[]" +
     OPS_TAG_CLOSE +
+    "\n" +
+    WORLD_STATE_TAG_OPEN +
+    '{"worldTimeString":"0001年 01月 01日 08:00","currentLocation":"七玄门"}' +
+    WORLD_STATE_TAG_CLOSE +
     "\n" +
     "■ 数组元素：op 为 \"add\" 或 \"remove\"；name 必填；count 为正整数（add 为增加数量，remove 为扣减数量），默认 1。\n" +
     "■ 表中不存在的物品：必须 desc、grade、value；非装备加 type（如 丹药）；装备加 type 或 equipType（武器|法器|防具）与 bonus；丹药建议加 effects（同表内丹药 JSON 结构）。\n" +
@@ -485,6 +586,8 @@
     var parts = [];
     parts.push("你");
     parts.push("");
+    parts.push("### 世界时间与当前地点（本回合必须在 " + WORLD_STATE_TAG_OPEN + " 中写回；世界时间只可不变或变晚，禁止早于本条 JSON）");
+    parts.push(buildWorldSnapshotJson(G));
     parts.push(
       "### 主角当前佩戴（3 格，顺序：武器、法器、防具；与储物袋分立，已穿在身上的不要因剧情「使用」而再 add 入袋）",
     );
@@ -505,6 +608,16 @@
     }
     parts.push("### 变量操作（储物袋）");
     parts.push(DEFAULT_OUTPUT_RULES);
+    var lsv = lowerSpiritStoneValueUnit();
+    parts.push(
+      "■ 【折算下品灵石】各物 value 为「灵石等价刻度」，与同表「下品灵石」的 value 同一数轴，不是下品灵石的颗数。单颗下品灵石在表中的刻度为 " +
+        lsv +
+        "。剧情按战利品、收购等价折算发放下品灵石时：add 下品灵石的 count = 对 (战利品等合计刻度 ÷ " +
+        lsv +
+        ") 四舍五入后的整数；禁止把「合计刻度」直接当作 count。例：刻度合计 202、基数 " +
+        lsv +
+        " → 应收约 20 颗（四舍五入），不可 add 202。若正文明确写了「N 块下品灵石」则以 N 为准。",
+    );
     return parts.join("\n");
   }
 
@@ -520,7 +633,19 @@
     var o = opts || {};
     var messages = [];
     var custom = o.systemPrompt != null && String(o.systemPrompt).trim() !== "" ? String(o.systemPrompt).trim() : "";
+    var lsv = lowerSpiritStoneValueUnit();
     var sys = custom ? custom + "\n\n---\n\n" + DEFAULT_STATE_SYSTEM_PROMPT : DEFAULT_STATE_SYSTEM_PROMPT;
+    sys +=
+      "\n【铁律 · 续】折算下品灵石：单颗下品灵石刻度为 " +
+      lsv +
+      "（与 items 表一致）。战利品等合计刻度 ÷ " +
+      lsv +
+      " 四舍五入 = 应 add 下品灵石 count；禁止刻度合计当颗数（例 202 刻度 → 约 20 颗，非 202）。" +
+      "\n【铁律 · 续】世界时间：须输出 " +
+      WORLD_STATE_TAG_OPEN +
+      ' {"worldTimeString":"…","currentLocation":"…"} ' +
+      WORLD_STATE_TAG_CLOSE +
+      "；worldTimeString 不得早于 user 快照（程序会拒绝倒流）。";
     messages.push({ role: "system", content: sys });
     messages.push({ role: "user", content: buildInventoryStateUserContent(o) });
     return messages;
@@ -629,6 +754,145 @@
   }
 
   /**
+   * @param {string} text
+   * @returns {{ ok: boolean, patch: Object|null, error?: string, parseVia?: string }}
+   */
+  function parseWorldStateFromText(text) {
+    var raw = String(text || "");
+    var tagRe = /<mj_world_state\s*>\s*([\s\S]*?)\s*<\/mj_world_state\s*>/i;
+    var tm = tagRe.exec(raw);
+    if (!tm) {
+      return {
+        ok: false,
+        patch: null,
+        error: "未找到 " + WORLD_STATE_TAG_OPEN + " … " + WORLD_STATE_TAG_CLOSE,
+        parseVia: null,
+      };
+    }
+    var inner = stripJsonFence(tm[1].trim());
+    try {
+      var parsed = JSON.parse(inner);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { ok: false, patch: null, error: "mj_world_state 内须为 JSON 对象", parseVia: "tag" };
+      }
+      return { ok: true, patch: parsed, parseVia: "tag" };
+    } catch (e) {
+      return {
+        ok: false,
+        patch: null,
+        error: "mj_world_state JSON：" + (e && e.message ? String(e.message) : "解析失败"),
+        parseVia: "tag",
+      };
+    }
+  }
+
+  /**
+   * 仅使用 worldTimeString、currentLocation；写回时校验世界时间单调。
+   * @param {Object} G
+   * @param {Object} patch
+   * @returns {{ appliedWorldTime: boolean, appliedLocation: boolean, rejectedWorldTime: string|null, normalizedWorldTimeString: string|null }}
+   */
+  function applyWorldStatePatch(G, patch) {
+    var out = {
+      appliedWorldTime: false,
+      appliedLocation: false,
+      rejectedWorldTime: null,
+      normalizedWorldTimeString: null,
+    };
+    if (!G || !patch || typeof patch !== "object") return out;
+
+    if (patch.worldTimeString != null && String(patch.worldTimeString).trim() !== "") {
+      var newStr = String(patch.worldTimeString).trim();
+      var newC = parseWorldTimeComparable(newStr);
+      var oldStr = G.worldTimeString != null ? String(G.worldTimeString).trim() : "";
+      var oldC = oldStr ? parseWorldTimeComparable(oldStr) : null;
+
+      if (!newC) {
+        out.rejectedWorldTime = "世界时间格式无效（须为「0001年 01月 01日 08:00」样式）";
+      } else {
+        var normalized = formatWorldTimeComparable(newC);
+        if (!oldC) {
+          G.worldTimeString = normalized;
+          out.appliedWorldTime = true;
+          out.normalizedWorldTimeString = normalized;
+        } else {
+          var cmp = compareWorldTimeComparable(newC, oldC);
+          if (cmp < 0) {
+            out.rejectedWorldTime = "不得早于当前世界时间（禁止时间倒流）";
+          } else {
+            G.worldTimeString = normalized;
+            out.appliedWorldTime = true;
+            out.normalizedWorldTimeString = normalized;
+          }
+        }
+      }
+    }
+
+    if (patch.currentLocation != null && String(patch.currentLocation).trim() !== "") {
+      G.currentLocation = String(patch.currentLocation).trim();
+      out.appliedLocation = true;
+    }
+
+    return out;
+  }
+
+  /**
+   * 解析并应用储物袋 + 世界状态（世界解析失败不阻止储物袋已成功应用）。
+   * @param {Object} G
+   * @param {string} assistantText
+   * @returns {{ ok: boolean, placed: Array, removed: Array, failed: Array, parseError: string|null, parseVia: string|null, world: Object }}
+   */
+  function applyStateTurnFromAssistantText(G, assistantText) {
+    var raw = String(assistantText || "");
+    var pr = parseInventoryOpsFromText(raw);
+    var placed = [];
+    var removed = [];
+    var failed = [];
+    var parseError = null;
+    var parseVia = null;
+    var invOk = pr.ok;
+    if (pr.ok) {
+      var r = applyInventoryOps(G, pr.ops);
+      placed = r.placed;
+      removed = r.removed;
+      failed = r.failed;
+      parseVia = pr.parseVia != null ? pr.parseVia : "tag";
+    } else {
+      parseError = pr.error || null;
+    }
+
+    var ws = parseWorldStateFromText(raw);
+    var world = {
+      ok: ws.ok,
+      parseVia: ws.parseVia != null ? ws.parseVia : null,
+      parseError: null,
+      appliedWorldTime: false,
+      appliedLocation: false,
+      rejectedWorldTime: null,
+      normalizedWorldTimeString: null,
+    };
+    if (ws.ok && ws.patch) {
+      var wr = applyWorldStatePatch(G, ws.patch);
+      world.appliedWorldTime = wr.appliedWorldTime;
+      world.appliedLocation = wr.appliedLocation;
+      world.rejectedWorldTime = wr.rejectedWorldTime;
+      world.normalizedWorldTimeString = wr.normalizedWorldTimeString;
+    } else if (!ws.ok && ws.error) {
+      world.parseError = ws.error;
+    }
+
+    return {
+      ok: invOk,
+      placed: placed,
+      removed: removed,
+      failed: failed,
+      parseError: parseError,
+      parseVia: parseVia,
+      world: world,
+    };
+  }
+
+  /**
    * @param {Object} G MortalJourneyGame
    * @param {Array<Object>} ops
    * @returns {{ placed: Array<Object>, removed: Array<Object>, failed: Array<{op:Object,reason:string}> }}
@@ -723,16 +987,22 @@
     GONGFA_SLOT_COUNT: GONGFA_SLOT_COUNT,
     OPS_TAG_OPEN: OPS_TAG_OPEN,
     OPS_TAG_CLOSE: OPS_TAG_CLOSE,
+    WORLD_STATE_TAG_OPEN: WORLD_STATE_TAG_OPEN,
+    WORLD_STATE_TAG_CLOSE: WORLD_STATE_TAG_CLOSE,
     buildStuffDescribeCatalog: buildStuffDescribeCatalog,
     buildStuffDescribeCatalogJson: buildStuffDescribeCatalogJson,
     buildEquippedSnapshot: buildEquippedSnapshot,
     buildGongfaSnapshot: buildGongfaSnapshot,
     buildInventorySnapshot: buildInventorySnapshot,
+    buildWorldSnapshotJson: buildWorldSnapshotJson,
     buildInventoryStateUserContent: buildInventoryStateUserContent,
     buildMessages: buildMessages,
     parseInventoryOpsFromText: parseInventoryOpsFromText,
+    parseWorldStateFromText: parseWorldStateFromText,
     resolvePlacePayload: resolvePlacePayload,
     applyInventoryOps: applyInventoryOps,
+    applyWorldStatePatch: applyWorldStatePatch,
+    applyStateTurnFromAssistantText: applyStateTurnFromAssistantText,
     applyInventoryOpsFromAssistantText: applyInventoryOpsFromAssistantText,
     sendTurn: sendTurn,
   };

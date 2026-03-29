@@ -1853,6 +1853,70 @@
     return document.getElementById("mj-chat-status");
   }
 
+  /** 状态栏与处理记录中的分类名称（与气泡「剧情」无关） */
+  var AI_KIND_STORY_LABEL = "剧情生成";
+  var AI_KIND_STATE_LABEL = "状态更新";
+
+  function padAiLog2(n) {
+    var x = Math.floor(Number(n));
+    if (!isFinite(x)) return "00";
+    return x < 10 ? "0" + x : String(x);
+  }
+
+  function formatAiProcessLogTimestamp() {
+    var d = new Date();
+    return (
+      d.getFullYear() +
+      "/" +
+      padAiLog2(d.getMonth() + 1) +
+      "/" +
+      padAiLog2(d.getDate()) +
+      " " +
+      padAiLog2(d.getHours()) +
+      ":" +
+      padAiLog2(d.getMinutes()) +
+      ":" +
+      padAiLog2(d.getSeconds())
+    );
+  }
+
+  /**
+   * 仅保留两槽：最新「剧情生成」、最新「状态更新」。
+   * @param {"story"|"state"} slot
+   * @param {string} displayKind 展示用「剧情生成」或「状态更新」
+   * @param {"done"|"error"} outcome
+   * @param {string} totalSecStr
+   * @param {string} [errShort]
+   */
+  function updateAiProcessLogRow(slot, displayKind, outcome, totalSecStr, errShort) {
+    var id = slot === "story" ? "mj-ai-process-log-story" : "mj-ai-process-log-state";
+    var line = document.getElementById(id);
+    if (!line) return;
+    var dk = displayKind != null && String(displayKind).trim() !== "" ? String(displayKind).trim() : "AI";
+    var parts = ["[" + formatAiProcessLogTimestamp() + "]", "「" + dk + "」"];
+    if (outcome === "done") {
+      parts.push("完成");
+      parts.push(totalSecStr + " 秒");
+    } else {
+      parts.push("失败");
+      parts.push(totalSecStr + " 秒");
+      if (errShort && String(errShort).trim()) parts.push(String(errShort).trim());
+    }
+    line.textContent = parts.join(" · ");
+    line.title = line.textContent;
+    line.className =
+      "mj-ai-process-log__line mj-ai-process-log__line--" + (outcome === "done" ? "done" : "error");
+    line.removeAttribute("hidden");
+  }
+
+  function syncAiProcessLogFromFeedback(kind, outcome, total, errShort) {
+    if (kind === AI_KIND_STORY_LABEL) {
+      updateAiProcessLogRow("story", AI_KIND_STORY_LABEL, outcome, total, errShort);
+    } else if (kind === AI_KIND_STATE_LABEL) {
+      updateAiProcessLogRow("state", AI_KIND_STATE_LABEL, outcome, total, errShort);
+    }
+  }
+
   /** 与 silly_tarven/bridge-config.js 中 useStreamingChat 一致；未定义时默认 false（非流式一次性显示） */
   function getBridgeUseStreamingChat() {
     var C = global.SillyTavernBridgeConfig;
@@ -1897,7 +1961,7 @@
       var sec = formatElapsedSec(_chatStatusStart);
       if (_chatStatusStream) return "正在接收「" + kind + "」回复… 已 " + sec + " 秒";
       if (fo.wholeResponseWait) {
-        return "非流式：等待「" + kind + "」整段生成… 已 " + sec + " 秒（长上下文可能需数分钟）";
+        return "等待「" + kind + "」整段生成… 已 " + sec + " 秒";
       }
       return "等待「" + kind + "」回复中… 已等待 " + sec + " 秒";
     }
@@ -1934,11 +1998,8 @@
     var kind = fo.kind != null && String(fo.kind).trim() !== "" ? String(fo.kind).trim() : "AI";
 
     if (outcome === "done") {
-      setChatStatusUi("done", "「" + kind + "」回复完成，总用时 " + total + " 秒。");
-      window.setTimeout(function () {
-        if (gen !== _chatFeedbackGen) return;
-        setChatStatusUi("idle", "");
-      }, 4500);
+      syncAiProcessLogFromFeedback(kind, "done", total, null);
+      setChatStatusUi("idle", "");
       return;
     }
 
@@ -1946,18 +2007,16 @@
       errDetail && String(errDetail).trim()
         ? String(errDetail).trim().slice(0, 160)
         : "未知错误";
-    setChatStatusUi("error", "「" + kind + "」回复失败（约 " + total + " 秒）：" + errShort);
-    window.setTimeout(function () {
-      if (gen !== _chatFeedbackGen) return;
-      setChatStatusUi("idle", "");
-    }, 10000);
+    syncAiProcessLogFromFeedback(kind, "error", total, errShort);
+    setChatStatusUi("idle", "");
   }
 
   function flashChatStatusError(message) {
     _chatFeedbackGen++;
     clearChatStatusTick();
     var gen = _chatFeedbackGen;
-    setChatStatusUi("error", String(message || ""));
+    var msg = String(message || "");
+    setChatStatusUi("error", msg);
     window.setTimeout(function () {
       if (gen !== _chatFeedbackGen) return;
       setChatStatusUi("idle", "");
@@ -1994,23 +2053,30 @@
    */
   function runStateInventoryAiTurn(G, textarea, storyReply) {
     var ST = global.MortalJourneyStateGenerate;
-    if (!ST || typeof ST.sendTurn !== "function" || typeof ST.buildMessages !== "function") {
+    if (
+      !ST ||
+      typeof ST.sendTurn !== "function" ||
+      typeof ST.buildMessages !== "function" ||
+      typeof ST.applyStateTurnFromAssistantText !== "function"
+    ) {
       if (global.GameLog && typeof global.GameLog.warn === "function") {
-        global.GameLog.warn("[主界面] MortalJourneyStateGenerate 未加载，跳过储物袋状态同步。");
+        global.GameLog.warn("[主界面] MortalJourneyStateGenerate 未加载或不完整，跳过状态同步。");
       }
       return Promise.resolve();
     }
     var reply = storyReply != null ? String(storyReply) : "";
     var useStreamState = getBridgeUseStreamingChat();
     var feedbackGenState = startAiReplyFeedback(textarea, false, {
-      kind: "状态",
+      kind: AI_KIND_STATE_LABEL,
       wholeResponseWait: !useStreamState,
     });
     var streamStateNotified = false;
     var stateMsgs = ST.buildMessages({
       storyText: reply,
       extraUserHint:
-        "以上正文为刚生成的剧情段落。请根据剧情同步储物袋：新增用 op:add，支付或消耗堆叠物（含下品灵石等）用 op:remove；若袋内数量无变化请输出空数组标签。",
+        "以上正文为刚生成的剧情段落。请根据剧情：①同步储物袋（add/remove；无变化则 []）②在 " +
+        (ST.WORLD_STATE_TAG_OPEN || "<mj_world_state>") +
+        " 中写回 worldTimeString 与 currentLocation（时间只可不变或往后，禁止早于快照）。",
       game: G,
     });
     if (stateMsgs && global.GameLog && typeof global.GameLog.info === "function") {
@@ -2036,20 +2102,31 @@
     })
       .then(function (stateFull) {
         var raw = stateFull != null ? String(stateFull) : "";
-        var app = ST.applyInventoryOpsFromAssistantText(G, raw);
+        var app = ST.applyStateTurnFromAssistantText(G, raw);
         ensureGameRuntimeDefaults(G);
         persistBootstrapSnapshot();
         renderLeftPanel(G.fateChoice, G);
-        finishAiReplyFeedback(feedbackGenState, textarea, "done", undefined, { kind: "状态" });
+        finishAiReplyFeedback(feedbackGenState, textarea, "done", undefined, { kind: AI_KIND_STATE_LABEL });
         if (global.GameLog && typeof global.GameLog.info === "function") {
           var parts = ["[状态←AI] 完成"];
-          if (app.parseError) parts.push("解析：" + app.parseError);
+          if (app.parseError) parts.push("储物袋解析：" + app.parseError);
           else {
-            if (app.parseVia) parts.push("途径：" + app.parseVia);
+            if (app.parseVia) parts.push("储物袋途径：" + app.parseVia);
             var pn = (app.placed && app.placed.length) || 0;
             var rn = (app.removed && app.removed.length) || 0;
             parts.push("已应用 放入 " + pn + " 条、扣除 " + rn + " 条");
             if (app.failed && app.failed.length) parts.push("失败 " + app.failed.length + " 条");
+          }
+          var W = app.world;
+          if (W) {
+            if (W.parseError) parts.push("世界状态解析：" + W.parseError);
+            else {
+              if (W.rejectedWorldTime) parts.push("世界时间未采纳：" + W.rejectedWorldTime);
+              else if (W.appliedWorldTime && W.normalizedWorldTimeString) {
+                parts.push("世界时间→" + W.normalizedWorldTimeString);
+              }
+              if (W.appliedLocation) parts.push("地点已更新");
+            }
           }
           global.GameLog.info(parts.join("；") + "\n" + raw.slice(0, 2000));
         }
@@ -2059,7 +2136,7 @@
           err && err.message
             ? String(err.message)
             : "状态请求失败。若未配置 API，请检查 silly_tarven/bridge-config.js。";
-        finishAiReplyFeedback(feedbackGenState, textarea, "error", msg, { kind: "状态" });
+        finishAiReplyFeedback(feedbackGenState, textarea, "error", msg, { kind: AI_KIND_STATE_LABEL });
         appendChatBubble("error", "状态 AI：" + msg);
         if (global.GameLog && typeof global.GameLog.info === "function") {
           global.GameLog.info("[状态←AI] 失败：" + msg.slice(0, 300));
@@ -2090,7 +2167,7 @@
 
     var useStreamChat = getBridgeUseStreamingChat();
     var feedbackGenStory = startAiReplyFeedback(textarea, false, {
-      kind: "剧情",
+      kind: AI_KIND_STORY_LABEL,
       wholeResponseWait: !useStreamChat,
     });
     var streamNotified = false;
@@ -2171,7 +2248,7 @@
             textarea,
             "error",
             "剧情 AI 返回空正文",
-            { kind: "剧情" },
+            { kind: AI_KIND_STORY_LABEL },
           );
           if (global.GameLog && typeof global.GameLog.info === "function") {
             global.GameLog.info(
@@ -2188,7 +2265,7 @@
         G.chatHistory.push({ role: "assistant", content: reply });
         if (assistantBody) assistantBody.textContent = reply;
         scrollChatLog();
-        finishAiReplyFeedback(feedbackGenStory, textarea, "done", undefined, { kind: "剧情" });
+        finishAiReplyFeedback(feedbackGenStory, textarea, "done", undefined, { kind: AI_KIND_STORY_LABEL });
         return runStateInventoryAiTurn(G, textarea, reply);
       })
       .catch(function (err) {
@@ -2204,7 +2281,7 @@
           err && err.message
             ? String(err.message)
             : "请求失败。若未配置 API，请检查 silly_tarven/bridge-config.js 中的 fixedPreset。";
-        finishAiReplyFeedback(feedbackGenStory, textarea, "error", msg, { kind: "剧情" });
+        finishAiReplyFeedback(feedbackGenStory, textarea, "error", msg, { kind: AI_KIND_STORY_LABEL });
         appendChatBubble("error", msg);
         console.warn("[主界面] 剧情请求失败", err);
         if (global.GameLog && typeof global.GameLog.info === "function") {

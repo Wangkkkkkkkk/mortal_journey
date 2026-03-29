@@ -157,6 +157,29 @@
   var SYSTEM_BLOCK_SEPARATOR = "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
 
   /**
+   * 与状态回合一致：「下品灵石」单颗在灵石等价刻度轴上的 value（各物 value 同轴）。
+   */
+  function lowerSpiritStoneValueUnit() {
+    var s = global.MjDescribeSpiritStones && global.MjDescribeSpiritStones["下品灵石"];
+    if (s && typeof s.value === "number" && isFinite(s.value) && s.value > 0) {
+      return Math.max(1, Math.floor(s.value));
+    }
+    return 10;
+  }
+
+  /**
+   * 剧情模型易把多轮收支心算成「当前袋内总灵石」且与真实存档脱节（玩家可能在对话间隙用灵石修炼等）。
+   * 附在存档摘要末尾，约束正文不要写死绝对库存。
+   */
+  var STORY_BAG_NARRATIVE_RULES_BLOCK =
+    "【剧情写作 · 储物袋与灵石（务必遵守）】\n" +
+    "· 下方【储物袋】等仅为**发送本请求瞬间**的快照；玩家可能在对话过程中已消耗或获得物品，实际以游戏为准。\n" +
+    "· 叙事中**禁止**写死背包或下品灵石的**绝对数量**（如「袋中还剩二十块灵石」「储物袋里共有××块」），也**禁止**把**上一段剧情及更早**的奖励、花费与本段新发生的情节**合并成一句心算总账**当作当前库存。\n" +
+    "· 本回合若涉及买卖、赏酬、遗失等，只写**本段情节内的过程与相对说法**（谁交割、手感多寡），让读者感到得失即可；**细账与堆叠件数**留给后续「状态回合」用 add/remove 同步，你不是背包账本。\n" +
+    "· 一旦本段情节明确涉及「获得/收下/赏酬/成交价/支付/递出/购入」下品灵石，必须写成明确整数 N（如“下品灵石×20”或“二十块下品灵石”），禁止写区间或模糊词（如“二三十”“十来”“约摸”），也禁止只用相对表述（如“一半酬劳/抵得上几何”）而不给出等价 N。\n" +
+    "· 需要烘托贫富时，可只用处境与语气描写，不写具体块数；但只要涉及交易/赏酬/支付，就必须给出 N。";
+
+  /**
    * 供关键词扫描与 system 摘要（分块排版：角色概要 / 面板 / 世界因子 / 天赋 / 装备行囊）
    */
   function buildRuntimeStateBlock(G, fc) {
@@ -198,13 +221,6 @@
       }
       profile.push(b);
     }
-    if (fc && fc.race) {
-      var r = "种族：" + fc.race;
-      if (fc.race === "自定义" && fc.customRace) {
-        r += "（" + String(fc.customRace.name || fc.customRace.tag || "").trim() + "）";
-      }
-      profile.push(r);
-    }
 
     var attr = [];
     appendPlayerBaseLines(attr, G, fc);
@@ -227,6 +243,20 @@
     if (loadout.length) sections.push(loadout.join("\n"));
 
     if (!sections.length) return "";
+    sections.push(STORY_BAG_NARRATIVE_RULES_BLOCK);
+    var lsv = lowerSpiritStoneValueUnit();
+    sections.push(
+      "【剧情写作 · 价值刻度与下品灵石（口径一致）】\n" +
+        "· 设定里物品/装备的 **value** 是「灵石等价刻度」，与同设定表「下品灵石」条目的 value **同一数轴**，不是下品灵石的颗数。\n" +
+        "· 单颗下品灵石在该轴上的刻度为 **" +
+        lsv +
+        "**，即 **" +
+        lsv +
+        " 点刻度 ≈ 1 颗下品灵石**；口述「战利品合计值多少灵石」「折算酬劳」时，勿把 **刻度总和** 直接说成 **同等数量的下品灵石块数**（例：刻度合计 202、基数 " +
+        lsv +
+        " 时，应写成「二十块下品灵石」（四舍五入后的整数），而不是「二十来块」「二三十块」「约摸二十块」或「二百零二块」）。\n" +
+        "· 具体袋内增减仍以状态回合为准；此处与游戏表口径对齐即可。",
+    );
     return "【当前存档摘要】\n\n" + sections.join("\n\n");
   }
 
