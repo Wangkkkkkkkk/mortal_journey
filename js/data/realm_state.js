@@ -10,6 +10,8 @@
  *   RealmState.getMajorBreakthroughChance("练气", "筑基"); // → 0.3
  *   RealmState.rollMajorBreakthrough("元婴", "化神"); // 按表概率随机 boolean
  *   RealmState.rollBreakthroughWithProbability(0.65); // 自定义总成功率（弹窗内丹药加成后）
+ *   RealmState.getShouyuanForRealm("练气", "初期"); // → 100（寿元上限参考，岁）
+ *   RealmState.getShouyuanRow("元婴", "后期"); // 含 note 文案
  */
 (function (global) {
   "use strict";
@@ -60,6 +62,30 @@
     { realm: "元婴", stage: "中期", xiuwei: 500000 },
     { realm: "元婴", stage: "后期", xiuwei: 1000000 },
     { realm: "化神", stage: null, xiuwei: 10000000 },
+  ]);
+
+  /**
+   * 各境界寿元上限参考（岁）；小境界递增，与 CULTIVATION_TABLE 行对应（化神单行）
+   * @typedef {Object} RealmShouyuanRow
+   * @property {string} realm
+   * @property {string|null} stage
+   * @property {number} shouyuan
+   * @property {string} note
+   */
+  var SHOUYUAN_TABLE = Object.freeze([
+    { realm: "练气", stage: "初期", shouyuan: 100, note: "初入仙途，仅比凡人略长" },
+    { realm: "练气", stage: "中期", shouyuan: 110, note: "初入仙途，仅比凡人略长" },
+    { realm: "练气", stage: "后期", shouyuan: 120, note: "初入仙途，仅比凡人略长" },
+    { realm: "筑基", stage: "初期", shouyuan: 200, note: "灵气液化，寿元翻倍" },
+    { realm: "筑基", stage: "中期", shouyuan: 225, note: "灵气液化，寿元翻倍" },
+    { realm: "筑基", stage: "后期", shouyuan: 250, note: "灵气液化，寿元翻倍" },
+    { realm: "结丹", stage: "初期", shouyuan: 500, note: "金丹凝结，可炼本命法宝" },
+    { realm: "结丹", stage: "中期", shouyuan: 550, note: "金丹凝结，可炼本命法宝" },
+    { realm: "结丹", stage: "后期", shouyuan: 600, note: "金丹凝结，可炼本命法宝" },
+    { realm: "元婴", stage: "初期", shouyuan: 1000, note: "丹破婴生，元婴可夺舍重生" },
+    { realm: "元婴", stage: "中期", shouyuan: 1250, note: "丹破婴生，元婴可夺舍重生" },
+    { realm: "元婴", stage: "后期", shouyuan: 1500, note: "丹破婴生，元婴可夺舍重生" },
+    { realm: "化神", stage: null, shouyuan: 2000, note: "人界巅峰，但受灵气限制难以久留" },
   ]);
 
   /**
@@ -117,6 +143,19 @@
     CULTIVATION_BY_KEY[rowKey(cr.realm, cr.stage)] = cr.xiuwei;
   }
   Object.freeze(CULTIVATION_BY_KEY);
+
+  /** @type {Readonly<Record<string, number>>} 境界键 → 寿元上限（岁） */
+  var SHOUYUAN_BY_KEY = {};
+  /** @type {Readonly<Record<string, RealmShouyuanRow>>} */
+  var SHOUYUAN_ROW_BY_KEY = {};
+  for (var sh = 0; sh < SHOUYUAN_TABLE.length; sh++) {
+    var shr = SHOUYUAN_TABLE[sh];
+    var shk = rowKey(shr.realm, shr.stage);
+    SHOUYUAN_BY_KEY[shk] = shr.shouyuan;
+    SHOUYUAN_ROW_BY_KEY[shk] = shr;
+  }
+  Object.freeze(SHOUYUAN_BY_KEY);
+  Object.freeze(SHOUYUAN_ROW_BY_KEY);
 
   var PAIR_SEP = "\u0002";
 
@@ -251,6 +290,59 @@
   }
 
   /**
+   * 查询该阶段寿元上限参考（岁）
+   * @param {string} realm
+   * @param {string} [stage] 化神可省略
+   * @returns {number | null}
+   */
+  function getShouyuanForRealm(realm, stage) {
+    if (realm == null || realm === "") return null;
+    if (realm === "化神") {
+      var ws = SHOUYUAN_BY_KEY["化神"];
+      return typeof ws === "number" ? ws : null;
+    }
+    if (stage == null || stage === "") return null;
+    var sn = SHOUYUAN_BY_KEY[rowKey(realm, stage)];
+    return typeof sn === "number" ? sn : null;
+  }
+
+  /**
+   * 取寿元行（含 note，供 UI 提示）
+   * @param {string} realm
+   * @param {string} [stage]
+   * @returns {RealmShouyuanRow | null}
+   */
+  function getShouyuanRow(realm, stage) {
+    if (realm == null || realm === "") return null;
+    if (realm === "化神") {
+      var r0 = SHOUYUAN_ROW_BY_KEY["化神"];
+      return r0
+        ? {
+            realm: r0.realm,
+            stage: r0.stage,
+            shouyuan: r0.shouyuan,
+            note: r0.note,
+          }
+        : null;
+    }
+    if (stage == null || stage === "") return null;
+    var r1 = SHOUYUAN_ROW_BY_KEY[rowKey(realm, stage)];
+    return r1
+      ? {
+          realm: r1.realm,
+          stage: r1.stage,
+          shouyuan: r1.shouyuan,
+          note: r1.note,
+        }
+      : null;
+  }
+
+  /** @returns {readonly RealmShouyuanRow[]} */
+  function getShouyuanTable() {
+    return SHOUYUAN_TABLE;
+  }
+
+  /**
    * 查询大境界突破成功概率（仅表中相邻一跳，如 练气→筑基）
    * @param {string} fromRealm
    * @param {string} toRealm
@@ -301,6 +393,7 @@
   global.RealmState = {
     TABLE: TABLE,
     CULTIVATION_TABLE: CULTIVATION_TABLE,
+    SHOUYUAN_TABLE: SHOUYUAN_TABLE,
     MAJOR_BREAKTHROUGH_TABLE: MAJOR_BREAKTHROUGH_TABLE,
     REALM_ORDER: REALM_ORDER,
     SUB_STAGES: SUB_STAGES,
@@ -313,6 +406,9 @@
     getCultivationRequired: getCultivationRequired,
     getCultivationRow: getCultivationRow,
     getCultivationTable: getCultivationTable,
+    getShouyuanForRealm: getShouyuanForRealm,
+    getShouyuanRow: getShouyuanRow,
+    getShouyuanTable: getShouyuanTable,
     getMajorBreakthroughChance: getMajorBreakthroughChance,
     rollMajorBreakthrough: rollMajorBreakthrough,
     rollBreakthroughWithProbability: rollBreakthroughWithProbability,

@@ -152,6 +152,33 @@
   }
 
   /**
+   * 按境界寿元表抬升 G.shouyuan：max(当前值, 表列该阶段寿元)。剧情可先提高寿元，突破不会压低；表来自 RealmState。
+   */
+  function syncShouyuanFromRealmState(G, fc) {
+    if (!G) return;
+    var RS = global.RealmState;
+    if (!RS || typeof RS.getShouyuanForRealm !== "function") {
+      if (G.shouyuan == null || typeof G.shouyuan !== "number" || !isFinite(G.shouyuan)) {
+        G.shouyuan = DEFAULT_SHOUYUAN;
+      }
+      return;
+    }
+    var r = (G.realm) || (fc && fc.realm) || {};
+    var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+    var minor = r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
+    var cap = RS.getShouyuanForRealm(major, minor);
+    if (cap == null || !isFinite(cap)) {
+      if (G.shouyuan == null || typeof G.shouyuan !== "number" || !isFinite(G.shouyuan)) {
+        G.shouyuan = DEFAULT_SHOUYUAN;
+      }
+      return;
+    }
+    cap = Math.max(0, Math.floor(cap));
+    var cur = typeof G.shouyuan === "number" && isFinite(G.shouyuan) ? Math.floor(G.shouyuan) : 0;
+    G.shouyuan = Math.max(cur, cap);
+  }
+
+  /**
    * 大境界前「后期」修为不得超过本阶段需求（否则会出现 1100/1000）；突破成功前不能靠灵石继续堆。
    * @returns {number|null} 上限修为，非此情形返回 null
    */
@@ -733,6 +760,8 @@
         fateChoice: G.fateChoice,
         startedAt: G.startedAt || 0,
         xiuwei: typeof G.xiuwei === "number" ? G.xiuwei : 0,
+        shouyuan: typeof G.shouyuan === "number" && isFinite(G.shouyuan) ? Math.floor(G.shouyuan) : 0,
+        age: typeof G.age === "number" && isFinite(G.age) ? Math.floor(G.age) : DEFAULT_AGE,
         inventorySlots: JSON.parse(JSON.stringify(G.inventorySlots)),
         gongfaSlots: JSON.parse(JSON.stringify(G.gongfaSlots || [])),
         equippedSlots: JSON.parse(JSON.stringify(G.equippedSlots || [])),
@@ -857,6 +886,13 @@
         global.MortalJourneyGame.xiuwei = Math.max(0, Math.floor(data.xiuwei));
       }
 
+      if (typeof data.shouyuan === "number" && isFinite(data.shouyuan)) {
+        global.MortalJourneyGame.shouyuan = Math.max(0, Math.floor(data.shouyuan));
+      }
+      if (typeof data.age === "number" && isFinite(data.age)) {
+        global.MortalJourneyGame.age = Math.max(0, Math.floor(data.age));
+      }
+
       if (data.lateStageBreakSuffix && typeof data.lateStageBreakSuffix === "object") {
         global.MortalJourneyGame.lateStageBreakSuffix = {
           realmKey: String(data.lateStageBreakSuffix.realmKey != null ? data.lateStageBreakSuffix.realmKey : ""),
@@ -888,7 +924,8 @@
       G.cultivationProgress = 0;
     }
     if (G.age == null) G.age = DEFAULT_AGE;
-    if (G.shouyuan == null) G.shouyuan = DEFAULT_SHOUYUAN;
+    if (G.shouyuan == null || typeof G.shouyuan !== "number" || !isFinite(G.shouyuan)) G.shouyuan = 0;
+    syncShouyuanFromRealmState(G, G.fateChoice);
     if (G.charm == null || typeof G.charm !== "number") G.charm = DEFAULT_CHARM;
     if (G.luck == null || typeof G.luck !== "number") G.luck = DEFAULT_LUCK;
 
@@ -2575,6 +2612,7 @@
   }
 
   function renderLeftPanel(fc, G) {
+    if (G) ensureGameRuntimeDefaults(G);
     if (
       G &&
       fc &&
@@ -2654,7 +2692,26 @@
     if (genderEl) genderEl.textContent = (fc && fc.gender) || "—";
     if (lingEl) lingEl.textContent = formatLinggenPanelText(fc && fc.linggen);
     if (ageEl) ageEl.textContent = G && G.age != null ? String(G.age) : "—";
-    if (syEl) syEl.textContent = G && G.shouyuan != null ? String(G.shouyuan) : "—";
+    if (syEl) {
+      syEl.textContent =
+        G && G.shouyuan != null && isFinite(G.shouyuan) ? String(Math.round(G.shouyuan)) : "—";
+      var rSy = (fc && fc.realm) || (G && G.realm) || {};
+      var majSy =
+        rSy.major != null && String(rSy.major).trim() !== "" ? String(rSy.major).trim() : "练气";
+      var minSy =
+        rSy.minor != null && String(rSy.minor).trim() !== "" ? String(rSy.minor).trim() : "初期";
+      var RSy = global.RealmState;
+      var syRow = RSy && typeof RSy.getShouyuanRow === "function" ? RSy.getShouyuanRow(majSy, minSy) : null;
+      if (syRow && syRow.note) {
+        var stageBit = syRow.stage != null && String(syRow.stage) !== "" ? String(syRow.stage) : "";
+        syEl.setAttribute(
+          "title",
+          majSy + stageBit + " 寿元参考 " + syRow.shouyuan + " 岁：" + syRow.note,
+        );
+      } else {
+        syEl.removeAttribute("title");
+      }
+    }
 
     renderTalentSlots(fc);
 
