@@ -37,19 +37,82 @@
     }
   }
 
-  /** getStuffDescribe 中带 value 的条目（灵石、丹药等）→ 每件炼化获得的修为 */
+  /**
+   * 是否可用灵石炼化修为：仅 stuff_describe 中 MjDescribeSpiritStones 表内物品（及旧名「灵石」）。
+   * 令牌、丹药等也有 describe.value（灵石等价比价），不可炼化。
+   */
+  function isSpiritStoneCultivationItemName(itemName) {
+    var nm = String(itemName || "").trim();
+    if (!nm) return false;
+    if (nm === "灵石") return true;
+    var SS = global.MjDescribeSpiritStones;
+    return !!(SS && typeof SS === "object" && SS[nm]);
+  }
+
+  /** 灵石类 describe.value → 表列「单灵根」基准修为（原样返回；炼化写入修为时用 computeSpiritStoneTotalGain 四舍五入） */
   function getSpiritStoneCultivationValue(itemName) {
     var nm = String(itemName || "").trim();
     if (!nm) return 0;
+    if (!isSpiritStoneCultivationItemName(nm)) return 0;
     var C = global.MjCreationConfig;
     if (!C || typeof C.getStuffDescribe !== "function") return 0;
     var d = C.getStuffDescribe(nm);
-    if (d && typeof d.value === "number" && isFinite(d.value) && d.value > 0) return Math.floor(d.value);
+    if (d && typeof d.value === "number" && isFinite(d.value) && d.value > 0) return d.value;
     if (nm === "灵石") {
       var d2 = C.getStuffDescribe("下品灵石");
-      if (d2 && typeof d2.value === "number" && isFinite(d2.value) && d2.value > 0) return Math.floor(d2.value);
+      if (d2 && typeof d2.value === "number" && isFinite(d2.value) && d2.value > 0) return d2.value;
     }
     return 0;
+  }
+
+  /**
+   * 命运抉择灵根串中的五行种数（金木水火土去重）；「无灵根」等为 0。
+   */
+  function getLinggenRawElementCount(fc) {
+    var lg = fc && fc.linggen != null ? String(fc.linggen) : "";
+    var LS = global.LinggenState;
+    if (!LS || typeof LS.parseElements !== "function") return 0;
+    return LS.parseElements(lg).length;
+  }
+
+  /**
+   * 灵石单件修为相对表列基准的比例（以表列 10 为参照：单/无 100%，双 85%，三 65%，四及以上 50%）。
+   * @param {number} effN 参与折算的种数（无灵根时调用方应传入 1，与单灵根同满额）
+   */
+  function getSpiritStoneEfficiencyFactorForRootCount(effN) {
+    var n = typeof effN === "number" && isFinite(effN) ? Math.floor(effN) : 1;
+    if (n <= 1) return 1;
+    if (n === 2) return 0.5;
+    if (n === 3) return 0.33;
+    return 0.25;
+  }
+
+  /** 表列基准 × 灵根系数（未四舍五入）；写入修为见 computeSpiritStoneTotalGain。 */
+  function getSpiritStoneRawPerPiece(itemName, fc) {
+    var base = getSpiritStoneCultivationValue(itemName);
+    if (base <= 0) return 0;
+    var rawN = getLinggenRawElementCount(fc);
+    var effN = rawN <= 0 ? 1 : rawN;
+    var f = getSpiritStoneEfficiencyFactorForRootCount(effN);
+    return base * f;
+  }
+
+  /** 修为点数展示：整数不显示小数，否则最多两位并去尾零（如 2.5、3.3）。 */
+  function formatSpiritStonePointsForUi(x) {
+    if (typeof x !== "number" || !isFinite(x) || x <= 0) return "";
+    var t = Math.round(x * 100) / 100;
+    if (Math.abs(t - Math.round(t)) < 1e-9) return String(Math.round(t));
+    var s = t.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+    return s;
+  }
+
+  /** 本批灵石炼化总修为：round(表列基准 × 灵根系数 × 件数)；写入 G.xiuwei 前仅此函数对修为增量四舍五入。 */
+  function computeSpiritStoneTotalGain(base, linggenFactor, pieceCount) {
+    var b = typeof base === "number" && isFinite(base) ? base : 0;
+    var f = typeof linggenFactor === "number" && isFinite(linggenFactor) ? linggenFactor : 0;
+    var n = typeof pieceCount === "number" && isFinite(pieceCount) ? Math.max(0, Math.floor(pieceCount)) : 0;
+    if (b <= 0 || f <= 0 || n <= 0) return 0;
+    return Math.round(b * f * n);
   }
 
   /** 当前修为、本阶段需求、进度条百分比（0～100，可已满） */
@@ -146,16 +209,12 @@
     return { xiuwei: Math.max(0, Math.floor(X)), major: maj, minor: min };
   }
 
-  /** 灵石炼化后、经小境界突破并卡在后期时，修为是否未超过本阶段上限 */
-  function spiritStoneGainWithinLateStageCap(fc, curXiuwei, major, minor, valPerPiece, stoneCount) {
+  /** 灵石炼化后、经小境界突破并卡在后期时，修为是否未超过本阶段上限（增量 = round(base×系数×件数)） */
+  function spiritStoneGainWithinLateStageCap(fc, curXiuwei, major, minor, stoneBase, linggenFactor, stoneCount) {
     if (stoneCount <= 0) return true;
-    if (valPerPiece <= 0) return false;
-    var sim = simulateSmallBreakthroughsFromState(
-      fc,
-      curXiuwei + stoneCount * valPerPiece,
-      major,
-      minor,
-    );
+    var add = computeSpiritStoneTotalGain(stoneBase, linggenFactor, stoneCount);
+    if (add <= 0) return false;
+    var sim = simulateSmallBreakthroughsFromState(fc, curXiuwei + add, major, minor);
     if (sim.major === "化神") return true;
     if (sim.minor !== "后期") return true;
     var RS = global.RealmState;
@@ -169,19 +228,19 @@
    * 尽数修炼等：先按小境界连环突破模拟终点，再限制「后期」不得超过本阶段 req（含从中期一吸顶满的情况）。
    * @returns {number} 实际可消耗件数
    */
-  function clampSpiritStoneUseNForLateStageCap(G, fc, valPerPiece, useN) {
-    if (!G || valPerPiece <= 0 || useN <= 0) return 0;
+  function clampSpiritStoneUseNForLateStageCap(G, fc, stoneBase, linggenFactor, useN) {
+    if (!G || stoneBase <= 0 || linggenFactor <= 0 || useN <= 0) return 0;
     var r = (G && G.realm) || (fc && fc.realm) || {};
     var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
     var minor = r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
     var cur = typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? Math.floor(G.xiuwei) : 0;
-    if (!spiritStoneGainWithinLateStageCap(fc, cur, major, minor, valPerPiece, useN)) {
+    if (!spiritStoneGainWithinLateStageCap(fc, cur, major, minor, stoneBase, linggenFactor, useN)) {
       var lo = 0;
       var hi = useN;
       var best = 0;
       while (lo <= hi) {
         var mid = (lo + hi) >> 1;
-        if (spiritStoneGainWithinLateStageCap(fc, cur, major, minor, valPerPiece, mid)) {
+        if (spiritStoneGainWithinLateStageCap(fc, cur, major, minor, stoneBase, linggenFactor, mid)) {
           best = mid;
           lo = mid + 1;
         } else {
@@ -692,7 +751,7 @@
   }
 
   /**
-   * 消耗背包格中的灵石类物品增加修为（每件增加额 = describe.value）。
+   * 消耗背包格中的灵石类物品增加修为：总修为 = round(表列基准 × 灵根系数 × 件数)；无灵根同单灵根满额系数。
    * @param {boolean} consumeAll 是否消耗该格全部堆叠（与 customCount 二选一）
    * @param {number} [customCount] 指定件数：四舍五入，与当前堆叠取较小值；≤0 不执行
    * @returns {boolean}
@@ -704,8 +763,12 @@
     if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
     var it = G.inventorySlots[bi];
     if (!it || !it.name) return false;
-    var val = getSpiritStoneCultivationValue(it.name);
-    if (val <= 0) return false;
+    var stoneBase = getSpiritStoneCultivationValue(it.name);
+    if (stoneBase <= 0) return false;
+    var rawN = getLinggenRawElementCount(G.fateChoice);
+    var effN = rawN <= 0 ? 1 : rawN;
+    var lingF = getSpiritStoneEfficiencyFactorForRootCount(effN);
+    if (lingF <= 0) return false;
     var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
     var useN;
     if (typeof customCount === "number" && isFinite(customCount)) {
@@ -715,9 +778,10 @@
     } else {
       useN = consumeAll ? cnt : 1;
     }
-    useN = clampSpiritStoneUseNForLateStageCap(G, G.fateChoice, val, useN);
+    useN = clampSpiritStoneUseNForLateStageCap(G, G.fateChoice, stoneBase, lingF, useN);
     if (useN <= 0) return false;
-    var gain = val * useN;
+    var gain = computeSpiritStoneTotalGain(stoneBase, lingF, useN);
+    if (gain <= 0) return false;
     G.xiuwei = (typeof G.xiuwei === "number" && isFinite(G.xiuwei) ? G.xiuwei : 0) + gain;
     var left = cnt - useN;
     if (left <= 0) G.inventorySlots[bi] = null;
@@ -1234,14 +1298,14 @@
     return typeof v === "number" && isFinite(v) ? String(Math.round(v)) : "—";
   }
 
-  /** 左栏灵根：只显示五行字，不显示真灵根/伪灵根等前缀 */
+  /** 左栏灵根：只显示五行字连续拼接（如「水木火土」），不显示真灵根/伪灵根等前缀，避免顿号导致换行难看 */
   function formatLinggenPanelText(linggenFull) {
     var raw = linggenFull == null ? "" : String(linggenFull).trim();
     if (raw === "" || raw === "无灵根") return "—";
     var LS = global.LinggenState;
     var els = LS && typeof LS.parseElements === "function" ? LS.parseElements(raw) : [];
     if (!els.length) return "—";
-    return els.join("、");
+    return els.join("");
   }
 
   function appendOverviewSection(host, titleText) {
@@ -2153,11 +2217,12 @@
     if (refBag) sections.push({ label: "价值", text: refBag });
     sections.push({ label: "持有数量", text: String(cnt) });
 
-    var stoneVal = getSpiritStoneCultivationValue(it.name);
-    if (stoneVal > 0) {
+    var spiritStonePerRaw = getSpiritStoneRawPerPiece(it.name, G.fateChoice);
+    var hasSpiritStoneCult = spiritStonePerRaw > 0;
+    if (hasSpiritStoneCult) {
       sections.push({
         label: "修炼",
-        text: "每件可提供 " + stoneVal + " 点修为（消耗背包中的数量）。",
+        text: "每个灵石可提供 " + formatSpiritStonePointsForUi(spiritStonePerRaw) + " 点修为。",
       });
     }
 
@@ -2165,7 +2230,7 @@
     if (wearSlot != null) {
       actions.push({
         label: "穿戴",
-        primary: !stoneVal,
+        primary: !hasSpiritStoneCult,
         onClick: function () {
           closeItemDetailModal();
           performEquipFromBag(idx);
@@ -2175,14 +2240,14 @@
     if (gfMeta) {
       actions.push({
         label: "装入功法栏",
-        primary: !stoneVal && wearSlot == null,
+        primary: !hasSpiritStoneCult && wearSlot == null,
         onClick: function () {
           closeItemDetailModal();
           performEquipGongfaFromBag(idx);
         },
       });
     }
-    if (stoneVal > 0 && cnt > 1) {
+    if (hasSpiritStoneCult && cnt > 1) {
       actions.push({
         label: "尽数修炼",
         primary: true,
@@ -2195,7 +2260,7 @@
       });
     }
     var appendExtra = null;
-    if (stoneVal > 0) {
+    if (hasSpiritStoneCult) {
       var cntFloor = Math.max(1, Math.floor(typeof cnt === "number" && isFinite(cnt) ? cnt : 1));
       appendExtra = function (bodyEl) {
         appendSpiritStoneCultivateRow(bodyEl, idx, cntFloor);
@@ -2879,7 +2944,7 @@
       return out;
     },
     /**
-     * 消耗背包一格灵石类物品增加修为（每件 = describe.value）
+     * 消耗背包一格灵石类物品增加修为：总修为 = round(表列 value × 灵根系数 × 件数)，非「round(单件)×件数」
      * @param {number} bagIndex 0～11
      * @param {boolean} [consumeAll] 与 pieceCount 二选一：true 为整堆
      * @param {number} [pieceCount] 指定件数：四舍五入，超过堆叠则按堆叠上限；≤0 不执行

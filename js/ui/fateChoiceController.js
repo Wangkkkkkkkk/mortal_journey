@@ -113,6 +113,97 @@
     luck: "气运",
   };
 
+  /** 与 trait_samples bonus 键顺序一致，便于弹窗与汇总展示稳定排序 */
+  var TRAIT_BONUS_DISPLAY_ORDER = [
+    "血量",
+    "法力",
+    "物攻",
+    "物防",
+    "法攻",
+    "法防",
+    "神识",
+    "脚力",
+    "魅力",
+    "气运",
+  ];
+
+  /**
+   * 逆天改命刷新时：先按权重抽品质，再在该品质未排除的词条中均匀抽一条。
+   * 权重为相对比例（不必加总为 100）；可在运行时改 `FateChoiceController.TRAIT_RARITY_WEIGHTS` 各项 `weight`。
+   * 品质名须与 trait_samples.js 中 `rarity` 一致（「普通」而非「正常」）。
+   */
+  var TRAIT_RARITY_WEIGHTS = [
+    { rarity: "平庸", weight: 50 },
+    { rarity: "普通", weight: 25 },
+    { rarity: "稀有", weight: 15 },
+    { rarity: "史诗", weight: 9 },
+    { rarity: "传说", weight: 0.9 },
+    { rarity: "神迹", weight: 0.1 },
+  ];
+
+  function rollTraitRarityFromWeights(rows) {
+    if (!rows || !rows.length) return "平庸";
+    var sum = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var w = rows[i].weight;
+      sum += typeof w === "number" && isFinite(w) && w > 0 ? w : 0;
+    }
+    if (sum <= 0) return rows[0].rarity || "平庸";
+    var r = Math.random() * sum;
+    var acc = 0;
+    for (var j = 0; j < rows.length; j++) {
+      var wj = rows[j].weight;
+      var nw = typeof wj === "number" && isFinite(wj) && wj > 0 ? wj : 0;
+      if (nw <= 0) continue;
+      acc += nw;
+      if (r < acc) return rows[j].rarity || "平庸";
+    }
+    return rows[rows.length - 1].rarity || "平庸";
+  }
+
+  function mergeTraitBonusesForDisplay(traits) {
+    var acc = {};
+    if (!traits || !traits.length) return acc;
+    for (var i = 0; i < traits.length; i++) {
+      var tr = traits[i];
+      if (!tr || !tr.bonus || typeof tr.bonus !== "object") continue;
+      for (var k in tr.bonus) {
+        if (!Object.prototype.hasOwnProperty.call(tr.bonus, k)) continue;
+        var v = tr.bonus[k];
+        if (typeof v === "number" && isFinite(v)) acc[k] = (acc[k] || 0) + v;
+      }
+    }
+    return acc;
+  }
+
+  function formatTraitBonusLines(b) {
+    if (!b || typeof b !== "object") return [];
+    var lines = [];
+    var used = {};
+    var o;
+    for (o = 0; o < TRAIT_BONUS_DISPLAY_ORDER.length; o++) {
+      var ok = TRAIT_BONUS_DISPLAY_ORDER[o];
+      if (!Object.prototype.hasOwnProperty.call(b, ok)) continue;
+      var ov = b[ok];
+      if (typeof ov === "number" && isFinite(ov)) {
+        lines.push(ov >= 0 ? ok + " +" + ov : ok + " " + ov);
+      } else {
+        lines.push(ok + " " + String(ov));
+      }
+      used[ok] = true;
+    }
+    for (var k in b) {
+      if (!Object.prototype.hasOwnProperty.call(b, k) || used[k]) continue;
+      var v = b[k];
+      if (typeof v === "number" && isFinite(v)) {
+        lines.push(v >= 0 ? k + " +" + v : k + " " + v);
+      } else {
+        lines.push(k + " " + String(v));
+      }
+    }
+    return lines;
+  }
+
   /**
    * 与主界面一致：境界表 + 灵根 + 难度/出身/种族/天赋/出身 stuff + 当前出身对应的功法栏与佩戴栏快照。
    */
@@ -295,12 +386,23 @@
     var c = cfg();
     var pool = (c && c.TRAIT_SAMPLES) || [];
     var bag = pool.filter(function (t) {
-      return excludeNames.indexOf(t.name) === -1;
+      return t && t.name && excludeNames.indexOf(t.name) === -1;
     });
     var out = [];
+    var weights = TRAIT_RARITY_WEIGHTS;
     for (var i = 0; i < count && bag.length; i++) {
-      var idx = Math.floor(Math.random() * bag.length);
-      var t = bag.splice(idx, 1)[0];
+      var rarity = rollTraitRarityFromWeights(weights);
+      var candidates = [];
+      for (var j = 0; j < bag.length; j++) {
+        if (bag[j].rarity === rarity) candidates.push(bag[j]);
+      }
+      var pickFrom = candidates.length ? candidates : bag;
+      var idx = Math.floor(Math.random() * pickFrom.length);
+      var t = pickFrom[idx];
+      var pickedName = t && t.name;
+      bag = bag.filter(function (x) {
+        return !x || x.name !== pickedName;
+      });
       var row = {};
       for (var k in t) {
         if (Object.prototype.hasOwnProperty.call(t, k) && k !== "locked") {
@@ -324,10 +426,7 @@
     var locked = (state.currentTraitOptions || []).filter(function (t) {
       return t && t.locked;
     });
-    if (locked.length >= 5) {
-      window.alert("当前候选词条均已锁定，请先点击词条解锁后再逆天改命。");
-      return;
-    }
+    if (locked.length >= 5) return;
     var need = Math.max(0, 5 - locked.length);
     var exclude = locked.map(function (t) {
       return t.name;
@@ -358,21 +457,11 @@
   }
 
   function formatTraitBonusLine(b) {
-    if (!b || typeof b !== "object") return "";
-    var keys = Object.keys(b);
-    if (!keys.length) return "";
-    return keys
-      .map(function (k) {
-        var v = b[k];
-        if (typeof v === "number" && isFinite(v)) {
-          return v >= 0 ? k + " +" + v : k + " " + v;
-        }
-        return k + " " + String(v);
-      })
-      .join("；");
+    var lines = formatTraitBonusLines(b);
+    return lines.length ? lines.join("；") : "";
   }
 
-  function appendFateTraitModalSection(bodyEl, label, text) {
+  function appendFateTraitModalSection(bodyEl, label, text, opts) {
     if (!bodyEl || text == null || String(text).trim() === "") return;
     var sec = document.createElement("div");
     sec.className = "mj-trait-modal-section";
@@ -382,6 +471,7 @@
     var v = document.createElement("div");
     v.className = "mj-trait-modal-v";
     v.textContent = String(text);
+    if (opts && opts.multiline) v.style.whiteSpace = "pre-line";
     sec.appendChild(k);
     sec.appendChild(v);
     bodyEl.appendChild(sec);
@@ -407,9 +497,13 @@
     rarityEl.textContent = trait.rarity ? "品质：" + trait.rarity : "";
     bodyEl.textContent = "";
     appendFateTraitModalSection(bodyEl, "简述", trait.desc);
-    appendFateTraitModalSection(bodyEl, "效果", trait.effects);
-    var bonusLine = formatTraitBonusLine(trait.bonus);
-    if (bonusLine) appendFateTraitModalSection(bodyEl, "属性加成", bonusLine);
+    if (trait.effects != null && String(trait.effects).trim() !== "") {
+      appendFateTraitModalSection(bodyEl, "效果", trait.effects);
+    }
+    var bonusLines = formatTraitBonusLines(trait.bonus);
+    if (bonusLines.length) {
+      appendFateTraitModalSection(bodyEl, "属性加成（计入练气初期面板）", bonusLines.join("\n"), { multiline: true });
+    }
     if (trait.item != null && String(trait.item).trim() !== "" && String(trait.item) !== "无") {
       appendFateTraitModalSection(bodyEl, "关联物品", trait.item);
     }
@@ -513,8 +607,15 @@
     var birthKeys = mortal ? ["凡人"] : Object.keys(c.BIRTHS || {});
     var raceKeys = mortal ? ["人族"] : Object.keys(c.RACES || {});
 
-    var traitBtnDisabled = !diffReady || mortal;
+    var lockedTraitCount = (state.currentTraitOptions || []).filter(function (t) {
+      return t && t.locked;
+    }).length;
+    var traitBtnDisabled = !diffReady || mortal || lockedTraitCount >= 5;
     var linggenBtnDisabled = !diffReady || mortal;
+    var traitRandomTitle =
+      traitBtnDisabled && diffReady && !mortal && lockedTraitCount >= 5
+        ? "五格均已锁定，请先解锁至少一格后再刷新。"
+        : "";
 
     var traitEmptyHint = mortal
       ? "凡人模式不可刷新天赋。"
@@ -527,6 +628,23 @@
       : !diffReady
         ? "请先选择难度。"
         : "尚未测定灵根，请点击「随机灵根」。";
+
+    var mergedTraitAcc = mergeTraitBonusesForDisplay(state.selectedTraits);
+    var mergedTraitLineArr = formatTraitBonusLines(mergedTraitAcc);
+    var traitMergedSummaryHtml = "";
+    if (!mortal && diffReady) {
+      if (mergedTraitLineArr.length) {
+        traitMergedSummaryHtml =
+          '<div class="creation-trait-bonus-summary" style="text-align:center; font-size:13px; line-height:1.6; opacity:0.92; padding: 4px 8px 0;">' +
+          '<span style="opacity:0.85">已锁定天赋累计加成（已与灵根等一并折算进练气初期属性）</span><br>' +
+          "<strong>" +
+          escapeHtml(mergedTraitLineArr.join("；")) +
+          "</strong></div>";
+      } else if ((state.currentTraitOptions || []).length > 0) {
+        traitMergedSummaryHtml =
+          '<div class="creation-trait-bonus-summary muted" style="text-align:center; font-size:12px; opacity:0.75; padding: 4px 8px 0;">点击词条上的锁可锁定；锁定后属性写入角色面板。</div>';
+      }
+    }
 
     recomputePlayerBase();
 
@@ -647,7 +765,8 @@
       '<div style="display: flex; flex-direction: column; gap: 12px;">' +
       '<div class="action-buttons-grid" style="width: 100%; max-width: 620px; margin: 0 auto;">' +
       '<button id="trait-randomize-btn" class="major-action-button" type="button" ' +
-      (traitBtnDisabled ? "disabled" : "") +
+      (traitBtnDisabled ? "disabled " : "") +
+      (traitRandomTitle ? 'title="' + escapeHtml(traitRandomTitle) + '" ' : "") +
       ">" +
       '<i class="fas fa-dice"></i> 逆天改命' +
       "</button>" +
@@ -682,6 +801,7 @@
         traitEmptyHint +
         "</div>") +
       "</div>" +
+      traitMergedSummaryHtml +
       "</div>" +
       '<div class="creation-section-title"><i class="fas fa-bolt"></i> 灵根</div>' +
       '<div style="display:flex; flex-direction:column; align-items:center; gap:18px; padding: 8px 0 16px;">' +
@@ -697,6 +817,9 @@
       '<i class="fas fa-dice-d20"></i> 随机灵根' +
       "</button>" +
       "</div>" +
+      '<p class="muted creation-linggen-hint" style="text-align:center;font-size:12px;line-height:1.6;opacity:0.85;max-width:520px;margin:0;padding:6px 12px 0;">' +
+      "金灵根提升物攻与法攻；木灵根提升神识；水灵根提升法力；火灵根提升血量；土灵根提升物防与法防。灵根越多，修炼越慢。" +
+      "</p>" +
       "</div>" +
       '<div class="creation-section-title"><i class="fas fa-globe"></i> 世界因子（可多选）</div>' +
       '<div class="creation-grid" id="world-factor-grid">' +
@@ -1015,6 +1138,8 @@
     show: showFateChoice,
     hide: hideFateChoice,
     render: renderPage,
+    /** 逆天改命品质权重表（可改各 `weight`，下次刷新即生效） */
+    TRAIT_RARITY_WEIGHTS: TRAIT_RARITY_WEIGHTS,
     getState: function () {
       return state;
     },

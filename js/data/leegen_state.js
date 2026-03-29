@@ -6,8 +6,8 @@
  * - 金 → 物攻、法攻；木 → 神识；水 → 法力；火 → 血量；土 → 物防、法防
  * - 倍率按大境界：练气 1.05，筑基 1.10，结丹 1.20，元婴 1.5，化神 2.0（与初期/中期/后期无关）
  *
- * 用法：
- *   LinggenState.applyToBase({ hp:100, mp:50, ... }, "练气", "真灵根 金, 木");
+ * 用法（与 PlayerBaseRuntime 一致：须在境界表 + 全部平面加成合并之后再乘）：
+ *   LinggenState.applyToBase(已含天赋装备等加成的面板, "练气", "真灵根 金, 木");
  */
 (function (global) {
   "use strict";
@@ -95,9 +95,10 @@
   }
 
   /**
-   * 将灵根倍率应用到基础属性（不修改入参，返回新对象）
-   * 多种灵根各乘各负责属性；同一属性被多条规则命中时会多次相乘（当前五行分工下通常不会重叠）
-   * @param {Object} baseStats hp, mp, patk, pdef, matk, mdef, foot, sense 等
+   * 将灵根倍率应用到「已合并平面加成后」的属性（不修改入参，返回新对象）。
+   * 多种灵根各乘各负责属性；同一属性被多条规则命中时会多次相乘（当前五行分工下通常不会重叠）。
+   * 魅力/气运若存在于入参中会原样拷贝，本函数不修改这两项。
+   * @param {Object} baseStats 已含境界底数 + 难度/出身/种族/天赋/stuff/功法/装备等加成的 hp, mp, …
    * @param {string} realm 大境界
    * @param {string} linggenText 灵根完整描述
    * @returns {Object}

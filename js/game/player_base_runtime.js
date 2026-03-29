@@ -1,6 +1,7 @@
 /**
- * 角色面板八维 + 魅力/气运：由境界表、灵根、难度/出身/种族/天赋、出身 stuff 词条、
- * 当前功法栏、当前佩戴栏实时合并得到（供主界面与开局存档同步）。
+ * 角色面板八维 + 魅力/气运：由境界表、难度/出身/种族/天赋、出身 stuff、功法栏、佩戴栏
+ * 等平面加成先合并，再按灵根五行对大境界倍率做乘法（魅力/气运不参与灵根乘）。
+ * 后续若增加「百分比」类加成，建议先在平面阶段以加减形式累计，最后与本文件的灵根乘法一步统一处理。
  */
 (function (global) {
   "use strict";
@@ -67,6 +68,14 @@
     var eight = roundBaseStats(out);
     eight.charm = out.charm;
     eight.luck = out.luck;
+    return eight;
+  }
+
+  /** 灵根乘法之后：八维取整，魅力/气运再钳制（灵根不改这两项，沿用平面阶段结果） */
+  function finalizeAfterLinggenMultiply(pb) {
+    var eight = roundBaseStats(pb);
+    eight.charm = clampSpecialAttr(pb && pb.charm, DEFAULT_CHARM);
+    eight.luck = clampSpecialAttr(pb && pb.luck, DEFAULT_LUCK);
     return eight;
   }
 
@@ -185,11 +194,7 @@
     var major = realm.major;
     var linggen = fc && fc.linggen != null ? String(fc.linggen) : "";
 
-    var merged =
-      LS && typeof LS.applyToBase === "function"
-        ? LS.applyToBase(rawRealm, major, linggen)
-        : Object.assign({}, rawRealm);
-    merged = roundBaseStats(merged);
+    var merged = roundBaseStats(Object.assign({}, rawRealm));
 
     var bonusList = collectStaticBonuses(fc);
 
@@ -202,7 +207,12 @@
     var eb = collectEquipmentSlotBonuses(eqSlots);
     for (var b = 0; b < eb.length; b++) bonusList.push(eb[b]);
 
-    return mergeZhBonusesOntoPlayerBase(merged, bonusList);
+    var afterFlat = mergeZhBonusesOntoPlayerBase(merged, bonusList);
+    var afterLinggen =
+      LS && typeof LS.applyToBase === "function"
+        ? LS.applyToBase(afterFlat, major, linggen)
+        : Object.assign({}, afterFlat);
+    return finalizeAfterLinggenMultiply(afterLinggen);
   }
 
   /**
