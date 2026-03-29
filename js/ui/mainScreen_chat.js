@@ -254,9 +254,15 @@
     var stateMsgs = ST.buildMessages({
       storyText: reply,
       extraUserHint:
-        "以上正文为刚生成的剧情段落。请根据剧情：①同步储物袋（add/remove；无变化则 []）②在 " +
+        "以上正文为刚生成的剧情段落（含文末机器标签时请一并阅读）。请根据剧情：①同步储物袋（add/remove；无变化则 []）②在 " +
         (ST.WORLD_STATE_TAG_OPEN || "<mj_world_state>") +
-        " 中写回 worldTimeString 与 currentLocation（时间只可不变或往后，禁止早于快照）。",
+        " 中写回 worldTimeString 与 currentLocation（时间只可不变或往后，禁止早于快照）③若有新出场人物或周围人物列表变化，输出 " +
+        (ST.NPC_NEARBY_TAG_OPEN || "<mj_nearby_npcs>") +
+        " 完整 JSON 数组（无变更则省略该标签）；功法/装备名尽量与 user 可引用表一致；每条 NPC 的 displayName 须为明确姓名/称呼且与 " +
+        (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
+          ? global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
+          : "<mj_npc_story_hints>") +
+        " 中一致，禁止留空。",
       game: G,
     });
     if (stateMsgs && global.GameLog && typeof global.GameLog.info === "function") {
@@ -308,6 +314,12 @@
               }
               if (W.appliedLocation) parts.push("地点已更新");
             }
+          }
+          var Npc = app.npc;
+          if (Npc) {
+            if (Npc.skipped) parts.push("周围人物：未提交标签，保持快照");
+            else if (Npc.parseError) parts.push("周围人物解析：" + Npc.parseError);
+            else if (Npc.applied) parts.push("周围人物已更新（" + Npc.count + " 人）");
           }
           global.GameLog.info(parts.join("；") + "\n" + raw.slice(0, 2000));
         }
@@ -391,14 +403,28 @@
               streamNotified = true;
               markAiStreamStarted();
             }
-            if (assistantBody) assistantBody.textContent = full || "";
+            if (assistantBody) {
+              var vis = full || "";
+              if (SC && typeof SC.stripStoryAiMetaLeakFromNarrative === "function") {
+                vis = SC.stripStoryAiMetaLeakFromNarrative(vis);
+              }
+              assistantBody.textContent = vis;
+            }
             scrollChatLog();
           }
         : undefined,
     })
       .then(function (full) {
-        var reply = full != null ? String(full) : "";
-        var trimmed = reply.replace(/^\uFEFF/, "").trim();
+        var replyRaw = full != null ? String(full) : "";
+        var sansLeak =
+          SC && typeof SC.stripStoryAiMetaLeakFromNarrative === "function"
+            ? SC.stripStoryAiMetaLeakFromNarrative(replyRaw)
+            : replyRaw;
+        var replyForChat =
+          SC && typeof SC.stripNpcStoryHintsFromNarrative === "function"
+            ? SC.stripNpcStoryHintsFromNarrative(sansLeak)
+            : sansLeak;
+        var trimmed = replyForChat.replace(/^\uFEFF/, "").trim();
         if (trimmed === "") {
           var hadStream = streamNotified;
           var emptyMsg =
@@ -436,18 +462,18 @@
               "[剧情←AI] 空回复：hadStream=" +
                 String(hadStream) +
                 "，raw 字符串长度=" +
-                String(reply.length) +
+                String(replyForChat.length) +
                 "。",
             );
           }
           return Promise.resolve();
         }
         if (assistantRoot) assistantRoot.classList.remove("mj-chat-msg--assistant-empty");
-        G.chatHistory.push({ role: "assistant", content: reply });
-        if (assistantBody) assistantBody.textContent = reply;
+        G.chatHistory.push({ role: "assistant", content: replyForChat });
+        if (assistantBody) assistantBody.textContent = replyForChat;
         scrollChatLog();
         finishAiReplyFeedback(feedbackGenStory, textarea, "done", undefined, { kind: AI_KIND_STORY_LABEL });
-        return runStateInventoryAiTurn(G, textarea, reply);
+        return runStateInventoryAiTurn(G, textarea, sansLeak);
       })
       .catch(function (err) {
         if (

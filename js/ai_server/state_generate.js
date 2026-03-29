@@ -14,6 +14,9 @@
   var OPS_TAG_CLOSE = "</mj_inventory_ops>";
   var WORLD_STATE_TAG_OPEN = "<mj_world_state>";
   var WORLD_STATE_TAG_CLOSE = "</mj_world_state>";
+  /** 周围人物完整列表替换（可选标签；省略则不改 G.nearbyNpcs） */
+  var NPC_NEARBY_TAG_OPEN = "<mj_nearby_npcs>";
+  var NPC_NEARBY_TAG_CLOSE = "</mj_nearby_npcs>";
 
   /** 与 mainScreen / UI 一致：YYYY年 MM月 DD日 HH:MM（月日时辰分可 1～2 位，应用时会规范为零补位） */
   var WORLD_TIME_STRING_RE = /^\s*(\d+)年\s*(\d{1,2})月\s*(\d{1,2})日\s*(\d{1,2}):(\d{2})\s*$/;
@@ -284,6 +287,58 @@
   }
 
   /**
+   * 功法表摘要（名称 → desc/type/grade/value…），供状态 AI 将剧情 intro 对齐为合法功法名。
+   */
+  function buildGongfaDescribeCatalog() {
+    var out = {};
+    var Gf = global.MjDescribeGongfa;
+    if (Gf && typeof Gf === "object") {
+      for (var k in Gf) {
+        if (Object.prototype.hasOwnProperty.call(Gf, k)) {
+          var s = sampleDescribeFields(Gf[k]);
+          if (s) out[k] = s;
+        }
+      }
+    }
+    return out;
+  }
+
+  function buildGongfaDescribeCatalogJson() {
+    return JSON.stringify(buildGongfaDescribeCatalog());
+  }
+
+  /** 境界合法取值（与 RealmState 一致） */
+  function buildRealmLexiconLine() {
+    var RS = global.RealmState;
+    var majors = RS && RS.REALM_ORDER ? RS.REALM_ORDER.join("、") : "练气、筑基、结丹、元婴、化神";
+    var subs = RS && RS.SUB_STAGES ? RS.SUB_STAGES.join("、") : "初期、中期、后期";
+    return "大境界：" + majors + "；小境界：" + subs + "（化神无小境界，realm.minor 用 null 或省略由程序规范）。";
+  }
+
+  /**
+   * 周围人物精简快照（状态 AI 须在变更时输出完整列表，可参考此处 id/displayName）
+   */
+  function buildNearbyNpcsSnapshot(G) {
+    var g = G || global.MortalJourneyGame || {};
+    var list = Array.isArray(g.nearbyNpcs) ? g.nearbyNpcs : [];
+    var compact = [];
+    for (var i = 0; i < list.length; i++) {
+      var n = list[i];
+      if (!n || typeof n !== "object") continue;
+      var row = {
+        id: n.id != null ? String(n.id) : "",
+        displayName: n.displayName != null ? String(n.displayName) : "",
+        realm: n.realm && typeof n.realm === "object" ? n.realm : {},
+        gender: n.gender != null ? String(n.gender) : "",
+        linggen: n.linggen != null ? String(n.linggen) : "",
+        age: typeof n.age === "number" && isFinite(n.age) ? Math.floor(n.age) : null,
+      };
+      compact.push(row);
+    }
+    return JSON.stringify(compact);
+  }
+
+  /**
    * 当前储物袋 12 格快照（与运行时一致：name、count，及可选 desc、grade、value、equipType、type、bonus、effects）
    */
   function buildInventorySnapshot(G) {
@@ -506,10 +561,10 @@
    * 单独 system 消息：与 user 里的规则双保险，避免模型只写说明不写标签。
    */
   var DEFAULT_STATE_SYSTEM_PROMPT =
-    "你是修仙游戏的状态执行器：根据剧情同步①主角储物袋堆叠（add/remove）②世界时间与当前地点。输出机器可解析的两段标签，禁止用 Markdown 代码围栏包裹标签。\n" +
+    "你是修仙游戏的状态执行器：根据剧情同步①主角储物袋堆叠（add/remove）②世界时间与当前地点③（可选）「周围人物」面板完整列表。输出机器可解析的闭合标签，禁止用 Markdown 代码围栏包裹标签。\n" +
     "【铁律】\n" +
     "1. 回复正文可以先用一两句中文说明你的判断（可选）。\n" +
-    "2. 全文【必须】包含两对闭合标签（名称区分大小写）：\n" +
+    "2. 全文【必须】包含**至少两对**闭合标签（名称区分大小写）：\n" +
     "   第一对储物袋：" +
     OPS_TAG_OPEN +
     " … " +
@@ -520,22 +575,47 @@
     " … " +
     WORLD_STATE_TAG_CLOSE +
     "，内为 JSON 对象，须含键 worldTimeString、currentLocation（字符串）。\n" +
-    "3. " +
+    "   【可选】第三对周围人物：" +
+    NPC_NEARBY_TAG_OPEN +
+    " … " +
+    NPC_NEARBY_TAG_CLOSE +
+    "，内为 **JSON 数组**，元素为与游戏同构的 NPC 角色卡（见 user 说明）。**若本回合无需增删改周围人物，请完全省略第三对标签**（程序保留 user 「周围人物快照」）；**若输出第三对，则数组须包含当前场景中仍应出现在面板内的全部人物**（可从快照沿用已有 id，新人物生成稳定英文 id 如 npc_qixuan_disciple_01）。\n" +
+    "3. 剧情文末若含 " +
+    (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
+      ? global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
+      : "<mj_npc_story_hints>") +
+    " … " +
+    (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_CLOSE
+      ? global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_CLOSE
+      : "</mj_npc_story_hints>") +
+    "，其中每条须含非空的 `displayName`（明确姓名或正式称呼）与 `intro`；`intro` 为战设摘要。须据此在「可引用功法表」「可引用物品表」中选近义项，填 gongfaSlots / equippedSlots / 基础境界修为等；`mj_nearby_npcs` 里每条角色的 **displayName** 必须与剧情 hints 中一致（勿再留空）。\n" +
+    "4. " +
     OPS_TAG_OPEN +
     " 内【只有】JSON 数组。\n" +
-    "4. " +
+    "5. " +
     WORLD_STATE_TAG_OPEN +
     " 内【只有】JSON 对象；worldTimeString 格式须为「0001年 01月 01日 08:00」（四位年、月日时分可一位或两位，冒号分隔时分）；【不得早于】user 快照中的世界时间（禁止倒流）；剧情未推进时间则填与快照完全相同。\n" +
-    "5. currentLocation 为主角此刻所在地短名（与界面一致）；未移动则与快照相同。\n" +
-    "6. 增加：剧情若明确「获得××× N」「奖励×× N 份」「买入到手」等，用 op:add，name 用表中已有名称（如 下品灵石），count 为新增数量；程序会自动与储物袋同名堆叠合并。\n" +
-    "7. 减少：剧情若明确支付灵石、消费堆叠物、遗失、上缴、赠出、被没收等导致袋内数量减少，必须用 op:remove，name 与快照中一致（如 下品灵石），count 为扣减件数。灵石收支由你负责：买了东西花了灵石就要 remove 灵石；卖了或领到灵石就要 add 灵石。禁止在说明文字里写「灵石扣除不在此范围」——凡影响袋内堆叠数量的，都须写进第一对标签的数组。\n" +
-    "8. op:add 时：表外新物必须对齐「可引用物品表」字段：必填 desc、grade、value；非装备带 type；装备带 type 或 equipType（武器|法器|防具）与 bonus；丹药带 type:\"丹药\" 并尽量带 effects。op:remove 只需 name 与 count，不要求精简字段。\n" +
-    "9. 【禁止重复入库】下方「主角当前佩戴」「主角功法栏」中已出现的物品/功法，视为已在身或已修习。剧情里只是「使用」「驾驭」「运转」它们不算新获得，【禁止】再 op:add 进储物袋；仅当剧情明确新发放、拾取、购买且应进背包时才 add。储物袋与佩戴栏、功法栏是三个独立数据区。\n" +
-    "10. 【价值与下品灵石】见 user 中「折算下品灵石」说明（单颗下品灵石刻度以可引用物品表为准）。合计的是刻度，不是灵石块数；禁止把合计刻度直接写进 add 下品灵石的 count。";
+    "6. currentLocation 为主角此刻所在地短名（与界面一致）；未移动则与快照相同。\n" +
+    "7. 增加：剧情若明确「获得××× N」「奖励×× N 份」「买入到手」等，用 op:add，name 用表中已有名称（如 下品灵石），count 为新增数量；程序会自动与储物袋同名堆叠合并。\n" +
+    "8. 减少：剧情若明确支付灵石、消费堆叠物、遗失、上缴、赠出、被没收等导致袋内数量减少，必须用 op:remove，name 与快照中一致（如 下品灵石），count 为扣减件数。灵石收支由你负责：买了东西花了灵石就要 remove 灵石；卖了或领到灵石就要 add 灵石。禁止在说明文字里写「灵石扣除不在此范围」——凡影响袋内堆叠数量的，都须写进第一对标签的数组。\n" +
+    "9. op:add 时：表外新物必须对齐「可引用物品表」字段：必填 desc、grade、value；非装备带 type；装备带 type 或 equipType（武器|法器|防具）与 bonus；丹药带 type:\"丹药\" 并尽量带 effects。op:remove 只需 name 与 count，不要求精简字段。\n" +
+    "10. 【禁止重复入库】下方「主角当前佩戴」「主角功法栏」中已出现的物品/功法，视为已在身或已修习。剧情里只是「使用」「驾驭」「运转」它们不算新获得，【禁止】再 op:add 进储物袋；仅当剧情明确新发放、拾取、购买且应进背包时才 add。储物袋与佩戴栏、功法栏是三个独立数据区。\n" +
+    "11. 【价值与下品灵石】见 user 中「折算下品灵石」说明（单颗下品灵石刻度以可引用物品表为准）。合计的是刻度，不是灵石块数；禁止把合计刻度直接写进 add 下品灵石的 count。\n" +
+    "12. 【周围人物】输出 " +
+    NPC_NEARBY_TAG_OPEN +
+    " 时：每条 NPC 须含 **非空** displayName（与剧情 " +
+    (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
+      ? global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
+      : "<mj_npc_story_hints>") +
+    " 中一致或剧情已给出的正式名）、id、realm{major,minor}、gender、linggen、age、shouyuan、xiuwei、traits（数组，可空）、equippedSlots（长度 3：武器/法器/防具，槽内 {name} 或 null）、gongfaSlots（长度 12，未学填 null）、inventorySlots（长度 12，可全 null）。名称优先引用 user 中功法/装备表；木剑等若表中有「铁剑」类可酌定最贴近项。省略第三对标签=不改动周围人物。";
 
   var DEFAULT_OUTPUT_RULES =
     "【输出要求 · 机器解析】\n" +
-    "■ 【必须】输出两对标签：①储物袋 JSON 数组 ②世界状态 JSON 对象；不要用 ```json 代码块代替标签。\n" +
+    "■ 【必须】输出两对标签：①储物袋 JSON 数组 ②世界状态 JSON 对象；【可选】③" +
+    NPC_NEARBY_TAG_OPEN +
+    " 周围人物 JSON 数组 " +
+    NPC_NEARBY_TAG_CLOSE +
+    "（无周围人物变更时不要写第三对）。不要用 ```json 代码块代替标签。\n" +
     "■ 完整示例（储物袋增加 + 时间推进一格 + 地点不变）：\n" +
     OPS_TAG_OPEN +
     '[{"op":"add","name":"下品灵石","count":3}]' +
@@ -571,7 +651,19 @@
     "■ 表示例（表外·防具）：{\"op\":\"add\",\"name\":\"试炼布衣\",\"count\":1,\"desc\":\"……\",\"grade\":\"下品\",\"value\":10,\"type\":\"防具\",\"bonus\":{\"物防\":5}}\n" +
     "■ 表示例（表外丹药）：{\"op\":\"add\",\"name\":\"辟谷丹\",\"count\":3,\"desc\":\"……\",\"grade\":\"下品\",\"value\":15,\"type\":\"丹药\",\"effects\":{\"recover\":{\"hp\":5,\"mp\":0}}}\n" +
     "■ 剧情中出现「获得下品灵石×3」应 add；出现「付出/支付/递出十一块下品灵石」等应对 下品灵石 做 remove，count 与剧情一致。\n" +
-    "■ 已在「主角当前佩戴」或「主角功法栏」中出现的名称，不要再 add 进储物袋（除非剧情明确又给了第二份同款且应堆叠在背包）。";
+    "■ 已在「主角当前佩戴」或「主角功法栏」中出现的名称，不要再 add 进储物袋（除非剧情明确又给了第二份同款且应堆叠在背包）。\n" +
+    "■ 第三对示例（剧情出现新同门后，**列出当前应显示的全部周围人物**；equippedSlots 须长度 3、gongfaSlots 长度 12）：\n" +
+    OPS_TAG_OPEN +
+    "[]" +
+    OPS_TAG_CLOSE +
+    "\n" +
+    WORLD_STATE_TAG_OPEN +
+    '{"worldTimeString":"0001年 01月 01日 08:00","currentLocation":"七玄门"}' +
+    WORLD_STATE_TAG_CLOSE +
+    "\n" +
+    NPC_NEARBY_TAG_OPEN +
+    '[{"id":"npc_bamboo_girl_01","displayName":"厉飞雨师妹","gender":"女","age":16,"linggen":"水","realm":{"major":"练气","minor":"初期"},"xiuwei":30,"traits":[{"name":"剑心初萌","rarity":"平庸","desc":"对剑诀领悟略快","bonus":{"物攻":3}}],"equippedSlots":[{"name":"铁剑"},null,null],"gongfaSlots":[{"name":"长春功"},null,null,null,null,null,null,null,null,null,null,null],"inventorySlots":[null,null,null,null,null,null,null,null,null,null,null,null]}]' +
+    NPC_NEARBY_TAG_CLOSE;
 
   /**
    * 拼出与 stage_prompt 类似的单条 user 正文（状态快照 + 表 + 剧情 + 规则）。
@@ -596,6 +688,12 @@
     parts.push(buildGongfaSnapshot(G));
     parts.push("### 储物袋快照（12 格，null 为空位）");
     parts.push(buildInventorySnapshot(G));
+    parts.push("### 周围人物快照（仅 id/显示名/境界等摘要；若输出 " + NPC_NEARBY_TAG_OPEN + " 则须给出**完整**当期列表以替换）");
+    parts.push(buildNearbyNpcsSnapshot(G));
+    parts.push("### 境界合法取值");
+    parts.push(buildRealmLexiconLine());
+    parts.push("### 可引用功法表（名称须与之一致时可直用表内 bonus/type）");
+    parts.push(buildGongfaDescribeCatalogJson());
     parts.push("### 可引用物品表（stuff_describe + 装备表，字段与游戏内描述一致）");
     parts.push(buildStuffDescribeCatalogJson());
     if (o.storyText != null && String(o.storyText).trim() !== "") {
@@ -836,11 +934,115 @@
     return out;
   }
 
+  function padSlotArrayToLen(arr, len) {
+    var out = [];
+    for (var i = 0; i < len; i++) {
+      out.push(arr && arr[i] != null && typeof arr[i] === "object" ? arr[i] : null);
+    }
+    return out;
+  }
+
+  /** AI 可能只填前几格，补齐与主界面一致的长度后再 normalize */
+  function ensureNpcSheetSlotLengths(n) {
+    if (!n || typeof n !== "object") return n;
+    n.equippedSlots = padSlotArrayToLen(n.equippedSlots, EQUIP_SLOT_COUNT);
+    n.gongfaSlots = padSlotArrayToLen(n.gongfaSlots, GONGFA_SLOT_COUNT);
+    n.inventorySlots = padSlotArrayToLen(n.inventorySlots, INVENTORY_SLOT_COUNT);
+    return n;
+  }
+
+  /**
+   * @param {Object} G
+   * @param {Array} arr mj_nearby_npcs 解析结果
+   * @returns {{ applied: boolean, count: number, error: string|null }}
+   */
+  function applyNearbyNpcsArrayToGame(G, arr) {
+    var out = { applied: false, count: 0, error: null };
+    if (!G) {
+      out.error = "MortalJourneyGame 不存在";
+      return out;
+    }
+    if (!Array.isArray(arr)) {
+      out.error = "mj_nearby_npcs 须为 JSON 数组";
+      return out;
+    }
+    var MCS = global.MjCharacterSheet;
+    var PBR = global.PlayerBaseRuntime;
+    var P = global.MjMainScreenPanel || global.MjMainScreenPanelRealm;
+    var list = [];
+    for (var i = 0; i < arr.length; i++) {
+      var raw = arr[i];
+      if (!raw || typeof raw !== "object") continue;
+      var copy;
+      try {
+        copy = JSON.parse(JSON.stringify(raw));
+      } catch (e0) {
+        continue;
+      }
+      ensureNpcSheetSlotLengths(copy);
+      var n = MCS && typeof MCS.normalize === "function" ? MCS.normalize(copy) : copy;
+      if (PBR && typeof PBR.applyComputedPlayerBaseToCharacterSheet === "function") {
+        try {
+          PBR.applyComputedPlayerBaseToCharacterSheet(n);
+        } catch (ePbr) {
+          console.warn("[状态 AI] applyComputedPlayerBaseToCharacterSheet", ePbr);
+        }
+      }
+      if (P && typeof P.syncNpcShouyuanFromRealmState === "function") {
+        try {
+          P.syncNpcShouyuanFromRealmState(n);
+        } catch (eSy) {
+          console.warn("[状态 AI] syncNpcShouyuanFromRealmState", eSy);
+        }
+      }
+      list.push(n);
+    }
+    G.nearbyNpcs = list;
+    out.applied = true;
+    out.count = list.length;
+    return out;
+  }
+
+  /**
+   * @param {string} text
+   * @returns {{ ok: boolean, list: Array|null, absent: boolean, error: string|null, parseVia: string|null }}
+   */
+  function parseNearbyNpcsFromText(text) {
+    var raw = String(text || "");
+    var tagRe = /<mj_nearby_npcs\s*>\s*([\s\S]*?)\s*<\/mj_nearby_npcs\s*>/i;
+    var tm = tagRe.exec(raw);
+    if (!tm) {
+      return { ok: false, list: null, absent: true, error: null, parseVia: null };
+    }
+    var inner = stripJsonFence(tm[1].trim());
+    try {
+      var parsed = JSON.parse(inner);
+      if (!Array.isArray(parsed)) {
+        return {
+          ok: false,
+          list: null,
+          absent: false,
+          error: "mj_nearby_npcs 内须为 JSON 数组",
+          parseVia: "tag",
+        };
+      }
+      return { ok: true, list: parsed, absent: false, error: null, parseVia: "tag" };
+    } catch (e) {
+      return {
+        ok: false,
+        list: null,
+        absent: false,
+        error: "mj_nearby_npcs JSON：" + (e && e.message ? String(e.message) : "解析失败"),
+        parseVia: "tag",
+      };
+    }
+  }
+
   /**
    * 解析并应用储物袋 + 世界状态（世界解析失败不阻止储物袋已成功应用）。
    * @param {Object} G
    * @param {string} assistantText
-   * @returns {{ ok: boolean, placed: Array, removed: Array, failed: Array, parseError: string|null, parseVia: string|null, world: Object }}
+   * @returns {{ ok: boolean, placed: Array, removed: Array, failed: Array, parseError: string|null, parseVia: string|null, world: Object, npc: Object }}
    */
   function applyStateTurnFromAssistantText(G, assistantText) {
     var raw = String(assistantText || "");
@@ -881,6 +1083,27 @@
       world.parseError = ws.error;
     }
 
+    var nr = parseNearbyNpcsFromText(raw);
+    var npc = {
+      skipped: false,
+      applied: false,
+      count: 0,
+      parseError: null,
+      parseVia: null,
+    };
+    if (nr.absent) {
+      npc.skipped = true;
+    } else if (nr.ok && nr.list) {
+      var na = applyNearbyNpcsArrayToGame(G, nr.list);
+      npc.applied = na.applied;
+      npc.count = na.count;
+      npc.parseVia = nr.parseVia;
+      if (na.error) npc.parseError = na.error;
+    } else {
+      npc.parseError = nr.error || "mj_nearby_npcs 解析失败";
+      npc.parseVia = nr.parseVia;
+    }
+
     return {
       ok: invOk,
       placed: placed,
@@ -889,6 +1112,7 @@
       parseError: parseError,
       parseVia: parseVia,
       world: world,
+      npc: npc,
     };
   }
 
@@ -989,8 +1213,13 @@
     OPS_TAG_CLOSE: OPS_TAG_CLOSE,
     WORLD_STATE_TAG_OPEN: WORLD_STATE_TAG_OPEN,
     WORLD_STATE_TAG_CLOSE: WORLD_STATE_TAG_CLOSE,
+    NPC_NEARBY_TAG_OPEN: NPC_NEARBY_TAG_OPEN,
+    NPC_NEARBY_TAG_CLOSE: NPC_NEARBY_TAG_CLOSE,
     buildStuffDescribeCatalog: buildStuffDescribeCatalog,
     buildStuffDescribeCatalogJson: buildStuffDescribeCatalogJson,
+    buildGongfaDescribeCatalog: buildGongfaDescribeCatalog,
+    buildGongfaDescribeCatalogJson: buildGongfaDescribeCatalogJson,
+    buildNearbyNpcsSnapshot: buildNearbyNpcsSnapshot,
     buildEquippedSnapshot: buildEquippedSnapshot,
     buildGongfaSnapshot: buildGongfaSnapshot,
     buildInventorySnapshot: buildInventorySnapshot,
@@ -999,6 +1228,8 @@
     buildMessages: buildMessages,
     parseInventoryOpsFromText: parseInventoryOpsFromText,
     parseWorldStateFromText: parseWorldStateFromText,
+    parseNearbyNpcsFromText: parseNearbyNpcsFromText,
+    applyNearbyNpcsArrayToGame: applyNearbyNpcsArrayToGame,
     resolvePlacePayload: resolvePlacePayload,
     applyInventoryOps: applyInventoryOps,
     applyWorldStatePatch: applyWorldStatePatch,
