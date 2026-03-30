@@ -332,42 +332,76 @@
           refreshApiGateUi();
         }
 
-        document.getElementById("start-new-life-btn").addEventListener("click", function () {
-          if (window.FateChoiceController && typeof window.FateChoiceController.show === "function") {
-            window.FateChoiceController.show();
-          } else {
-            console.warn("[凡人修仙传] FateChoiceController 未加载");
-          }
-        });
-        document.getElementById("load-life-btn").addEventListener("click", function () {
-          console.info("[凡人修仙传] 读取人生");
-        });
-
-        var apiBtn = document.getElementById("api-settings-btn");
-        if (apiBtn) apiBtn.addEventListener("click", openApiSettings);
-        var root = document.getElementById("api-settings-root");
-        if (root) {
-          root.querySelectorAll("[data-api-settings-close]").forEach(function (el) {
-            el.addEventListener("click", function () {
-              closeApiSettings();
+        function bindSplashUiOnce() {
+          var start = qs("start-new-life-btn");
+          if (start && !start._mjBound) {
+            start._mjBound = true;
+            start.addEventListener("click", function () {
+              if (window.FateChoiceController && typeof window.FateChoiceController.show === "function") {
+                window.FateChoiceController.show();
+              } else {
+                console.warn("[凡人修仙传] FateChoiceController 未加载");
+              }
             });
-          });
-          root.addEventListener("keydown", function (ev) {
-            if (ev.key === "Escape") {
-              closeApiSettings();
-              ev.preventDefault();
-            }
-          });
-        }
-        var saveBtn = document.getElementById("api-settings-save-btn");
-        if (saveBtn) saveBtn.addEventListener("click", saveApiSettings);
-        var clearBtn = document.getElementById("api-settings-clear-btn");
-        if (clearBtn) clearBtn.addEventListener("click", clearApiSettings);
-        var testBtn = document.getElementById("api-settings-test-btn");
-        if (testBtn) testBtn.addEventListener("click", testApiSettings);
+          }
 
-        // 初始门禁：未配置 API 时禁用开始/读取
-        refreshApiGateUi();
+          var load = qs("load-life-btn");
+          if (load && !load._mjBound) {
+            load._mjBound = true;
+            load.addEventListener("click", function () {
+              console.info("[凡人修仙传] 读取人生");
+            });
+          }
+
+          var apiBtn = qs("api-settings-btn");
+          if (apiBtn && !apiBtn._mjBound) {
+            apiBtn._mjBound = true;
+            apiBtn.addEventListener("click", openApiSettings);
+            // 兜底：部分环境 addEventListener 失效时仍可点击
+            apiBtn.onclick = openApiSettings;
+          }
+
+          var root = qs("api-settings-root");
+          if (root && !root._mjBound) {
+            root._mjBound = true;
+            root.querySelectorAll("[data-api-settings-close]").forEach(function (el) {
+              el.addEventListener("click", function () {
+                closeApiSettings();
+              });
+            });
+            root.addEventListener("keydown", function (ev) {
+              if (ev.key === "Escape") {
+                closeApiSettings();
+                ev.preventDefault();
+              }
+            });
+          }
+
+          var saveBtn = qs("api-settings-save-btn");
+          if (saveBtn && !saveBtn._mjBound) {
+            saveBtn._mjBound = true;
+            saveBtn.addEventListener("click", saveApiSettings);
+          }
+          var clearBtn = qs("api-settings-clear-btn");
+          if (clearBtn && !clearBtn._mjBound) {
+            clearBtn._mjBound = true;
+            clearBtn.addEventListener("click", clearApiSettings);
+          }
+          var testBtn = qs("api-settings-test-btn");
+          if (testBtn && !testBtn._mjBound) {
+            testBtn._mjBound = true;
+            testBtn.addEventListener("click", testApiSettings);
+          }
+
+          // 初始门禁：未配置 API 时禁用开始/读取
+          refreshApiGateUi();
+        }
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", bindSplashUiOnce, { once: true });
+        } else {
+          bindSplashUiOnce();
+        }
       })();
     </script>
   </body>
