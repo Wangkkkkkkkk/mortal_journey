@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="./css/start_frame.css" />
     <link rel="stylesheet" href="./css/logPanel.css" />
     <link rel="stylesheet" href="./css/main.css" />
-    <link rel="stylesheet" href="./css/hongmeng_creation.css" />
+    <link rel="stylesheet" href="./css/creation.css" />
   </head>
   <body>
     <script src="./js/log/logPanel.js"></script>
@@ -87,6 +87,24 @@
           <button type="button" class="splash-btn splash-btn--secondary" id="save-load-delete-all-btn">清空</button>
         </div>
         <div id="save-load-status" class="splash-modal-status" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <!-- 自定义对话框：替代浏览器 confirm/prompt（可美化） -->
+    <div id="mj-dialog-root" class="mj-dialog-root hidden" aria-hidden="true">
+      <div class="mj-dialog-backdrop" data-mj-dialog-close tabindex="-1"></div>
+      <div class="mj-dialog" role="dialog" aria-modal="true" aria-labelledby="mj-dialog-title">
+        <button type="button" class="mj-dialog-close" data-mj-dialog-close aria-label="关闭">×</button>
+        <h3 id="mj-dialog-title" class="mj-dialog-title"></h3>
+        <div id="mj-dialog-message" class="mj-dialog-message"></div>
+        <div id="mj-dialog-field" class="mj-dialog-field hidden">
+          <input id="mj-dialog-input" class="mj-dialog-input" type="text" />
+          <div id="mj-dialog-hint" class="mj-dialog-message hidden" aria-live="polite"></div>
+        </div>
+        <div class="mj-dialog-actions">
+          <button type="button" class="splash-btn splash-btn--secondary" id="mj-dialog-cancel-btn">取消</button>
+          <button type="button" class="splash-btn" id="mj-dialog-ok-btn">确定</button>
+        </div>
       </div>
     </div>
 
@@ -493,18 +511,26 @@
               btnDel.className = "splash-btn splash-btn--secondary";
               btnDel.textContent = "删除";
               btnDel.addEventListener("click", function () {
-                if (!window.confirm("确定删除存档「" + String(it.name || it.id) + "」？此操作不可撤销。")) return;
-                try {
-                  localStorage.removeItem(SAVE_PREFIX + String(it.id));
-                  var idx2 = readSaveIndex().filter(function (x) {
-                    return x && String(x.id || "") !== String(it.id);
-                  });
-                  writeSaveIndex(idx2);
-                  renderSaveLoadList();
-                  setSaveLoadStatus("已删除。", true);
-                } catch (e) {
-                  setSaveLoadStatus("删除失败：" + (e && e.message ? e.message : "未知错误"), false);
-                }
+                var title = "确认删除";
+                var msg = "确定删除存档「" + String(it.name || it.id) + "」？\n此操作不可撤销。";
+                var confirmP =
+                  window.MjUiDialogs && typeof window.MjUiDialogs.confirm === "function"
+                    ? window.MjUiDialogs.confirm(title, msg, { okText: "删除", cancelText: "取消" })
+                    : Promise.resolve(window.confirm(msg));
+                confirmP.then(function (ok) {
+                  if (!ok) return;
+                  try {
+                    localStorage.removeItem(SAVE_PREFIX + String(it.id));
+                    var idx2 = readSaveIndex().filter(function (x) {
+                      return x && String(x.id || "") !== String(it.id);
+                    });
+                    writeSaveIndex(idx2);
+                    renderSaveLoadList();
+                    setSaveLoadStatus("已删除。", true);
+                  } catch (e) {
+                    setSaveLoadStatus("删除失败：" + (e && e.message ? e.message : "未知错误"), false);
+                  }
+                });
               });
               actions.appendChild(btnLoad);
               actions.appendChild(btnDel);
@@ -605,18 +631,26 @@
             if (delAllBtn && !delAllBtn._mjBound) {
               delAllBtn._mjBound = true;
               delAllBtn.addEventListener("click", function () {
-                if (!window.confirm("确定清空全部存档？此操作不可撤销。")) return;
-                try {
-                  var idx3 = readSaveIndex();
-                  for (var i2 = 0; i2 < idx3.length; i2++) {
-                    if (idx3[i2] && idx3[i2].id) localStorage.removeItem(SAVE_PREFIX + String(idx3[i2].id));
+                var title = "确认清空";
+                var msg = "确定清空全部存档？\n此操作不可撤销。";
+                var confirmP =
+                  window.MjUiDialogs && typeof window.MjUiDialogs.confirm === "function"
+                    ? window.MjUiDialogs.confirm(title, msg, { okText: "清空", cancelText: "取消" })
+                    : Promise.resolve(window.confirm(msg));
+                confirmP.then(function (ok) {
+                  if (!ok) return;
+                  try {
+                    var idx3 = readSaveIndex();
+                    for (var i2 = 0; i2 < idx3.length; i2++) {
+                      if (idx3[i2] && idx3[i2].id) localStorage.removeItem(SAVE_PREFIX + String(idx3[i2].id));
+                    }
+                    writeSaveIndex([]);
+                    renderSaveLoadList();
+                    setSaveLoadStatus("已清空。", true);
+                  } catch (e) {
+                    setSaveLoadStatus("清空失败：" + (e && e.message ? e.message : "未知错误"), false);
                   }
-                  writeSaveIndex([]);
-                  renderSaveLoadList();
-                  setSaveLoadStatus("已清空。", true);
-                } catch (e) {
-                  setSaveLoadStatus("清空失败：" + (e && e.message ? e.message : "未知错误"), false);
-                }
+                });
               });
             }
 
@@ -631,6 +665,157 @@
             } catch (_e2) {}
           }
         }
+
+        // 自定义 confirm / prompt（Promise 形式），供其它模块调用
+        (function installDialogs() {
+          function el(id) {
+            return document.getElementById(id);
+          }
+          var root = el("mj-dialog-root");
+          if (!root) return;
+          var titleEl = el("mj-dialog-title");
+          var msgEl = el("mj-dialog-message");
+          var field = el("mj-dialog-field");
+          var input = el("mj-dialog-input");
+          var hintEl = el("mj-dialog-hint");
+          var okBtn = el("mj-dialog-ok-btn");
+          var cancelBtn = el("mj-dialog-cancel-btn");
+
+          var active = null; // { resolve, mode, validate }
+
+          function close(result) {
+            if (!active) return;
+            var cur = active;
+            active = null;
+            root.classList.add("hidden");
+            root.setAttribute("aria-hidden", "true");
+            document.body.style.overflow = "";
+            try {
+              if (input) input.oninput = null;
+            } catch (_e0) {}
+            try {
+              cur.resolve(result);
+            } catch (_e) {}
+          }
+
+          function setHint(text) {
+            if (!hintEl) return;
+            var t = text != null ? String(text) : "";
+            hintEl.textContent = t;
+            hintEl.classList.toggle("hidden", !t);
+          }
+
+          function setOkEnabled(enabled) {
+            if (!okBtn) return;
+            okBtn.disabled = !enabled;
+          }
+
+          function open(opts) {
+            var o = opts || {};
+            var mode = o.mode === "prompt" ? "prompt" : "confirm";
+            if (titleEl) titleEl.textContent = o.title != null ? String(o.title) : "提示";
+            if (msgEl) msgEl.textContent = o.message != null ? String(o.message) : "";
+            if (field) field.classList.toggle("hidden", mode !== "prompt");
+            if (input) {
+              input.type = o.inputType ? String(o.inputType) : "text";
+              input.value = o.defaultValue != null ? String(o.defaultValue) : "";
+              input.placeholder = o.placeholder != null ? String(o.placeholder) : "";
+            }
+            if (cancelBtn) cancelBtn.textContent = o.cancelText != null ? String(o.cancelText) : "取消";
+            if (okBtn) okBtn.textContent = o.okText != null ? String(o.okText) : "确定";
+            setHint("");
+            setOkEnabled(true);
+
+            root.classList.remove("hidden");
+            root.setAttribute("aria-hidden", "false");
+            document.body.style.overflow = "hidden";
+            window.setTimeout(function () {
+              try {
+                if (mode === "prompt" && input) input.focus();
+                else if (okBtn) okBtn.focus();
+              } catch (_e) {}
+            }, 0);
+
+            return new Promise(function (resolve) {
+              active = { resolve: resolve, mode: mode, validate: typeof o.validate === "function" ? o.validate : null };
+            });
+          }
+
+          // 事件绑定（只绑一次）
+          if (!root._mjBound) {
+            root._mjBound = true;
+            root.querySelectorAll("[data-mj-dialog-close]").forEach(function (n) {
+              n.addEventListener("click", function () {
+                close(active && active.mode === "prompt" ? null : false);
+              });
+            });
+            if (cancelBtn) {
+              cancelBtn.addEventListener("click", function () {
+                close(active && active.mode === "prompt" ? null : false);
+              });
+            }
+            if (okBtn) {
+              okBtn.addEventListener("click", function () {
+                if (okBtn.disabled) return;
+                if (active && active.mode === "prompt") {
+                  close(input ? String(input.value || "") : "");
+                } else {
+                  close(true);
+                }
+              });
+            }
+            root.addEventListener("keydown", function (ev) {
+              if (ev.key === "Escape") {
+                close(active && active.mode === "prompt" ? null : false);
+                ev.preventDefault();
+              } else if (ev.key === "Enter" && active && active.mode === "prompt") {
+                if (okBtn && okBtn.disabled) return;
+                close(input ? String(input.value || "") : "");
+                ev.preventDefault();
+              }
+            });
+          }
+
+          function applyValidate() {
+            if (!active || active.mode !== "prompt") return;
+            var vfn = active.validate;
+            if (!vfn) return;
+            var val = input ? String(input.value || "") : "";
+            var res = null;
+            try {
+              res = vfn(val);
+            } catch (_e) {
+              res = null;
+            }
+            if (!res || typeof res !== "object") {
+              setOkEnabled(true);
+              setHint("");
+              return;
+            }
+            if (res.okEnabled === false) setOkEnabled(false);
+            else setOkEnabled(true);
+            setHint(res.hint != null ? String(res.hint) : "");
+          }
+
+          try {
+            window.MjUiDialogs = window.MjUiDialogs || {};
+            window.MjUiDialogs.confirm = function (title, message, opts) {
+              return open(Object.assign({}, opts || {}, { mode: "confirm", title: title, message: message }));
+            };
+            window.MjUiDialogs.prompt = function (title, message, opts) {
+              var p = open(Object.assign({}, opts || {}, { mode: "prompt", title: title, message: message }));
+              try {
+                if (input) {
+                  input.oninput = function () {
+                    applyValidate();
+                  };
+                }
+                applyValidate();
+              } catch (_e3) {}
+              return p;
+            };
+          } catch (_e2) {}
+        })();
 
         if (document.readyState === "loading") {
           document.addEventListener("DOMContentLoaded", bindSplashUiOnce, { once: true });

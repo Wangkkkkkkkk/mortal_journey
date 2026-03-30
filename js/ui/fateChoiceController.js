@@ -800,22 +800,69 @@
       return rid;
     }
 
-    // 开始人生前：必须填写存档名称（同名会继续写入同一存档）
-    var saveName = normalizeSaveName(window.prompt("请输入存档名称（必填）：", ""));
-    if (!saveName) {
-      if (statusEl) {
-        statusEl.style.color = "#e0b15a";
-        statusEl.textContent = "未填写存档名称，已取消开始人生。";
+    function askSaveNameAsync() {
+      var title = "开始人生";
+      var msg = "请输入存档名称（必填）：";
+      if (global.MjUiDialogs && typeof global.MjUiDialogs.prompt === "function") {
+        return global.MjUiDialogs.prompt(title, msg, {
+          okText: "开始",
+          cancelText: "取消",
+          placeholder: "例如：第一世",
+          defaultValue: "",
+          inputType: "text",
+          validate: function (raw) {
+            var nm = normalizeSaveName(raw);
+            if (!nm) return { okEnabled: false, hint: "注意不要与已有存档同名。" };
+            var idx = readSaveIndex();
+            var lower = String(nm).toLowerCase();
+            for (var i = 0; i < idx.length; i++) {
+              var it = idx[i];
+              if (!it || !it.name) continue;
+              var n2 = String(it.name).trim();
+              if (String(n2).toLowerCase() === lower) {
+                return { okEnabled: false, hint: "已有同名存档：" + n2 };
+              }
+            }
+            return { okEnabled: true, hint: "" };
+          },
+        });
       }
-      return;
-    }
-    var saveId = pickOrCreateSaveIdByName(saveName);
-    if (!saveId) {
-      window.alert("创建存档失败（无法生成存档ID）。");
-      return;
+      return Promise.resolve(window.prompt(msg, ""));
     }
 
-    var payload = {
+    function continueStartWithSaveName(saveNameRaw) {
+      // 开始人生前：必须填写存档名称（同名会继续写入同一存档）
+      var saveName = normalizeSaveName(saveNameRaw);
+      if (!saveName) {
+        if (statusEl) {
+          statusEl.style.color = "#e0b15a";
+          statusEl.textContent = "未填写存档名称，已取消开始人生。";
+        }
+        return;
+      }
+      // 保险：即便 UI 校验漏网，也不允许同名覆盖
+      try {
+        var idx0 = readSaveIndex();
+        var lower0 = String(saveName).toLowerCase();
+        for (var k = 0; k < idx0.length; k++) {
+          var it0 = idx0[k];
+          if (!it0 || !it0.name) continue;
+          if (String(it0.name).toLowerCase() === lower0) {
+            if (statusEl) {
+              statusEl.style.color = "#e57373";
+              statusEl.textContent = "已有同名存档：「" + String(it0.name) + "」，请更换名称。";
+            }
+            return;
+          }
+        }
+      } catch (_eDup) {}
+      var saveId = pickOrCreateSaveIdByName(saveName);
+      if (!saveId) {
+        window.alert("创建存档失败（无法生成存档ID）。");
+        return;
+      }
+
+      var payload = {
       difficulty: state.selectedDifficulty,
       gender: state.selectedGender,
       birth: state.selectedBirth,
@@ -827,7 +874,7 @@
       realm: { major: START_REALM_MAJOR, minor: START_REALM_STAGE },
       rawRealmBase: state.rawRealmBase ? Object.assign({}, state.rawRealmBase) : null,
       playerBase: state.playerBase ? Object.assign({}, state.playerBase) : null,
-    };
+      };
     console.info("[凡人修仙传] 命运抉择完成", payload);
     if (typeof global.GameLog === "object" && global.GameLog && typeof global.GameLog.info === "function") {
       global.GameLog.info("开局配置已确认（详见控制台）");
@@ -904,6 +951,19 @@
     }
 
     window.location.href = "./main.html";
+    }
+
+    askSaveNameAsync().then(function (nameOrNull) {
+      // prompt 取消时返回 null
+      if (nameOrNull == null) {
+        if (statusEl) {
+          statusEl.style.color = "#e0b15a";
+          statusEl.textContent = "已取消开始人生。";
+        }
+        return;
+      }
+      continueStartWithSaveName(nameOrNull);
+    });
   }
 
   function showFateChoice() {

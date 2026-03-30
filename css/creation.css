@@ -16,7 +16,8 @@
   --input-border: rgba(140, 120, 83, 0.35);
 
   --rarity-mundane: #808080;
-  --rarity-common: #a8a8a0;
+  /* 普通：直接绿色（区别于平庸灰） */
+  --rarity-common: #4caf50;
   --rarity-rare: #4fc3f7;
   --rarity-epic: #ba68c8;
   --rarity-legendary: #e8c547;
@@ -400,7 +401,7 @@
 .trait-card.rarity-平庸 { border-color: var(--rarity-mundane); }
 .trait-card.rarity-平庸 .trait-rarity { background: var(--rarity-mundane); color: #1a1a1a; }
 .trait-card.rarity-普通 { border-color: var(--rarity-common); }
-.trait-card.rarity-普通 .trait-rarity { background: var(--rarity-common); color: #1a1a1a; }
+.trait-card.rarity-普通 .trait-rarity { background: var(--rarity-common); color: #06130a; }
 .trait-card.rarity-稀有 { border-color: var(--rarity-rare); }
 .trait-card.rarity-稀有 .trait-rarity { background: var(--rarity-rare); color: #1a1a1a; }
 .trait-card.rarity-史诗 { border-color: var(--rarity-epic); }

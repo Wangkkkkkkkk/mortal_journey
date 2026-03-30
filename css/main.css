@@ -579,7 +579,7 @@ body.mj-main-body {
   box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.25);
 }
 .mj-trait-slot[data-rarity="普通"] {
-  border-color: #b0b0b0;
+  border-color: #4caf50;
 }
 .mj-trait-slot[data-rarity="稀有"] {
   border-color: #4fc3f7;
@@ -917,17 +917,17 @@ body.mj-main-body {
 }
 
 .mj-trait-modal[data-rarity="普通"] {
-  border-color: #b0b0b0;
+  border-color: #4caf50;
   box-shadow:
-    0 0 0 1px rgba(176, 176, 176, 0.4),
+    0 0 0 1px rgba(76, 175, 80, 0.45),
     0 16px 48px rgba(0, 0, 0, 0.55),
-    0 0 28px rgba(200, 200, 200, 0.1);
+    0 0 28px rgba(76, 175, 80, 0.14);
 }
 .mj-trait-modal[data-rarity="普通"] .mj-trait-modal-title {
-  color: #e0e0e0;
+  color: #66bb6a;
 }
 .mj-trait-modal[data-rarity="普通"] .mj-trait-modal-rarity {
-  color: #bdbdbd;
+  color: #9ccc65;
 }
 
 .mj-trait-modal[data-rarity="稀有"] {
@@ -1262,7 +1262,7 @@ body.mj-main-body {
 #mj-inventory-grid .mj-inventory-slot--filled[data-rarity="普通"],
 .mj-equip-slot--filled[data-rarity="普通"],
 .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled[data-rarity="普通"] {
-  border-color: #b0b0b0;
+  border-color: #4caf50;
 }
 #mj-inventory-grid .mj-inventory-slot--filled[data-rarity="普通"],
 .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled[data-rarity="普通"] {

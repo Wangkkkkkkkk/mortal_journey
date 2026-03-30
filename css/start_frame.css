@@ -303,6 +303,111 @@ body {
   color: rgba(255, 170, 170, 0.95);
 }
 
+/* 自定义对话框（替代浏览器 confirm/prompt，便于美化） */
+.mj-dialog-root {
+  position: fixed;
+  inset: 0;
+  z-index: 3800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.mj-dialog-root.hidden {
+  display: none !important;
+}
+
+.mj-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(2px);
+}
+
+.mj-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(520px, 92vw);
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  background: rgba(10, 16, 12, 0.94);
+  box-shadow:
+    0 26px 70px rgba(0, 0, 0, 0.65),
+    0 0 28px rgba(255, 200, 80, 0.08);
+  padding: 18px 18px 14px;
+}
+
+.mj-dialog-title {
+  margin: 0 36px 10px 0;
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--splash-gold);
+}
+
+.mj-dialog-message {
+  margin: 0 0 12px;
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: rgba(245, 245, 240, 0.92);
+  opacity: 0.92;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mj-dialog-field {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+
+.mj-dialog-input {
+  width: 100%;
+  padding: 10px 10px;
+  font-size: 0.95rem;
+  color: var(--splash-fg);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 2px;
+  outline: none;
+}
+
+.mj-dialog-input:focus {
+  border-color: rgba(255, 230, 150, 0.7);
+  box-shadow: 0 0 0 2px rgba(232, 197, 71, 0.12);
+}
+
+.mj-dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.mj-dialog-actions .splash-btn {
+  width: auto;
+  min-width: 110px;
+  padding: 10px 16px;
+  font-size: 0.95rem;
+}
+
+.mj-dialog-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 2px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--splash-gold);
+  cursor: pointer;
+}
+
+.mj-dialog-close:hover {
+  border-color: rgba(255, 230, 150, 0.65);
+  background: rgba(55, 42, 12, 0.5);
+}
+
 /* 读取人生：存档列表 */
 .save-load-list {
   display: grid;
