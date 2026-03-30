@@ -49,10 +49,7 @@ body.mj-main-body {
   letter-spacing: 0.06em;
 }
 
-.mj-main-header .mj-sub {
-  font-size: 0.8rem;
-  color: var(--mj-muted);
-}
+/* 顶部副标题 .mj-sub 已移除 */
 
 .mj-main-layout {
   flex: 1;
@@ -73,6 +70,43 @@ body.mj-main-body {
 
 .mj-pane:last-child {
   border-right: none;
+}
+
+.mj-npc-footer {
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--mj-border);
+  background: linear-gradient(180deg, rgba(18, 22, 20, 0.92), rgba(12, 15, 13, 0.96));
+}
+
+.mj-secondary-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(216, 185, 117, 0.28);
+  background: rgba(24, 28, 25, 0.55);
+  color: var(--mj-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.mj-secondary-btn:hover {
+  border-color: rgba(216, 185, 117, 0.5);
+  background: rgba(24, 28, 25, 0.7);
+}
+
+.mj-secondary-btn:active {
+  transform: translateY(1px);
+}
+
+.mj-secondary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .mj-pane-header {
@@ -1429,6 +1463,17 @@ body.mj-main-body {
   border: 1px solid var(--mj-border);
 }
 
+/** 剧情 AI 成功返回但正文为空时的提示气泡 */
+.mj-chat-msg--assistant.mj-chat-msg--assistant-empty {
+  background: rgba(90, 55, 35, 0.42);
+  border: 1px solid rgba(200, 120, 70, 0.45);
+  color: #e8c4a0;
+}
+
+.mj-chat-msg--assistant.mj-chat-msg--assistant-empty .mj-chat-role-label {
+  color: rgba(220, 160, 120, 0.88);
+}
+
 .mj-chat-msg--error {
   margin-right: 8%;
   background: rgba(120, 40, 40, 0.35);
@@ -1479,6 +1524,38 @@ body.mj-main-body {
 
 .mj-chat-status--error {
   color: #e57373;
+}
+
+/* 剧情生成 / 状态更新：各保留最新一条完成记录 */
+.mj-ai-process-log-wrap {
+  flex-shrink: 0;
+  border-top: 1px solid rgba(140, 120, 83, 0.15);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.mj-ai-process-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 16px 8px;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: rgba(232, 215, 170, 0.88);
+  font-variant-numeric: tabular-nums;
+}
+
+.mj-ai-process-log__line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mj-ai-process-log__line--done {
+  color: #a5d6a7;
+}
+
+.mj-ai-process-log__line--error {
+  color: #ef9a9a;
 }
 
 .mj-chat-composer {
