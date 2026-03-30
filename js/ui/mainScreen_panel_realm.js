@@ -15,18 +15,21 @@
   }
 
   var STORAGE_KEY = "mortal_journey_bootstrap_v1";
+  var SAVE_INDEX_KEY = "MJ_SAVES_INDEX_V1";
+  var SAVE_PREFIX = "MJ_SAVE_V1:";
+  var ACTIVE_SAVE_ID_KEY = "MJ_ACTIVE_SAVE_ID_V1";
   var DEFAULT_WORLD_TIME = "0001年 01月 01日 08:00";
   var DEFAULT_AGE = 16;
   var DEFAULT_SHOUYUAN = 100;
   var DEFAULT_CHARM = 0;
   var DEFAULT_LUCK = 0;
   var INVENTORY_SLOT_COUNT = 12;
-  /** 功法栏：与储物袋相同 3×4，共 12 格 */
-  var GONGFA_SLOT_COUNT = 12;
-  /** 佩戴栏固定 3 格：武器、法器（戒指/手环/飞行法等）、防具（不可超过 3 件） */
-  var EQUIP_SLOT_COUNT = 3;
-  var EQUIP_SLOT_EMPTY_TITLE = ["武器空位", "法器空位", "防具空位"];
-  var EQUIP_SLOT_KIND_LABELS = ["武器", "法器", "防具"];
+  /** 功法栏固定 2×4，共 8 格（不需要滚动框） */
+  var GONGFA_SLOT_COUNT = 8;
+  /** 佩戴栏固定 4 格：武器、法器、防具、载具 */
+  var EQUIP_SLOT_COUNT = 4;
+  var EQUIP_SLOT_EMPTY_TITLE = ["武器空位", "法器空位", "防具空位", "载具空位"];
+  var EQUIP_SLOT_KIND_LABELS = ["武器", "法器", "防具", "载具"];
 
   function clampPct(n) {
     if (typeof n !== "number" || !isFinite(n)) return 0;
@@ -817,6 +820,7 @@
         inventorySlots: JSON.parse(JSON.stringify(G.inventorySlots)),
         gongfaSlots: JSON.parse(JSON.stringify(G.gongfaSlots || [])),
         equippedSlots: JSON.parse(JSON.stringify(G.equippedSlots || [])),
+        chatHistory: JSON.parse(JSON.stringify(Array.isArray(G.chatHistory) ? G.chatHistory : [])),
         lateStageBreakSuffix:
           ls && typeof ls === "object"
             ? {
@@ -827,6 +831,42 @@
         nearbyNpcs: JSON.parse(JSON.stringify(Array.isArray(G.nearbyNpcs) ? G.nearbyNpcs : [])),
       };
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+      // 同步到本地存档（若存在激活存档ID）
+      var saveId = "";
+      try {
+        saveId = sessionStorage.getItem(ACTIVE_SAVE_ID_KEY) || localStorage.getItem(ACTIVE_SAVE_ID_KEY) || "";
+      } catch (_e0) {
+        saveId = "";
+      }
+      if (saveId) {
+        try {
+          localStorage.setItem(ACTIVE_SAVE_ID_KEY, String(saveId));
+          localStorage.setItem(
+            SAVE_PREFIX + String(saveId),
+            JSON.stringify(Object.assign({ saveId: String(saveId), updatedAt: Date.now() }, data)),
+          );
+          // 更新索引时间
+          var rawIdx = localStorage.getItem(SAVE_INDEX_KEY);
+          var idx = rawIdx ? JSON.parse(rawIdx) : [];
+          if (!Array.isArray(idx)) idx = [];
+          var found = false;
+          for (var i = 0; i < idx.length; i++) {
+            if (idx[i] && String(idx[i].id || "") === String(saveId)) {
+              idx[i].updatedAt = Date.now();
+              if (!idx[i].createdAt) idx[i].createdAt = idx[i].updatedAt;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            idx.unshift({ id: String(saveId), name: String(saveId), createdAt: Date.now(), updatedAt: Date.now() });
+          }
+          localStorage.setItem(SAVE_INDEX_KEY, JSON.stringify(idx));
+        } catch (_e1) {
+          /* 忽略 */
+        }
+      }
     } catch (e) {
       console.warn("[主界面] 存档缓存写入失败", e);
     }
@@ -884,6 +924,22 @@
   function restoreBootstrap() {
     try {
       var raw = sessionStorage.getItem(STORAGE_KEY);
+      // 若 sessionStorage 缺失（刷新/重新打开），尝试从最后激活存档恢复
+      if (!raw) {
+        try {
+          var sid = localStorage.getItem(ACTIVE_SAVE_ID_KEY) || "";
+          if (sid) {
+            var sraw = localStorage.getItem(SAVE_PREFIX + String(sid));
+            if (sraw) {
+              raw = sraw;
+              sessionStorage.setItem(STORAGE_KEY, String(raw));
+              sessionStorage.setItem(ACTIVE_SAVE_ID_KEY, String(sid));
+            }
+          }
+        } catch (_e2) {
+          /* 忽略 */
+        }
+      }
       if (!raw) return null;
       var data = JSON.parse(raw);
       if (!data || !data.fateChoice) return null;
@@ -901,10 +957,7 @@
         data.inventorySlots &&
         Array.isArray(data.inventorySlots) &&
         data.inventorySlots.length === INVENTORY_SLOT_COUNT;
-      var gfOk =
-        data.gongfaSlots &&
-        Array.isArray(data.gongfaSlots) &&
-        data.gongfaSlots.length === GONGFA_SLOT_COUNT;
+      var gfOk = data.gongfaSlots && Array.isArray(data.gongfaSlots) && data.gongfaSlots.length >= GONGFA_SLOT_COUNT;
       if (invOk) {
         global.MortalJourneyGame.inventorySlots = JSON.parse(JSON.stringify(data.inventorySlots));
       } else if (fc.birth && C && typeof C.buildStartingInventorySlots === "function") {
@@ -913,7 +966,7 @@
         );
       }
       if (gfOk) {
-        global.MortalJourneyGame.gongfaSlots = JSON.parse(JSON.stringify(data.gongfaSlots));
+        global.MortalJourneyGame.gongfaSlots = JSON.parse(JSON.stringify(data.gongfaSlots.slice(0, GONGFA_SLOT_COUNT)));
       } else if (fc.birth && C && typeof C.buildStartingGongfaSlots === "function") {
         global.MortalJourneyGame.gongfaSlots = JSON.parse(JSON.stringify(C.buildStartingGongfaSlots(fc.birth)));
       }
@@ -921,9 +974,11 @@
       var eqOk =
         data.equippedSlots &&
         Array.isArray(data.equippedSlots) &&
-        data.equippedSlots.length === EQUIP_SLOT_COUNT;
+        data.equippedSlots.length >= EQUIP_SLOT_COUNT;
       if (eqOk) {
-        global.MortalJourneyGame.equippedSlots = JSON.parse(JSON.stringify(data.equippedSlots));
+        global.MortalJourneyGame.equippedSlots = JSON.parse(
+          JSON.stringify(data.equippedSlots.slice(0, EQUIP_SLOT_COUNT)),
+        );
       } else if (fc.birth && C && typeof C.buildStartingEquippedSlots === "function") {
         global.MortalJourneyGame.equippedSlots = JSON.parse(
           JSON.stringify(C.buildStartingEquippedSlots(fc.birth)),
@@ -950,6 +1005,10 @@
 
       if (Array.isArray(data.nearbyNpcs)) {
         global.MortalJourneyGame.nearbyNpcs = JSON.parse(JSON.stringify(data.nearbyNpcs));
+      }
+
+      if (Array.isArray(data.chatHistory)) {
+        global.MortalJourneyGame.chatHistory = JSON.parse(JSON.stringify(data.chatHistory));
       }
 
       return fc;
@@ -1222,18 +1281,16 @@
     var MCS = global.MjCharacterSheet;
     var n = MCS && typeof MCS.normalize === "function" ? MCS.normalize(npcRaw) : Object.assign({}, npcRaw);
     if (!n) return null;
-    if (!Array.isArray(n.equippedSlots) || n.equippedSlots.length !== EQUIP_SLOT_COUNT) {
-      n.equippedSlots = [null, null, null];
-    } else {
-      n.equippedSlots = JSON.parse(JSON.stringify(n.equippedSlots));
+    if (!Array.isArray(n.equippedSlots)) n.equippedSlots = [];
+    // 兼容旧数据（3 格）→ 补齐到 4 格
+    n.equippedSlots = JSON.parse(JSON.stringify(n.equippedSlots.slice(0, EQUIP_SLOT_COUNT)));
+    while (n.equippedSlots.length < EQUIP_SLOT_COUNT) n.equippedSlots.push(null);
+    if (!Array.isArray(n.gongfaSlots)) {
+      n.gongfaSlots = [];
     }
-    if (!Array.isArray(n.gongfaSlots) || n.gongfaSlots.length !== GONGFA_SLOT_COUNT) {
-      var gfa = [];
-      for (var g = 0; g < GONGFA_SLOT_COUNT; g++) gfa.push(null);
-      n.gongfaSlots = gfa;
-    } else {
-      n.gongfaSlots = JSON.parse(JSON.stringify(n.gongfaSlots));
-    }
+    // 兼容旧数据（12 格）→ 保留前 8 格
+    n.gongfaSlots = JSON.parse(JSON.stringify(n.gongfaSlots.slice(0, GONGFA_SLOT_COUNT)));
+    while (n.gongfaSlots.length < GONGFA_SLOT_COUNT) n.gongfaSlots.push(null);
     if (!Array.isArray(n.inventorySlots) || n.inventorySlots.length !== INVENTORY_SLOT_COUNT) {
       var inv = [];
       for (var iv = 0; iv < INVENTORY_SLOT_COUNT; iv++) inv.push(null);
@@ -1427,10 +1484,41 @@
     head.className = "mj-npc-detail-head";
     var avWrap = document.createElement("div");
     avWrap.className = "mj-npc-detail-avatar-wrap";
-    if (npc.avatarUrl) {
+
+    function npcAvatarStorageKey(npcId) {
+      return "MJ_NPC_AVATAR_V1:" + String(npcId || "");
+    }
+
+    function readNpcAvatarFromStorage(npcId) {
+      try {
+        if (!npcId) return "";
+        var raw = localStorage.getItem(npcAvatarStorageKey(npcId));
+        return raw ? String(raw) : "";
+      } catch (_e) {
+        return "";
+      }
+    }
+
+    function writeNpcAvatarToStorage(npcId, dataUrl) {
+      try {
+        if (!npcId) return;
+        if (!dataUrl) {
+          localStorage.removeItem(npcAvatarStorageKey(npcId));
+          return;
+        }
+        localStorage.setItem(npcAvatarStorageKey(npcId), String(dataUrl));
+      } catch (_e) {
+        /* 忽略 */
+      }
+    }
+
+    var resolvedAvatarUrl = npc && npc.avatarUrl ? String(npc.avatarUrl) : "";
+    if (!resolvedAvatarUrl) resolvedAvatarUrl = readNpcAvatarFromStorage(npc && npc.id);
+
+    if (resolvedAvatarUrl) {
       var img = document.createElement("img");
       img.className = "mj-npc-detail-avatar-img";
-      img.src = npc.avatarUrl;
+      img.src = resolvedAvatarUrl;
       img.alt = npc.displayName || "";
       avWrap.appendChild(img);
     } else {
@@ -1439,16 +1527,82 @@
       ph.textContent = "立绘";
       avWrap.appendChild(ph);
     }
+
+    // 点击头像上传（本地存储持久化）
+    (function bindAvatarUploadOnce() {
+      if (avWrap._mjAvatarUploadBound) return;
+      avWrap._mjAvatarUploadBound = true;
+      avWrap.setAttribute("role", "button");
+      avWrap.setAttribute("tabindex", "0");
+      avWrap.setAttribute("aria-label", "上传 NPC 头像");
+      avWrap.setAttribute("title", "点击上传头像");
+      var input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      // 不用 display:none，避免部分浏览器对 input.click() 触发文件选择器失效
+      input.style.position = "absolute";
+      input.style.left = "-9999px";
+      input.style.top = "0";
+      input.style.width = "1px";
+      input.style.height = "1px";
+      input.style.opacity = "0";
+      input.style.clip = "rect(0 0 0 0)";
+      input.style.pointerEvents = "none";
+      avWrap.appendChild(input);
+
+      function openPicker() {
+        try {
+          input.value = "";
+          input.disabled = false;
+          input.focus();
+        } catch (_e) {}
+        input.click();
+      }
+
+      function applyAvatar(dataUrl) {
+        if (!dataUrl) return;
+        writeNpcAvatarToStorage(npc && npc.id, dataUrl);
+        npc.avatarUrl = dataUrl;
+        avWrap.innerHTML = "";
+        var img2 = document.createElement("img");
+        img2.className = "mj-npc-detail-avatar-img";
+        img2.src = dataUrl;
+        img2.alt = npc.displayName || "";
+        avWrap.appendChild(img2);
+        avWrap.appendChild(input);
+      }
+
+      input.addEventListener("change", function () {
+        var f = input.files && input.files[0];
+        if (!f) return;
+        if (!/^image\//i.test(String(f.type || ""))) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          var dataUrl = reader.result != null ? String(reader.result) : "";
+          if (!dataUrl) return;
+          applyAvatar(dataUrl);
+        };
+        reader.readAsDataURL(f);
+      });
+
+      avWrap.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openPicker();
+      });
+      avWrap.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        e.stopPropagation();
+        openPicker();
+      });
+    })();
     var headText = document.createElement("div");
     headText.className = "mj-npc-detail-head-text";
     var realmBig = document.createElement("div");
     realmBig.className = "mj-npc-detail-realm-big";
     realmBig.textContent = "境界：" + realmLine;
-    var idHint = document.createElement("div");
-    idHint.className = "mj-npc-detail-id-line";
-    idHint.textContent = "标识：" + (npc.id || "—");
     headText.appendChild(realmBig);
-    headText.appendChild(idHint);
     head.appendChild(avWrap);
     head.appendChild(headText);
     bodyEl.appendChild(head);
@@ -1681,7 +1835,7 @@
     gfH.className = "mj-attr-section-title";
     gfH.textContent = "功法";
     var gfScroll = document.createElement("div");
-    gfScroll.className = "mj-bag-grid-scroll";
+    gfScroll.className = "mj-bag-grid-scroll mj-bag-grid-scroll--gongfa";
     gfScroll.setAttribute("aria-label", "功法格子");
     var gfGrid = document.createElement("div");
     gfGrid.className = "mj-inventory-grid mj-gongfa-grid";
@@ -1746,54 +1900,6 @@
     gfScroll.appendChild(gfGrid);
     bagStack.appendChild(gfH);
     bagStack.appendChild(gfScroll);
-
-    var bagH = document.createElement("h3");
-    bagH.className = "mj-attr-section-title";
-    bagH.textContent = "储物袋";
-    var bagScroll = document.createElement("div");
-    bagScroll.className = "mj-bag-grid-scroll";
-    bagScroll.setAttribute("aria-label", "储物袋格子");
-    var bagGrid = document.createElement("div");
-    bagGrid.className = "mj-inventory-grid";
-    bagGrid.id = "mj-npc-detail-bag-grid";
-    bagGrid.setAttribute("aria-label", "NPC 储物袋");
-    for (var bi = 0; bi < INVENTORY_SLOT_COUNT; bi++) {
-      var bSlot = document.createElement("div");
-      bSlot.className = "mj-inventory-slot mj-inventory-slot--empty";
-      bSlot.setAttribute("data-slot", String(bi));
-      var bLab = document.createElement("span");
-      bLab.className = "mj-inventory-slot-label";
-      var bQty = document.createElement("span");
-      bQty.className = "mj-inventory-slot-qty";
-      bQty.setAttribute("aria-label", "数量");
-      bSlot.appendChild(bLab);
-      bSlot.appendChild(bQty);
-      var bit = npc.inventorySlots[bi];
-      if (bit && bit.name) {
-        bSlot.classList.add("mj-inventory-slot--filled");
-        bSlot.classList.remove("mj-inventory-slot--empty");
-        bLab.textContent = bit.name;
-        var bcnt = typeof bit.count === "number" && isFinite(bit.count) ? bit.count : 1;
-        bQty.textContent = String(bcnt);
-        bQty.classList.remove("hidden");
-        var bTip = bit.name;
-        if (bit.desc) bTip += "\n" + bit.desc;
-        bTip += "\n数量：" + bcnt + "（点击查看详情）";
-        bSlot.setAttribute("title", bTip);
-        bSlot.setAttribute("aria-label", bit.name + "，数量 " + bcnt);
-        bSlot.setAttribute("role", "button");
-        bSlot.setAttribute("tabindex", "0");
-        setSlotRarityDataAttr(bSlot, resolveBagItemTraitRarity(bit.name, bit));
-      } else {
-        bSlot.setAttribute("title", "空位");
-        bQty.classList.add("hidden");
-        setSlotRarityDataAttr(bSlot, null);
-      }
-      bagGrid.appendChild(bSlot);
-    }
-    bagScroll.appendChild(bagGrid);
-    bagStack.appendChild(bagH);
-    bagStack.appendChild(bagScroll);
     bodyEl.appendChild(bagStack);
   }
 
@@ -1807,8 +1913,9 @@
     if (!npc) return;
     titleEl.textContent = npc.displayName || "—";
     var MCS = global.MjCharacterSheet;
-    subEl.textContent =
-      MCS && MCS.formatRealmLine ? "境界：" + MCS.formatRealmLine(npc.realm) : "境界：—";
+    // 顶部副标题的境界行移除（正文已展示境界）
+    subEl.textContent = "";
+    subEl.classList.add("hidden");
     bodyEl.textContent = "";
     buildNpcDetailModalBody(bodyEl, npc);
     root._mjNpcInspect = npc;
@@ -1880,19 +1987,17 @@
 
   function ensureEquippedSlots(G) {
     if (!G) return;
-    if (!Array.isArray(G.equippedSlots) || G.equippedSlots.length !== EQUIP_SLOT_COUNT) {
-      G.equippedSlots = [null, null, null];
-      return;
-    }
+    if (!Array.isArray(G.equippedSlots)) G.equippedSlots = [];
+    G.equippedSlots = G.equippedSlots.slice(0, EQUIP_SLOT_COUNT);
+    while (G.equippedSlots.length < EQUIP_SLOT_COUNT) G.equippedSlots.push(null);
+    return;
   }
 
   function ensureGongfaSlots(G) {
     if (!G) return;
-    if (!Array.isArray(G.gongfaSlots) || G.gongfaSlots.length !== GONGFA_SLOT_COUNT) {
-      var a = [];
-      for (var j = 0; j < GONGFA_SLOT_COUNT; j++) a.push(null);
-      G.gongfaSlots = a;
-    }
+    if (!Array.isArray(G.gongfaSlots)) G.gongfaSlots = [];
+    G.gongfaSlots = G.gongfaSlots.slice(0, GONGFA_SLOT_COUNT);
+    while (G.gongfaSlots.length < GONGFA_SLOT_COUNT) G.gongfaSlots.push(null);
   }
 
   function normalizeBagItem(entry) {

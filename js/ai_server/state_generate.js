@@ -6,10 +6,10 @@
   "use strict";
 
   var INVENTORY_SLOT_COUNT = 12;
-  /** 与 mainScreen 一致：佩戴 3 格、功法 12 格 */
-  var EQUIP_SLOT_COUNT = 3;
-  var GONGFA_SLOT_COUNT = 12;
-  var EQUIP_SLOT_LABELS = ["武器", "法器", "防具"];
+  /** 与 mainScreen 一致：佩戴 4 格、功法 8 格 */
+  var EQUIP_SLOT_COUNT = 4;
+  var GONGFA_SLOT_COUNT = 8;
+  var EQUIP_SLOT_LABELS = ["武器", "法器", "防具", "载具"];
   var OPS_TAG_OPEN = "<mj_inventory_ops>";
   var OPS_TAG_CLOSE = "</mj_inventory_ops>";
   var WORLD_STATE_TAG_OPEN = "<mj_world_state>";

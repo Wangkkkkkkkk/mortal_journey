@@ -82,87 +82,44 @@
 
     var titleEl = document.createElement("div");
     titleEl.className = "mj-chat-overview-title";
-    titleEl.textContent = "【开局总览】";
+    titleEl.textContent = "【修仙之路】";
     root.appendChild(titleEl);
 
-    var intro = document.createElement("p");
-    intro.className = "mj-chat-overview-intro";
-    intro.textContent = "出身、境界、灵根与战斗属性已在左侧「角色信息」中展示；此处仅汇总天赋与世界因子。";
-    root.appendChild(intro);
+    var introWrap = document.createElement("div");
+    introWrap.className = "mj-chat-overview-intro";
 
-    appendOverviewSection(root, "天赋词条");
-    var traits = Array.isArray(fc.traits) ? fc.traits : [];
-    if (!traits.length) {
-      var noTrait = document.createElement("p");
-      noTrait.className = "mj-chat-overview-muted";
-      noTrait.textContent = "未携带天赋词条（凡人模式或未锁定词条）。";
-      root.appendChild(noTrait);
-    } else {
-      var ulTrait = document.createElement("ul");
-      ulTrait.className = "mj-chat-overview-ul";
-      for (var ti = 0; ti < traits.length; ti++) {
-        var t = traits[ti];
-        if (!t) continue;
-        var li = document.createElement("li");
-        li.className = "mj-chat-overview-li";
-        var strong = document.createElement("strong");
-        strong.textContent = (t.name || "（无名）") + (t.rarity ? " · " + t.rarity : "");
-        li.appendChild(strong);
-        if (t.desc) {
-          li.appendChild(document.createElement("br"));
-          var sd = document.createElement("span");
-          sd.className = "mj-chat-overview-sub";
-          sd.textContent = t.desc;
-          li.appendChild(sd);
-        }
-        if (t.effects) {
-          li.appendChild(document.createElement("br"));
-          var se = document.createElement("span");
-          se.className = "mj-chat-overview-effect";
-          se.textContent = "效果：" + t.effects;
-          li.appendChild(se);
-        }
-        ulTrait.appendChild(li);
-      }
-      root.appendChild(ulTrait);
-    }
+    var p1 = document.createElement("p");
+    p1.textContent =
+      "此界为修仙界，人人皆以求道为念。练气、筑基、结丹、元婴、化神……一重境界一重天，踏上这条路，便是逆流而上。";
+    introWrap.appendChild(p1);
 
-    appendOverviewSection(root, "世界因子");
-    var factors = Array.isArray(fc.worldFactors) ? fc.worldFactors : [];
-    if (!factors.length) {
-      var noWf = document.createElement("p");
-      noWf.className = "mj-chat-overview-muted";
-      noWf.textContent = "未勾选预设世界因子；剧情将按默认凡人界设定展开。";
-      root.appendChild(noWf);
-    } else {
-      var ulWf = document.createElement("ul");
-      ulWf.className = "mj-chat-overview-ul";
-      for (var wi = 0; wi < factors.length; wi++) {
-        var f = factors[wi];
-        if (!f) continue;
-        var liw = document.createElement("li");
-        liw.className = "mj-chat-overview-li";
-        var sw = document.createElement("strong");
-        sw.textContent = (f.name || "—") + (f.isCustom ? "（自定义）" : "");
-        liw.appendChild(sw);
-        if (f.desc) {
-          liw.appendChild(document.createElement("br"));
-          var sfd = document.createElement("span");
-          sfd.className = "mj-chat-overview-sub";
-          sfd.textContent = f.desc;
-          liw.appendChild(sfd);
-        }
-        if (f.effect) {
-          liw.appendChild(document.createElement("br"));
-          var sfe = document.createElement("span");
-          sfe.className = "mj-chat-overview-effect";
-          sfe.textContent = "效果：" + f.effect;
-          liw.appendChild(sfe);
-        }
-        ulWf.appendChild(liw);
-      }
-      root.appendChild(ulWf);
-    }
+    var p2 = document.createElement("p");
+    p2.textContent =
+      "你亦不例外。想要精进修为，离不开灵石——它既是修炼所需的源泉，也是行走江湖的底气。灵石从不凭空而来：做生意、接差事、探秘境、夺机缘……路有千条，你尽可选自己喜欢的那一条。";
+    introWrap.appendChild(p2);
+
+    var p3 = document.createElement("p");
+    p3.textContent =
+      "但修真路上，人心难测。财不露白，强者为尊。要守住灵石与性命，便须让自己变得更强：寻更锋利的物器与法器，备更可靠的防具，亦可修习功法，步步夯实根基。前路如何，便看你自己的选择了。";
+    introWrap.appendChild(p3);
+
+    var p4 = document.createElement("p");
+    p4.textContent = "可选行动：";
+    introWrap.appendChild(p4);
+
+    var ulActions = document.createElement("ul");
+    ulActions.className = "mj-chat-overview-ul";
+    var a1 = document.createElement("li");
+    a1.className = "mj-chat-overview-li";
+    a1.textContent = "找一个可以赚取灵石的法子";
+    ulActions.appendChild(a1);
+    var a2 = document.createElement("li");
+    a2.className = "mj-chat-overview-li";
+    a2.textContent = "在周围闲逛，看看有没有什么奇遇";
+    ulActions.appendChild(a2);
+    introWrap.appendChild(ulActions);
+
+    root.appendChild(introWrap);
 
     log.appendChild(root);
   }

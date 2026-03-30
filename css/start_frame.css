@@ -92,6 +92,8 @@ body {
   padding: clamp(12px, 4vw, 28px);
   background: transparent;
   max-width: min(96vw, 520px);
+  max-height: min(92vh, 760px);
+  overflow: auto;
 }
 
 #splash-title {
@@ -113,6 +115,14 @@ body {
 @media (max-width: 420px) {
   #splash-title {
     white-space: normal;
+  }
+
+  #splash-buttons {
+    gap: 12px;
+  }
+
+  .splash-btn {
+    padding: 12px 16px;
   }
 }
 
@@ -215,6 +225,8 @@ body {
   background: rgba(10, 16, 12, 0.92);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
   padding: 18px 18px 14px;
+  max-height: 92vh;
+  overflow: auto;
 }
 .splash-modal-title {
   margin: 0 0 8px;
@@ -289,6 +301,88 @@ body {
 }
 .splash-modal-status--bad {
   color: rgba(255, 170, 170, 0.95);
+}
+
+/* 读取人生：存档列表 */
+.save-load-list {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+
+.save-load-empty {
+  margin: 0;
+  padding: 10px 0;
+  opacity: 0.85;
+  line-height: 1.6;
+}
+
+.save-load-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 12px 12px;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 235, 180, 0.06),
+    0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
+.save-load-row:hover {
+  border-color: rgba(255, 230, 150, 0.32);
+  background: rgba(55, 42, 12, 0.22);
+}
+
+.save-load-info {
+  min-width: 0;
+}
+
+.save-load-name {
+  font-weight: 700;
+  color: rgba(255, 235, 190, 0.95);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 0 6px;
+}
+
+.save-load-meta {
+  font-size: 0.82rem;
+  opacity: 0.84;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.save-load-actions {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 10px;
+  align-content: center;
+}
+
+/* 弹窗内按钮尺寸统一一点 */
+.save-load-actions .splash-btn {
+  width: auto;
+  min-width: 120px;
+  padding: 10px 16px;
+  font-size: 0.98rem;
+}
+
+@media (max-width: 520px) {
+  .save-load-row {
+    grid-template-columns: 1fr;
+  }
+  .save-load-actions {
+    grid-auto-flow: row;
+    grid-template-columns: 1fr 1fr;
+    justify-content: stretch;
+  }
+  .save-load-actions .splash-btn {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 /* 与命运抉择屏切换共用 */

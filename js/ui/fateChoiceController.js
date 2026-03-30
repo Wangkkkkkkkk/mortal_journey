@@ -4,6 +4,11 @@
 (function (global) {
   "use strict";
 
+  var SAVE_INDEX_KEY = "MJ_SAVES_INDEX_V1";
+  var SAVE_PREFIX = "MJ_SAVE_V1:";
+  var ACTIVE_SAVE_ID_KEY = "MJ_ACTIVE_SAVE_ID_V1";
+  var BOOTSTRAP_KEY = "mortal_journey_bootstrap_v1";
+
   var cfg = function () {
     return global.MjCreationConfig;
   };
@@ -750,6 +755,66 @@
       var defaultLocName = resolveBirthLocationNameFromDef(bdStart);
       if (defaultLocName) birthLoc = String(defaultLocName).trim();
     }
+    function safeJsonParse(raw, fallback) {
+      try {
+        return JSON.parse(raw);
+      } catch (_e) {
+        return fallback;
+      }
+    }
+
+    function readSaveIndex() {
+      try {
+        var raw = localStorage.getItem(SAVE_INDEX_KEY);
+        var arr = raw ? safeJsonParse(raw, []) : [];
+        return Array.isArray(arr) ? arr : [];
+      } catch (_e) {
+        return [];
+      }
+    }
+
+    function writeSaveIndex(arr) {
+      try {
+        localStorage.setItem(SAVE_INDEX_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
+      } catch (_e) {
+        /* 忽略 */
+      }
+    }
+
+    function normalizeSaveName(nm) {
+      return String(nm || "").trim().replace(/\s+/g, " ");
+    }
+
+    function pickOrCreateSaveIdByName(name) {
+      var idx = readSaveIndex();
+      var lower = String(name).toLowerCase();
+      for (var i = 0; i < idx.length; i++) {
+        var it = idx[i];
+        if (!it || !it.name) continue;
+        if (String(it.name).toLowerCase() === lower) return String(it.id || "");
+      }
+      var now = typeof Date.now === "function" ? Date.now() : 0;
+      var rid = String(now) + "_" + Math.random().toString(16).slice(2, 10);
+      idx.unshift({ id: rid, name: name, createdAt: now, updatedAt: now });
+      writeSaveIndex(idx);
+      return rid;
+    }
+
+    // 开始人生前：必须填写存档名称（同名会继续写入同一存档）
+    var saveName = normalizeSaveName(window.prompt("请输入存档名称（必填）：", ""));
+    if (!saveName) {
+      if (statusEl) {
+        statusEl.style.color = "#e0b15a";
+        statusEl.textContent = "未填写存档名称，已取消开始人生。";
+      }
+      return;
+    }
+    var saveId = pickOrCreateSaveIdByName(saveName);
+    if (!saveId) {
+      window.alert("创建存档失败（无法生成存档ID）。");
+      return;
+    }
+
     var payload = {
       difficulty: state.selectedDifficulty,
       gender: state.selectedGender,
@@ -806,17 +871,34 @@
     G0.xiuwei = 0;
 
     try {
-      sessionStorage.setItem(
-        "mortal_journey_bootstrap_v1",
-        JSON.stringify({
+      var bootstrapObj = {
           fateChoice: payload,
           startedAt: global.MortalJourneyGame.startedAt,
           xiuwei: G0.xiuwei,
           inventorySlots: invSlots,
           gongfaSlots: gongfaSlots0,
           equippedSlots: equippedSlots0,
-        }),
+        };
+      sessionStorage.setItem(BOOTSTRAP_KEY, JSON.stringify(bootstrapObj));
+      sessionStorage.setItem(ACTIVE_SAVE_ID_KEY, String(saveId));
+      localStorage.setItem(ACTIVE_SAVE_ID_KEY, String(saveId));
+      localStorage.setItem(
+        SAVE_PREFIX + String(saveId),
+        JSON.stringify(Object.assign({ saveId: saveId, name: saveName, updatedAt: Date.now() }, bootstrapObj)),
       );
+      // 同步更新时间到索引
+      try {
+        var idx2 = readSaveIndex();
+        for (var j = 0; j < idx2.length; j++) {
+          if (idx2[j] && String(idx2[j].id || "") === String(saveId)) {
+            idx2[j].updatedAt = Date.now();
+            if (!idx2[j].createdAt) idx2[j].createdAt = idx2[j].updatedAt;
+            if (!idx2[j].name) idx2[j].name = saveName;
+            break;
+          }
+        }
+        writeSaveIndex(idx2);
+      } catch (_e2) {}
     } catch (err) {
       console.warn("[凡人修仙传] sessionStorage 写入失败，主界面可能无法还原开局数据", err);
     }

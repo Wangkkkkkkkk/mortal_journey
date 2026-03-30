@@ -33,6 +33,14 @@
     P.renderGongfaGrid();
     P.renderLeftPanel(fc, G);
     P.renderBootstrapOverview(fc);
+    // 恢复存档剧情：开局总览后追加历史聊天
+    try {
+      if (Chat && typeof Chat.renderHistoryIntoChatLog === "function") {
+        Chat.renderHistoryIntoChatLog(G && G.chatHistory);
+      }
+    } catch (_e0) {
+      /* 忽略 */
+    }
 
     if (global.MortalJourneyWorldBook && typeof global.MortalJourneyWorldBook.syncToBridgeStorage === "function") {
       try {
@@ -64,13 +72,94 @@
     if (backBtn) {
       backBtn.addEventListener("click", function () {
         try {
-          // 清理主界面缓存开局存档，返回后即可重新开始人生
+          // 离开前先持久化一次（本地存档）
+          if (P && typeof P.persistBootstrapSnapshot === "function") P.persistBootstrapSnapshot();
+          // 清理主界面缓存开局存档，返回后即可重新开始人生（localStorage 存档仍保留，可“读取人生”）
           if (P && P.STORAGE_KEY) sessionStorage.removeItem(P.STORAGE_KEY);
         } catch (e) {
           /* 忽略 */
         }
         window.location.href = "./index.html";
       });
+    }
+
+    // 手机端：侧栏（人物信息 / 周围人物）切换
+    try {
+      var openPlayerBtn = document.getElementById("mj-mobile-open-player-btn");
+      var openNpcBtn = document.getElementById("mj-mobile-open-npc-btn");
+      var playerPane = document.querySelector(".mj-pane--player");
+      var npcPane = document.querySelector(".mj-pane--npc");
+      var closePlayerBtn = document.querySelector('[data-mj-mobile-close="player"]');
+      var closeNpcBtn = document.querySelector('[data-mj-mobile-close="npc"]');
+
+      function setMobilePanel(which) {
+        if (!playerPane || !npcPane) return;
+        if (which === "player") {
+          playerPane.classList.add("mj-mobile-open");
+          npcPane.classList.remove("mj-mobile-open");
+          playerPane.setAttribute("aria-hidden", "false");
+          npcPane.setAttribute("aria-hidden", "true");
+        } else if (which === "npc") {
+          npcPane.classList.add("mj-mobile-open");
+          playerPane.classList.remove("mj-mobile-open");
+          npcPane.setAttribute("aria-hidden", "false");
+          playerPane.setAttribute("aria-hidden", "true");
+        } else {
+          playerPane.classList.remove("mj-mobile-open");
+          npcPane.classList.remove("mj-mobile-open");
+          playerPane.setAttribute("aria-hidden", "true");
+          npcPane.setAttribute("aria-hidden", "true");
+        }
+      }
+
+      if (openPlayerBtn) {
+        openPlayerBtn.addEventListener("click", function () {
+          setMobilePanel("player");
+        });
+      }
+      if (openNpcBtn) {
+        openNpcBtn.addEventListener("click", function () {
+          setMobilePanel("npc");
+        });
+      }
+      if (closePlayerBtn) {
+        closePlayerBtn.addEventListener("click", function () {
+          setMobilePanel(null);
+        });
+      }
+      if (closeNpcBtn) {
+        closeNpcBtn.addEventListener("click", function () {
+          setMobilePanel(null);
+        });
+      }
+
+      window.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Escape") return;
+        setMobilePanel(null);
+      });
+    } catch (_e) {
+      /* 忽略 */
+    }
+
+    // 自动保存：定时 + 刷新/关闭兜底
+    try {
+      if (!global.__mjAutoSaveTimer && P && typeof P.persistBootstrapSnapshot === "function") {
+        global.__mjAutoSaveTimer = window.setInterval(function () {
+          try {
+            P.persistBootstrapSnapshot();
+          } catch (_e2) {}
+        }, 4000);
+      }
+      if (!global.__mjAutoSaveUnloadBound) {
+        global.__mjAutoSaveUnloadBound = true;
+        window.addEventListener("beforeunload", function () {
+          try {
+            if (P && typeof P.persistBootstrapSnapshot === "function") P.persistBootstrapSnapshot();
+          } catch (_e3) {}
+        });
+      }
+    } catch (_e4) {
+      /* 忽略 */
     }
   }
 

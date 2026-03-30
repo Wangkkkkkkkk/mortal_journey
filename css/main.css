@@ -10,6 +10,32 @@
   --mj-chat-bg: rgba(0, 0, 0, 0.28);
 }
 
+/* 滚动条美化：统一细窄风格（Chrome/Edge/Firefox） */
+* {
+  scrollbar-width: thin; /* Firefox：细条 */
+  scrollbar-color: rgba(140, 120, 83, 0.7) rgba(0, 0, 0, 0.18); /* thumb track */
+}
+
+*::-webkit-scrollbar {
+  width: 4px; /* 细条 */
+  height: 4px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(140, 120, 83, 0.62);
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.22); /* thumb 描边 */
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(232, 197, 71, 0.55);
+}
+
 *,
 *::before,
 *::after {
@@ -119,6 +145,25 @@ body.mj-main-body {
   background: rgba(0, 0, 0, 0.2);
 }
 
+/* 移动端专用控件：默认（网页端）隐藏，避免影响原布局 */
+.mj-mobile-open-btn,
+.mj-mobile-panel-close {
+  display: none;
+}
+
+/* 主界面聊天标题栏：默认按旧版标题显示 */
+.mj-chat-pane-header {
+  display: block;
+}
+
+.mj-chat-pane-title {
+  display: block;
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+
 .mj-pane-body {
   flex: 1;
   min-height: 0;
@@ -169,6 +214,11 @@ body.mj-main-body {
   overflow-y: auto;
   margin-bottom: 4px;
   scrollbar-gutter: stable;
+}
+
+.mj-bag-grid-scroll--gongfa {
+  max-height: none;
+  overflow: visible;
 }
 
 .mj-bag-grid-scroll .mj-inventory-grid {
@@ -657,7 +707,7 @@ body.mj-main-body {
 .mj-npc-detail-head {
   display: flex;
   gap: 12px;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 12px;
 }
 
@@ -669,6 +719,30 @@ body.mj-main-body {
   border: 1px solid rgba(232, 197, 71, 0.35);
   overflow: hidden;
   background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  position: relative;
+}
+
+.mj-npc-detail-avatar-wrap:hover {
+  border-color: rgba(232, 197, 71, 0.55);
+}
+
+.mj-npc-detail-avatar-wrap:focus {
+  outline: 2px solid rgba(232, 197, 71, 0.45);
+  outline-offset: 2px;
+}
+
+.mj-npc-detail-avatar-wrap:hover::after {
+  content: "上传";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 3px 0;
+  text-align: center;
+  font-size: 0.72rem;
+  color: rgba(255, 245, 220, 0.95);
+  background: rgba(0, 0, 0, 0.55);
 }
 
 .mj-npc-detail-avatar-img {
@@ -691,11 +765,14 @@ body.mj-main-body {
 .mj-npc-detail-head-text {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .mj-npc-detail-realm-big {
-  font-size: 0.88rem;
-  font-weight: 600;
+  font-size: 0.98rem;
+  font-weight: 700;
   color: var(--mj-gold-dim);
   line-height: 1.4;
 }
@@ -1021,7 +1098,7 @@ body.mj-main-body {
   border-color: rgba(129, 199, 132, 0.55);
 }
 
-/* 装备佩戴：储物袋上方，固定 3 槽（武器 / 法器 / 防具），正方形格 */
+/* 装备佩戴：储物袋上方，固定 4 槽（武器 / 法器 / 防具 / 载具），正方形格 */
 .mj-equip-block {
   margin-top: 8px;
 }
@@ -1033,7 +1110,7 @@ body.mj-main-body {
 
 .mj-equip-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   width: 100%;
 }
@@ -1377,6 +1454,14 @@ body.mj-main-body {
   color: var(--mj-muted);
   font-size: 0.86rem;
   line-height: 1.6;
+}
+
+.mj-chat-overview-intro p {
+  margin: 0 0 8px;
+}
+
+.mj-chat-overview-intro p:last-child {
+  margin-bottom: 0;
 }
 
 .mj-chat-overview-h {
@@ -1781,5 +1866,136 @@ button.mj-npc-card.mj-npc-card--sheet:focus-visible {
 
   .mj-pane:last-child {
     border-bottom: none;
+  }
+}
+
+@media (max-width: 640px) {
+  *::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+}
+
+/* 手机端适配：默认隐藏两侧；在剧情区标题栏提供切换按钮 */
+@media (max-width: 640px) {
+  .mj-main-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  /* 覆盖 <=900px 的堆叠限制：手机模式由弹出侧栏承担 */
+  .mj-pane {
+    max-height: none;
+  }
+
+  .mj-pane--player,
+  .mj-pane--npc {
+    display: none !important;
+  }
+
+  .mj-pane--chat {
+    border-bottom: none;
+  }
+
+  .mj-chat-pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .mj-chat-pane-title {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    color: var(--mj-gold-dim);
+    font-weight: 600;
+  }
+
+  .mj-mobile-open-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    background: rgba(0, 0, 0, 0.35);
+    color: var(--mj-gold);
+    font-size: 0.9rem;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .mj-mobile-open-btn:hover {
+    border-color: rgba(255, 215, 120, 0.65);
+    background: rgba(55, 42, 12, 0.45);
+  }
+
+  .mj-mobile-panel-close {
+    display: none;
+  }
+
+  /* 两侧弹出面板 */
+  .mj-pane--player.mj-mobile-open,
+  .mj-pane--npc.mj-mobile-open {
+    display: flex !important;
+    position: fixed;
+    top: 56px; /* 覆盖 header（mj-main-header）高度 */
+    bottom: 0;
+    z-index: 2500;
+    max-height: none !important;
+    width: min(92vw, 340px);
+    border-bottom: none;
+    overflow: hidden;
+  }
+
+  .mj-pane--player.mj-mobile-open {
+    left: 0;
+    border-right: 1px solid var(--mj-border);
+  }
+
+  .mj-pane--npc.mj-mobile-open {
+    right: 0;
+    border-right: none;
+    border-left: 1px solid var(--mj-border);
+    width: min(92vw, 320px);
+  }
+
+  .mj-pane--player.mj-mobile-open .mj-mobile-panel-close,
+  .mj-pane--npc.mj-mobile-open .mj-mobile-panel-close {
+    display: inline-flex;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 6;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid rgba(212, 175, 55, 0.35);
+    background: rgba(0, 0, 0, 0.35);
+    color: var(--mj-gold);
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    line-height: 1;
+  }
+
+  .mj-mobile-open-btn:focus-visible,
+  .mj-mobile-panel-close:focus-visible {
+    outline: 2px solid rgba(232, 197, 71, 0.55);
+    outline-offset: 2px;
+  }
+
+  /* 默认隐藏时，先把两个按钮隐去，避免桌面看到 */
+  /* 显示在手机 */
+  .mj-chat-pane-header .mj-mobile-open-btn {
+    display: inline-flex;
+  }
+
+  /* 让侧栏内部标题栏更紧凑一点 */
+  .mj-pane--player.mj-mobile-open .mj-pane-header,
+  .mj-pane--npc.mj-mobile-open .mj-pane-header {
+    padding-right: 48px; /* 给关闭按钮留空 */
   }
 }

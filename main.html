@@ -20,6 +20,14 @@
           <div class="mj-world-time" id="mj-world-time">0001年 01月 01日 08:00</div>
         </div>
         <div class="mj-pane-header">角色信息</div>
+        <button
+          type="button"
+          class="mj-mobile-panel-close"
+          data-mj-mobile-close="player"
+          aria-label="关闭角色信息"
+        >
+          ×
+        </button>
         <div class="mj-pane-body mj-player-body">
           <div class="mj-player-body-fixed">
           <div class="mj-player-avatar-wrap">
@@ -149,7 +157,7 @@
 
           <div class="mj-equip-block">
             <h3 class="mj-attr-section-title">装备佩戴</h3>
-            <div class="mj-equip-row" id="mj-equip-row" role="group" aria-label="已装备栏位：武器、法器、防具">
+            <div class="mj-equip-row" id="mj-equip-row" role="group" aria-label="已装备栏位：武器、法器、防具、载具">
               <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="0" title="武器空位（剑、刀等）">
                 <span class="mj-equip-slot-k">武器</span>
                 <span class="mj-equip-slot-name">—</span>
@@ -162,14 +170,18 @@
                 <span class="mj-equip-slot-k">防具</span>
                 <span class="mj-equip-slot-name">—</span>
               </div>
+              <div class="mj-equip-slot mj-equip-slot--empty" data-equip-slot="3" title="载具空位">
+                <span class="mj-equip-slot-k">载具</span>
+                <span class="mj-equip-slot-name">—</span>
+              </div>
             </div>
           </div>
           </div>
 
           <div class="mj-player-bag-stack">
             <h3 class="mj-attr-section-title">功法</h3>
-            <div class="mj-bag-grid-scroll" aria-label="功法格子区域，可上下滚动">
-              <div class="mj-inventory-grid mj-gongfa-grid" id="mj-gongfa-grid" aria-label="功法栏，3行4列共12格"></div>
+            <div class="mj-bag-grid-scroll mj-bag-grid-scroll--gongfa" aria-label="功法格子区域">
+              <div class="mj-inventory-grid mj-gongfa-grid" id="mj-gongfa-grid" aria-label="功法栏，2行4列共8格"></div>
             </div>
 
             <h3 class="mj-attr-section-title">储物袋</h3>
@@ -182,7 +194,15 @@
 
       <!-- 中间：聊天 -->
       <section class="mj-pane mj-pane--chat" aria-label="聊天">
-        <div class="mj-pane-header">剧情对话</div>
+        <div class="mj-pane-header mj-chat-pane-header" aria-label="剧情对话标题栏">
+          <button type="button" class="mj-mobile-open-btn" id="mj-mobile-open-player-btn" data-mj-mobile-open="player">
+            人物信息
+          </button>
+          <div class="mj-chat-pane-title">剧情对话</div>
+          <button type="button" class="mj-mobile-open-btn" id="mj-mobile-open-npc-btn" data-mj-mobile-open="npc">
+            周围人物
+          </button>
+        </div>
         <div class="mj-chat-log" id="mj-chat-log">
           <p class="mj-chat-placeholder">
             此处将展示与 AI 的剧情对话。<br />
@@ -208,6 +228,14 @@
           <div class="mj-world-time" id="mj-current-location">—</div>
         </div>
         <div class="mj-pane-header">周围人物</div>
+        <button
+          type="button"
+          class="mj-mobile-panel-close"
+          data-mj-mobile-close="npc"
+          aria-label="关闭周围人物"
+        >
+          ×
+        </button>
         <div class="mj-pane-body mj-npc-panel-body" id="mj-npc-panel">
           <div class="mj-npc-list" id="mj-npc-list" aria-label="周围人物列表"></div>
         </div>

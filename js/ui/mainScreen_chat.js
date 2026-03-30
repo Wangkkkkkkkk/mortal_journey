@@ -274,9 +274,32 @@
         global.GameLog.info("[状态→AI] 请求已发起（messages 无法序列化）");
       }
     }
+    var timeoutMs = 300000;
+    var ac = null;
+    try {
+      ac = new AbortController();
+    } catch (_eac) {
+      ac = null;
+    }
+    var tid = null;
+    if (ac) {
+      tid = setTimeout(function () {
+        try {
+          ac.abort("timeout_300s");
+        } catch (_eab) {}
+      }, timeoutMs);
+    }
+    function clearTimeoutIfAny() {
+      if (tid != null) {
+        clearTimeout(tid);
+        tid = null;
+      }
+    }
+
     return ST.sendTurn({
       messages: stateMsgs,
       shouldStream: useStreamState,
+      signal: ac ? ac.signal : undefined,
       onDelta: useStreamState
         ? function () {
             if (!streamStateNotified) {
@@ -287,6 +310,7 @@
         : undefined,
     })
       .then(function (stateFull) {
+        clearTimeoutIfAny();
         var raw = stateFull != null ? String(stateFull) : "";
         var app = ST.applyStateTurnFromAssistantText(G, raw);
         var P = mjPanel();
@@ -325,6 +349,7 @@
         }
       })
       .catch(function (err) {
+        clearTimeoutIfAny();
         var msg =
           err && err.message
             ? String(err.message)
@@ -354,9 +379,11 @@
       return;
     }
 
+    var userHistIndex = Array.isArray(G.chatHistory) ? G.chatHistory.length : 0;
     G.chatHistory.push({ role: "user", content: text });
     textarea.value = "";
-    appendChatBubble("user", text);
+    var userUi = appendChatBubble("user", text);
+    var userRoot = userUi ? userUi.root : null;
 
     var useStreamChat = getBridgeUseStreamingChat();
     var feedbackGenStory = startAiReplyFeedback(textarea, false, {
@@ -392,11 +419,71 @@
     var assistantRoot = asstUi ? asstUi.root : null;
     sendBtn.disabled = true;
 
+    // 300s 超时：超时后回退本次发送（撤销气泡与 chatHistory，并回填输入框）
+    var timeoutMs = 300000;
+    var ac = null;
+    try {
+      ac = new AbortController();
+    } catch (_eac) {
+      ac = null;
+    }
+    var tid = null;
+    if (ac) {
+      tid = setTimeout(function () {
+        try {
+          ac.abort("timeout_300s");
+        } catch (_eab) {}
+      }, timeoutMs);
+    }
+
+    function clearTimeoutIfAny() {
+      if (tid != null) {
+        clearTimeout(tid);
+        tid = null;
+      }
+    }
+
+    function isTimeoutError(err) {
+      var msg = err && err.message ? String(err.message) : "";
+      if (/timeout_300s/i.test(msg)) return true;
+      if (/超时/i.test(msg)) return true;
+      if (/timeout/i.test(msg)) return true;
+      if (err && (err.name === "AbortError" || err.code === "ABORT_ERR")) return true;
+      return false;
+    }
+
+    function rollbackSendUiAndHistory() {
+      // 回填输入框（保留原内容）
+      try {
+        if (textarea) {
+          textarea.value = text;
+          textarea.focus();
+        }
+      } catch (_e) {}
+
+      // 移除刚追加的气泡（你 + 空 assistant）
+      try {
+        if (assistantRoot && assistantRoot.parentNode) assistantRoot.parentNode.removeChild(assistantRoot);
+      } catch (_e2) {}
+      try {
+        if (userRoot && userRoot.parentNode) userRoot.parentNode.removeChild(userRoot);
+      } catch (_e3) {}
+
+      // 回退 chatHistory：删掉本次 push 的 user（以及可能追加的空 assistant）
+      try {
+        if (Array.isArray(G.chatHistory) && G.chatHistory.length > userHistIndex) {
+          // 仅删除从 userHistIndex 起新增的内容
+          G.chatHistory.splice(userHistIndex);
+        }
+      } catch (_e4) {}
+    }
+
     SC.sendTurn({
       messages: messages,
       userText: text,
       priorHistory: prior,
       shouldStream: useStreamChat,
+      signal: ac ? ac.signal : undefined,
       onDelta: useStreamChat
         ? function (_delta, full) {
             if (!streamNotified) {
@@ -415,6 +502,7 @@
         : undefined,
     })
       .then(function (full) {
+        clearTimeoutIfAny();
         var replyRaw = full != null ? String(full) : "";
         var sansLeak =
           SC && typeof SC.stripStoryAiMetaLeakFromNarrative === "function"
@@ -476,6 +564,13 @@
         return runStateInventoryAiTurn(G, textarea, sansLeak);
       })
       .catch(function (err) {
+        clearTimeoutIfAny();
+        if (isTimeoutError(err)) {
+          // 超时：回退本次发送，不保留失败提示气泡
+          finishAiReplyFeedback(feedbackGenStory, textarea, "error", "请求超时（300 秒）", { kind: AI_KIND_STORY_LABEL });
+          rollbackSendUiAndHistory();
+          return;
+        }
         if (
           assistantBody &&
           !String(assistantBody.textContent || "").trim() &&
@@ -496,6 +591,7 @@
         }
       })
       .then(function () {
+        clearTimeoutIfAny();
         sendBtn.disabled = false;
         if (textarea) textarea.disabled = false;
       });
@@ -503,5 +599,17 @@
 
   global.MjMainScreenChat = {
     handleChatSend: handleChatSend,
+    /** 读档后把历史剧情渲染回聊天区（不会清除开局总览，只会追加） */
+    renderHistoryIntoChatLog: function (history) {
+      var arr = Array.isArray(history) ? history : [];
+      if (!arr.length) return;
+      for (var i = 0; i < arr.length; i++) {
+        var it = arr[i];
+        if (!it || !it.role) continue;
+        var role = String(it.role);
+        if (role !== "user" && role !== "assistant" && role !== "error") continue;
+        appendChatBubble(role, it.content != null ? String(it.content) : "");
+      }
+    },
   };
 })(typeof window !== "undefined" ? window : globalThis);

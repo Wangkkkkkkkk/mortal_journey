@@ -8,9 +8,10 @@
       worldbooks: "IMMORTAL_ST_BRIDGE_WORLDBOOKS_V1",
     },
     timeouts: {
-      nonStreamMs: 900000,
-      streamChunkIdleMs: 900000,
-      streamMaxTotalMs: 3600000,
+      // 需求：API 响应超过 300s 即超时退出
+      nonStreamMs: 300000,
+      streamChunkIdleMs: 300000,
+      streamMaxTotalMs: 300000,
     },
     useFixedPreset: true,
     useStreamingChat: false,

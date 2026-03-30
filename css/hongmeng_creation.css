@@ -547,4 +547,19 @@
     align-items: flex-start;
     gap: 12px;
   }
+
+  .creation-nav-enhanced {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .creation-nav-enhanced .nav-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px 16px;
+  }
+
+  .action-buttons-grid {
+    grid-template-columns: 1fr;
+  }
 }

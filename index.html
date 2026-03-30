@@ -74,6 +74,22 @@
       </div>
     </div>
 
+    <!-- 读取人生：存档列表弹窗 -->
+    <div id="save-load-root" class="splash-modal-root hidden" aria-hidden="true">
+      <div class="splash-modal-backdrop" data-save-load-close tabindex="-1"></div>
+      <div class="splash-modal" role="dialog" aria-modal="true" aria-labelledby="save-load-title">
+        <button type="button" class="splash-modal-close" data-save-load-close aria-label="关闭">×</button>
+        <h3 id="save-load-title" class="splash-modal-title">读取人生</h3>
+        <p class="splash-modal-sub">选择一个存档继续修行（存档保存在本机浏览器中）。</p>
+        <div id="save-load-list" class="save-load-list"></div>
+        <div class="splash-modal-actions">
+          <button type="button" class="splash-btn splash-btn--secondary" id="save-load-refresh-btn">刷新</button>
+          <button type="button" class="splash-btn splash-btn--secondary" id="save-load-delete-all-btn">清空</button>
+        </div>
+        <div id="save-load-status" class="splash-modal-status" aria-live="polite"></div>
+      </div>
+    </div>
+
     <!-- 对齐 ref_html/index.html #character-creation-screen（开辟鸿蒙 / 命运抉择） -->
     <div id="character-creation-screen" class="hidden" aria-hidden="true">
       <div class="creation-container">
@@ -101,6 +117,10 @@
       (function () {
         "use strict";
         var API_OVERRIDE_KEY = "IMMORTAL_ST_BRIDGE_API_OVERRIDE_V1";
+        var SAVE_INDEX_KEY = "MJ_SAVES_INDEX_V1";
+        var SAVE_PREFIX = "MJ_SAVE_V1:";
+        var ACTIVE_SAVE_ID_KEY = "MJ_ACTIVE_SAVE_ID_V1";
+        var BOOTSTRAP_KEY = "mortal_journey_bootstrap_v1";
 
         function qs(id) {
           return document.getElementById(id);
@@ -340,6 +360,162 @@
           refreshApiGateUi();
         }
 
+        function openSaveLoad() {
+          var root = qs("save-load-root");
+          if (!root) return;
+          var st = qs("save-load-status");
+          if (st) st.textContent = "";
+          root.classList.remove("hidden");
+          root.setAttribute("aria-hidden", "false");
+          document.body.style.overflow = "hidden";
+          renderSaveLoadList();
+        }
+
+        function closeSaveLoad() {
+          var root = qs("save-load-root");
+          if (!root) return;
+          root.classList.add("hidden");
+          root.setAttribute("aria-hidden", "true");
+          document.body.style.overflow = "";
+        }
+
+        function setSaveLoadStatus(msg, ok) {
+          var el = qs("save-load-status");
+          if (!el) return;
+          el.textContent = msg != null ? String(msg) : "";
+          el.className = "splash-modal-status" + (ok ? " splash-modal-status--ok" : " splash-modal-status--bad");
+        }
+
+        function safeJsonParse(raw, fallback) {
+          try {
+            return JSON.parse(raw);
+          } catch (_e) {
+            return fallback;
+          }
+        }
+
+        function readSaveIndex() {
+          try {
+            var raw = localStorage.getItem(SAVE_INDEX_KEY);
+            var arr = raw ? safeJsonParse(raw, []) : [];
+            return Array.isArray(arr) ? arr : [];
+          } catch (_e) {
+            return [];
+          }
+        }
+
+        function writeSaveIndex(arr) {
+          try {
+            localStorage.setItem(SAVE_INDEX_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
+          } catch (_e) {}
+        }
+
+        function fmtTime(ts) {
+          var n = Number(ts);
+          if (!isFinite(n) || n <= 0) return "—";
+          var d = new Date(n);
+          var pad = function (x) {
+            return x < 10 ? "0" + x : String(x);
+          };
+          return (
+            d.getFullYear() +
+            "-" +
+            pad(d.getMonth() + 1) +
+            "-" +
+            pad(d.getDate()) +
+            " " +
+            pad(d.getHours()) +
+            ":" +
+            pad(d.getMinutes())
+          );
+        }
+
+        function renderSaveLoadList() {
+          var host = qs("save-load-list");
+          if (!host) return;
+          host.innerHTML = "";
+          var idx = readSaveIndex();
+          if (!idx.length) {
+            var p = document.createElement("p");
+            p.className = "save-load-empty";
+            p.textContent = "暂无存档。请先在「开始新人生」里创建一个存档。";
+            host.appendChild(p);
+            return;
+          }
+          idx.sort(function (a, b) {
+            return Number(b && b.updatedAt) - Number(a && a.updatedAt);
+          });
+          for (var i = 0; i < idx.length; i++) {
+            (function (it) {
+              if (!it || !it.id) return;
+              var row = document.createElement("div");
+              row.className = "save-load-row";
+
+              var left = document.createElement("div");
+              left.className = "save-load-info";
+              var nm = document.createElement("p");
+              nm.className = "save-load-name";
+              nm.textContent = String(it.name || it.id);
+              var meta = document.createElement("p");
+              meta.className = "save-load-meta";
+              meta.textContent = "更新：" + fmtTime(it.updatedAt) + "  ·  创建：" + fmtTime(it.createdAt);
+              left.appendChild(nm);
+              left.appendChild(meta);
+
+              var actions = document.createElement("div");
+              actions.className = "save-load-actions";
+              var btnLoad = document.createElement("button");
+              btnLoad.type = "button";
+              btnLoad.className = "splash-btn";
+              btnLoad.textContent = "读取";
+              btnLoad.addEventListener("click", function () {
+                try {
+                  var raw = localStorage.getItem(SAVE_PREFIX + String(it.id));
+                  if (!raw) {
+                    setSaveLoadStatus("读取失败：存档内容不存在。", false);
+                    return;
+                  }
+                  var data = safeJsonParse(raw, null);
+                  if (!data || !data.fateChoice) {
+                    setSaveLoadStatus("读取失败：存档内容损坏。", false);
+                    return;
+                  }
+                  sessionStorage.setItem(BOOTSTRAP_KEY, JSON.stringify(data));
+                  sessionStorage.setItem(ACTIVE_SAVE_ID_KEY, String(it.id));
+                  localStorage.setItem(ACTIVE_SAVE_ID_KEY, String(it.id));
+                  window.location.href = "./main.html";
+                } catch (e) {
+                  setSaveLoadStatus("读取失败：" + (e && e.message ? e.message : "未知错误"), false);
+                }
+              });
+              var btnDel = document.createElement("button");
+              btnDel.type = "button";
+              btnDel.className = "splash-btn splash-btn--secondary";
+              btnDel.textContent = "删除";
+              btnDel.addEventListener("click", function () {
+                if (!window.confirm("确定删除存档「" + String(it.name || it.id) + "」？此操作不可撤销。")) return;
+                try {
+                  localStorage.removeItem(SAVE_PREFIX + String(it.id));
+                  var idx2 = readSaveIndex().filter(function (x) {
+                    return x && String(x.id || "") !== String(it.id);
+                  });
+                  writeSaveIndex(idx2);
+                  renderSaveLoadList();
+                  setSaveLoadStatus("已删除。", true);
+                } catch (e) {
+                  setSaveLoadStatus("删除失败：" + (e && e.message ? e.message : "未知错误"), false);
+                }
+              });
+              actions.appendChild(btnLoad);
+              actions.appendChild(btnDel);
+
+              row.appendChild(left);
+              row.appendChild(actions);
+              host.appendChild(row);
+            })(idx[i]);
+          }
+        }
+
         function bindSplashUiOnce() {
           try {
             var start = qs("start-new-life-btn");
@@ -358,7 +534,7 @@
             if (load && !load._mjBound) {
               load._mjBound = true;
               load.addEventListener("click", function () {
-                console.info("[凡人修仙传] 读取人生");
+                openSaveLoad();
               });
             }
 
@@ -400,6 +576,48 @@
             if (testBtn && !testBtn._mjBound) {
               testBtn._mjBound = true;
               testBtn.addEventListener("click", testApiSettings);
+            }
+
+            var saveRoot = qs("save-load-root");
+            if (saveRoot && !saveRoot._mjBound) {
+              saveRoot._mjBound = true;
+              saveRoot.querySelectorAll("[data-save-load-close]").forEach(function (el) {
+                el.addEventListener("click", function () {
+                  closeSaveLoad();
+                });
+              });
+              saveRoot.addEventListener("keydown", function (ev) {
+                if (ev.key === "Escape") {
+                  closeSaveLoad();
+                  ev.preventDefault();
+                }
+              });
+            }
+
+            var refreshBtn = qs("save-load-refresh-btn");
+            if (refreshBtn && !refreshBtn._mjBound) {
+              refreshBtn._mjBound = true;
+              refreshBtn.addEventListener("click", function () {
+                renderSaveLoadList();
+              });
+            }
+            var delAllBtn = qs("save-load-delete-all-btn");
+            if (delAllBtn && !delAllBtn._mjBound) {
+              delAllBtn._mjBound = true;
+              delAllBtn.addEventListener("click", function () {
+                if (!window.confirm("确定清空全部存档？此操作不可撤销。")) return;
+                try {
+                  var idx3 = readSaveIndex();
+                  for (var i2 = 0; i2 < idx3.length; i2++) {
+                    if (idx3[i2] && idx3[i2].id) localStorage.removeItem(SAVE_PREFIX + String(idx3[i2].id));
+                  }
+                  writeSaveIndex([]);
+                  renderSaveLoadList();
+                  setSaveLoadStatus("已清空。", true);
+                } catch (e) {
+                  setSaveLoadStatus("清空失败：" + (e && e.message ? e.message : "未知错误"), false);
+                }
+              });
             }
 
             // 初始门禁：未配置 API 时禁用开始/读取

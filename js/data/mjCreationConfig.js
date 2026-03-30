@@ -6,17 +6,7 @@
   "use strict";
 
   var cfg = {
-    /** 命运抉择仅两种模式（无点数） */
-    DIFFICULTIES: {
-      简单: {
-        desc: "自由开局：出身、天赋与灵根均可任意选择与刷新",
-        bonus: { 魅力: 10, 气运: 10 },
-      },
-      凡人: {
-        desc: "凡人模式：以真正的凡人开始游戏，有额外气运加成",
-        bonus: { 魅力: 10, 气运: 30 },
-      },
-    },
+    /** 命运抉择 */
     GENDERS: {
       男性: {},
       女性: {},
@@ -30,7 +20,9 @@
           },
         },
         equipment: [],
-        stuff: {},
+        stuff: {
+          下品灵石: 5,
+        },
         gongfa: [],
         desc: "出生在凡人家庭，不曾接触过修仙界，但你的未来充满了无限可能。",
       },
@@ -68,12 +60,6 @@
     },
     LINGGEN: { 无灵根: { cost: 0 } },
     LINGGEN_ELEMENT_POOL: ["金", "木", "水", "火", "土"],
-    WORLD_FACTORS: {
-      全民修仙: {
-        desc: "修仙法门普及，凡人皆有修为，但资源竞争白热化。",
-        effect: "不再有纯粹的凡人，最低也是炼气一层。资源获取难度大幅提升，争斗极其频繁。",
-      },
-    },
     /** 逆天改命随机词条池（数据见 mj_trait_samples.js，与 ref_html TRAITS 对齐，共 148 条） */
     TRAIT_SAMPLES: Array.isArray(global.MjTraitSamples) ? global.MjTraitSamples : [],
 
@@ -118,14 +104,15 @@
   };
 
   var START_BAG_SLOTS = 12;
-  var START_GONGFA_SLOTS = 12;
-  /** 与 main.html 佩戴栏一致：0 武器 1 法器 2 防具；「主武器」同武器位；「副武器」同法器位（兼容旧数据） */
+  var START_GONGFA_SLOTS = 8;
+  /** 与 main.html 佩戴栏一致：0 武器 1 法器 2 防具 3 载具；「主武器」同武器位；「副武器」同法器位（兼容旧数据） */
   var EQUIP_TYPE_TO_INDEX = {
     武器: 0,
     主武器: 0,
     法器: 1,
     副武器: 1,
     防具: 2,
+    载具: 3,
   };
 
   function cloneDescribeEffects(eff) {
@@ -458,7 +445,7 @@
     return list;
   };
 
-  /** 按出身生成功法栏 12 格；gongfa 为名称数组，或旧版 { 名: 覆盖 } 对象 */
+  /** 按出身生成功法栏 8 格；gongfa 为名称数组，或旧版 { 名: 覆盖 } 对象 */
   cfg.buildStartingGongfaSlots = function buildStartingGongfaSlots(birthKey) {
     var arr = [];
     for (var g = 0; g < START_GONGFA_SLOTS; g++) arr.push(null);
@@ -518,11 +505,11 @@
   };
 
   /**
-   * 按出身生成佩戴栏三格：[武器, 法器, 防具]
+   * 按出身生成佩戴栏四格：[武器, 法器, 防具, 载具]
    * equipment 为名称数组，或旧版 { 装备名: { desc, type, bonus } }（可与 stuff_describe 合并）
    */
   cfg.buildStartingEquippedSlots = function buildStartingEquippedSlots(birthKey) {
-    var out = [null, null, null];
+    var out = [null, null, null, null];
     var birth = birthKey && cfg.BIRTHS && cfg.BIRTHS[birthKey];
     if (!birth || birth.equipment == null) return out;
     function placeEquipped(itemName, metaMerged) {
