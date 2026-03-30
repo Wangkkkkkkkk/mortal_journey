@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>凡人修仙传</title>
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./css/start_frame.css" />
+    <link rel="stylesheet" href="./css/logPanel.css" />
+    <link rel="stylesheet" href="./css/main.css" />
+    <link rel="stylesheet" href="./css/hongmeng_creation.css" />
+  </head>
+  <body>
+    <script src="./js/log/logPanel.js"></script>
+    <script src="./js/data/trait_samples.js"></script>
+    <script src="./js/stuff_describe/equipment.js"></script>
+    <script src="./js/stuff_describe/gong_fa.js"></script>
+    <script src="./js/stuff_describe/spirit_stone.js"></script>
+    <script src="./js/stuff_describe/pill.js"></script>
+    <script src="./js/stuff_describe/common_stuff.js"></script>
+    <script src="./js/data/mjCreationConfig.js"></script>
+    <script src="./js/data/realm_state.js"></script>
+    <script src="./js/data/leegen_state.js"></script>
+    <script src="./js/game/player_base_runtime.js"></script>
+
+    <!-- 结构对齐 ref_html/index.html 启动段 -->
+    <div id="splash-screen">
+      <div id="splash-bg" aria-hidden="true"></div>
+
+      <div id="splash-content">
+        <h1 id="splash-title">凡人修仙传</h1>
+        <p id="splash-info">作者: KAI&nbsp;&nbsp;|&nbsp;&nbsp;版本: 1.0.0</p>
+
+        <div id="splash-buttons">
+          <button class="splash-btn" id="start-new-life-btn" type="button">开始新人生</button>
+          <button class="splash-btn" id="load-life-btn" type="button">读取人生</button>
+          <button class="splash-btn" id="api-settings-btn" type="button">API设置</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- API 设置弹窗（仅写入 localStorage，供 main.html 的 bridge.js 读取覆盖） -->
+    <div id="api-settings-root" class="splash-modal-root hidden" aria-hidden="true">
+      <div class="splash-modal-backdrop" data-api-settings-close tabindex="-1"></div>
+      <div class="splash-modal" role="dialog" aria-modal="true" aria-labelledby="api-settings-title">
+        <button type="button" class="splash-modal-close" data-api-settings-close aria-label="关闭">×</button>
+        <h3 id="api-settings-title" class="splash-modal-title">API 设置</h3>
+        <p class="splash-modal-sub">填写后会保存到本机浏览器存储，不会上传到服务器，放心填写。</p>
+
+        <div class="splash-form">
+          <label class="splash-field">
+            <span class="splash-field-k">API URL</span>
+            <input id="api-url-input" class="splash-field-input" type="text" placeholder="https://api.example.com/v1" />
+          </label>
+          <label class="splash-field">
+            <span class="splash-field-k">API Key</span>
+            <input id="api-key-input" class="splash-field-input" type="password" placeholder="sk-..." />
+          </label>
+          <label class="splash-field">
+            <span class="splash-field-k">模型</span>
+            <input id="api-model-input" class="splash-field-input" type="text" placeholder="gpt-4.1-mini" />
+          </label>
+        </div>
+
+        <div class="splash-modal-actions">
+          <button type="button" class="splash-btn splash-btn--secondary" id="api-settings-clear-btn">清除</button>
+          <button type="button" class="splash-btn splash-btn--secondary" id="api-settings-test-btn">测试</button>
+          <button type="button" class="splash-btn" id="api-settings-save-btn">保存</button>
+        </div>
+        <div id="api-settings-status" class="splash-modal-status" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <!-- 对齐 ref_html/index.html #character-creation-screen（开辟鸿蒙 / 命运抉择） -->
+    <div id="character-creation-screen" class="hidden" aria-hidden="true">
+      <div class="creation-container">
+        <div class="creation-step-indicator" id="creation-step-indicator"></div>
+        <div class="creation-content" id="creation-content"></div>
+        <div class="creation-nav" id="creation-nav"></div>
+      </div>
+    </div>
+
+    <!-- 命运抉择 · 天赋详情（与 main.html 同款样式，z-index 高于 #character-creation-screen） -->
+    <div id="mj-trait-detail-root" class="mj-trait-modal-root hidden" aria-hidden="true">
+      <div class="mj-trait-modal-backdrop" data-mj-trait-modal-close tabindex="-1"></div>
+      <div class="mj-trait-modal" role="dialog" aria-modal="true" aria-labelledby="mj-trait-modal-title">
+        <button type="button" class="mj-trait-modal-close" data-mj-trait-modal-close aria-label="关闭">×</button>
+        <h4 id="mj-trait-modal-title" class="mj-trait-modal-title"></h4>
+        <div id="mj-trait-modal-rarity" class="mj-trait-modal-rarity"></div>
+        <div id="mj-trait-modal-body" class="mj-trait-modal-body"></div>
+      </div>
+    </div>
+
+    <!-- fateChoice 依赖上文脚本；须在本页 #mj-trait-detail-root 之后加载，否则天赋弹窗关闭无法绑定 -->
+    <script src="./js/ui/fateChoiceController.js"></script>
+
+    <script>
+      (function () {
+        "use strict";
+        var API_OVERRIDE_KEY = "IMMORTAL_ST_BRIDGE_API_OVERRIDE_V1";
+
+        function qs(id) {
+          return document.getElementById(id);
+        }
+
+        function isApiConfigured() {
+          try {
+            var raw = localStorage.getItem(API_OVERRIDE_KEY);
+            if (!raw) return false;
+            var o = JSON.parse(raw);
+            if (!o || typeof o !== "object") return false;
+            var apiUrl = o.apiUrl != null ? String(o.apiUrl).trim() : "";
+            var model = o.model != null ? String(o.model).trim() : "";
+            var apiKey = o.apiKey != null ? String(o.apiKey).trim() : "";
+            // url / model 必填；apiKey 默认必填（除非是本地代理等无鉴权场景）
+            if (!apiUrl || !model) return false;
+            // 避免把占位符当配置完成
+            if (/example\.com/i.test(apiUrl)) return false;
+            var isLocal =
+              /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(apiUrl) ||
+              /^https?:\/\/0\.0\.0\.0(:\d+)?(\/|$)/i.test(apiUrl);
+            if (!isLocal && !apiKey) return false;
+            return true;
+          } catch (_e) {
+            return false;
+          }
+        }
+
+        function refreshApiGateUi() {
+          var ok = isApiConfigured();
+          var startBtn = qs("start-new-life-btn");
+          var loadBtn = qs("load-life-btn");
+          var tip = ok ? "" : "请先在「API设置」中配置 API URL / Key / 模型（本地代理可不填 Key）。";
+          if (startBtn) {
+            startBtn.disabled = !ok;
+            if (!ok) startBtn.setAttribute("title", tip);
+            else startBtn.removeAttribute("title");
+          }
+          if (loadBtn) {
+            loadBtn.disabled = !ok;
+            if (!ok) loadBtn.setAttribute("title", tip);
+            else loadBtn.removeAttribute("title");
+          }
+        }
+
+        function openApiSettings() {
+          var root = qs("api-settings-root");
+          if (!root) return;
+          var st = qs("api-settings-status");
+          if (st) st.textContent = "";
+          try {
+            var raw = localStorage.getItem(API_OVERRIDE_KEY);
+            var data = raw ? JSON.parse(raw) : null;
+            if (data && typeof data === "object") {
+              var u = qs("api-url-input");
+              var k = qs("api-key-input");
+              var m = qs("api-model-input");
+              if (u) u.value = data.apiUrl != null ? String(data.apiUrl) : "";
+              if (k) k.value = data.apiKey != null ? String(data.apiKey) : "";
+              if (m) m.value = data.model != null ? String(data.model) : "";
+            }
+          } catch (_e) {
+            /* 忽略 */
+          }
+          root.classList.remove("hidden");
+          root.setAttribute("aria-hidden", "false");
+          document.body.style.overflow = "hidden";
+          var u2 = qs("api-url-input");
+          if (u2) u2.focus();
+        }
+
+        function closeApiSettings() {
+          var root = qs("api-settings-root");
+          if (!root) return;
+          root.classList.add("hidden");
+          root.setAttribute("aria-hidden", "true");
+          document.body.style.overflow = "";
+        }
+
+        function setStatus(msg, ok) {
+          var el = qs("api-settings-status");
+          if (!el) return;
+          el.textContent = msg != null ? String(msg) : "";
+          el.className = "splash-modal-status" + (ok ? " splash-modal-status--ok" : " splash-modal-status--bad");
+        }
+
+        function normalizeBaseUrl(url) {
+          var clean = String(url || "").trim().replace(/\/+$/, "");
+          if (!clean) return "";
+          if (!/\/v\d+$/i.test(clean)) clean += "/v1";
+          return clean;
+        }
+
+        function safeJsonParse(raw, fallback) {
+          try {
+            return JSON.parse(raw);
+          } catch (_e) {
+            return fallback;
+          }
+        }
+
+        function logToPanels(prefix, obj) {
+          try {
+            console.info(prefix, obj);
+            if (window.GameLog && typeof window.GameLog.info === "function") {
+              window.GameLog.info(prefix + "\n" + JSON.stringify(obj, null, 2));
+            }
+          } catch (_e) {
+            /* 忽略 */
+          }
+        }
+
+        function testApiSettings() {
+          var apiUrl = String((qs("api-url-input") && qs("api-url-input").value) || "").trim();
+          var apiKey = String((qs("api-key-input") && qs("api-key-input").value) || "").trim();
+          var model = String((qs("api-model-input") && qs("api-model-input").value) || "").trim();
+          if (!apiUrl || !model) {
+            setStatus("请先填写 API URL 与模型，再测试。", false);
+            return;
+          }
+          var testBtn = qs("api-settings-test-btn");
+          if (testBtn) testBtn.disabled = true;
+          setStatus("正在测试连接…", true);
+          var started = Date.now();
+          var base = normalizeBaseUrl(apiUrl);
+          var url = base + "/chat/completions";
+          var headers = { "Content-Type": "application/json" };
+          if (apiKey) headers.Authorization = "Bearer " + apiKey;
+          var body = {
+            model: model,
+            messages: [{ role: "user", content: "ping" }],
+            stream: false,
+            temperature: 0,
+            max_tokens: 8,
+          };
+          // 120s 超时，避免卡死
+          var ac = new AbortController();
+          var tid = window.setTimeout(function () {
+            try {
+              ac.abort("timeout");
+            } catch (_e) {}
+          }, 120000);
+          fetch(url, { method: "POST", headers: headers, body: JSON.stringify(body), signal: ac.signal })
+            .then(function (res) {
+              if (!res.ok) {
+                return res
+                  .text()
+                  .then(function (t) {
+                    throw new Error("HTTP " + res.status + "：" + (t || "unknown error"));
+                  });
+              }
+              return res.text();
+            })
+            .then(function (txt) {
+              window.clearTimeout(tid);
+              var ms = Date.now() - started;
+              var data = safeJsonParse(txt, null);
+              var content = "";
+              if (data && data.choices && data.choices[0] && data.choices[0].message) {
+                content = data.choices[0].message.content != null ? String(data.choices[0].message.content) : "";
+              }
+              setStatus("测试成功（" + (ms / 1000).toFixed(2) + "s）：" + (content || "已收到响应"), true);
+              logToPanels("[API测试] 成功", { apiUrl: apiUrl, model: model, ms: ms, preview: String(txt).slice(0, 500) });
+            })
+            .catch(function (err) {
+              window.clearTimeout(tid);
+              var ms2 = Date.now() - started;
+              var msg = err && err.message ? String(err.message) : "未知错误";
+              var isAbort =
+                (err && (err.name === "AbortError" || err.code === "ABORT_ERR")) ||
+                /aborted/i.test(msg);
+              if (isAbort) msg = "测试超时（20 秒未收到响应）";
+              setStatus("测试失败（" + (ms2 / 1000).toFixed(2) + "s）： " + msg.slice(0, 240), false);
+              logToPanels("[API测试] 失败", { apiUrl: apiUrl, model: model, ms: ms2, error: msg });
+            })
+            .finally(function () {
+              if (testBtn) testBtn.disabled = false;
+            });
+        }
+
+        function saveApiSettings() {
+          var apiUrl = String((qs("api-url-input") && qs("api-url-input").value) || "").trim();
+          var apiKey = String((qs("api-key-input") && qs("api-key-input").value) || "").trim();
+          var model = String((qs("api-model-input") && qs("api-model-input").value) || "").trim();
+          if (!apiUrl || !model) {
+            setStatus("请填写 API URL 与模型。", false);
+            return;
+          }
+          try {
+            localStorage.setItem(API_OVERRIDE_KEY, JSON.stringify({ apiUrl: apiUrl, apiKey: apiKey, model: model }));
+            setStatus("已保存。进入主界面后会生效。", true);
+            try {
+              console.info("[API设置] 已保存", { apiUrl: apiUrl, apiKey: apiKey, model: model });
+              if (window.GameLog && typeof window.GameLog.info === "function") {
+                window.GameLog.info(
+                  "[API设置] 已保存：\n" +
+                    "apiUrl=" +
+                    apiUrl +
+                    "\n" +
+                    "apiKey=" +
+                    apiKey +
+                    "\n" +
+                    "model=" +
+                    model,
+                );
+              }
+            } catch (_logErr) {
+              /* 忽略 */
+            }
+            refreshApiGateUi();
+          } catch (e) {
+            setStatus("保存失败：" + (e && e.message ? e.message : "未知错误"), false);
+          }
+        }
+
+        function clearApiSettings() {
+          try {
+            localStorage.removeItem(API_OVERRIDE_KEY);
+          } catch (_e) {
+            /* 忽略 */
+          }
+          var u = qs("api-url-input");
+          var k = qs("api-key-input");
+          var m = qs("api-model-input");
+          if (u) u.value = "";
+          if (k) k.value = "";
+          if (m) m.value = "";
+          setStatus("已清除。", true);
+          refreshApiGateUi();
+        }
+
+        document.getElementById("start-new-life-btn").addEventListener("click", function () {
+          if (window.FateChoiceController && typeof window.FateChoiceController.show === "function") {
+            window.FateChoiceController.show();
+          } else {
+            console.warn("[凡人修仙传] FateChoiceController 未加载");
+          }
+        });
+        document.getElementById("load-life-btn").addEventListener("click", function () {
+          console.info("[凡人修仙传] 读取人生");
+        });
+
+        var apiBtn = document.getElementById("api-settings-btn");
+        if (apiBtn) apiBtn.addEventListener("click", openApiSettings);
+        var root = document.getElementById("api-settings-root");
+        if (root) {
+          root.querySelectorAll("[data-api-settings-close]").forEach(function (el) {
+            el.addEventListener("click", function () {
+              closeApiSettings();
+            });
+          });
+          root.addEventListener("keydown", function (ev) {
+            if (ev.key === "Escape") {
+              closeApiSettings();
+              ev.preventDefault();
+            }
+          });
+        }
+        var saveBtn = document.getElementById("api-settings-save-btn");
+        if (saveBtn) saveBtn.addEventListener("click", saveApiSettings);
+        var clearBtn = document.getElementById("api-settings-clear-btn");
+        if (clearBtn) clearBtn.addEventListener("click", clearApiSettings);
+        var testBtn = document.getElementById("api-settings-test-btn");
+        if (testBtn) testBtn.addEventListener("click", testApiSettings);
+
+        // 初始门禁：未配置 API 时禁用开始/读取
+        refreshApiGateUi();
+      })();
+    </script>
+  </body>
+</html>

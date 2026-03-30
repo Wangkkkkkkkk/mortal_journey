@@ -49,10 +49,7 @@ body.mj-main-body {
   letter-spacing: 0.06em;
 }
 
-.mj-main-header .mj-sub {
-  font-size: 0.8rem;
-  color: var(--mj-muted);
-}
+/* 顶部副标题 .mj-sub 已移除 */
 
 .mj-main-layout {
   flex: 1;
@@ -73,6 +70,43 @@ body.mj-main-body {
 
 .mj-pane:last-child {
   border-right: none;
+}
+
+.mj-npc-footer {
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--mj-border);
+  background: linear-gradient(180deg, rgba(18, 22, 20, 0.92), rgba(12, 15, 13, 0.96));
+}
+
+.mj-secondary-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(216, 185, 117, 0.28);
+  background: rgba(24, 28, 25, 0.55);
+  color: var(--mj-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.mj-secondary-btn:hover {
+  border-color: rgba(216, 185, 117, 0.5);
+  background: rgba(24, 28, 25, 0.7);
+}
+
+.mj-secondary-btn:active {
+  transform: translateY(1px);
+}
+
+.mj-secondary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .mj-pane-header {

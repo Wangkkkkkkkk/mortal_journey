@@ -1456,17 +1456,6 @@
     }
   }
 
-  function formatTraitBonusLine(b) {
-    if (!b || typeof b !== "object") return "";
-    var keys = Object.keys(b);
-    if (!keys.length) return "";
-    return keys
-      .map(function (k) {
-        return k + " " + b[k];
-      })
-      .join("；");
-  }
-
   function appendTraitModalSection(bodyEl, label, text) {
     if (text == null || String(text).trim() === "") return;
     var sec = document.createElement("div");
@@ -1493,8 +1482,6 @@
     bodyEl.textContent = "";
     appendTraitModalSection(bodyEl, "简述", t.desc);
     appendTraitModalSection(bodyEl, "效果", t.effects);
-    var bonusLine = formatTraitBonusLine(t.bonus);
-    if (bonusLine) appendTraitModalSection(bodyEl, "属性加成", bonusLine);
     if (t.item != null && String(t.item).trim() !== "" && String(t.item) !== "无") {
       appendTraitModalSection(bodyEl, "关联物品", t.item);
     }

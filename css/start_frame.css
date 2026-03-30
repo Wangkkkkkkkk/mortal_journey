@@ -179,6 +179,118 @@ body {
   transform: none;
 }
 
+/* 次级按钮：用于弹窗内“清除”等（不用于首页主按钮） */
+.splash-btn.splash-btn--secondary {
+  color: rgba(245, 245, 240, 0.92);
+  border-color: rgba(212, 175, 55, 0.45);
+  background: rgba(0, 0, 0, 0.34);
+}
+.splash-btn.splash-btn--secondary:hover {
+  color: #fff;
+  border-color: rgba(255, 230, 150, 0.65);
+  background: rgba(55, 42, 12, 0.55);
+}
+
+/* API 设置弹窗 */
+.splash-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.splash-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(2px);
+}
+.splash-modal {
+  position: relative;
+  z-index: 1;
+  width: min(620px, 92vw);
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  background: rgba(10, 16, 12, 0.92);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  padding: 18px 18px 14px;
+}
+.splash-modal-title {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+  color: var(--splash-gold);
+  letter-spacing: 0.04em;
+}
+.splash-modal-sub {
+  margin: 0 0 12px;
+  opacity: 0.85;
+  font-size: 0.9rem;
+}
+.splash-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 2px;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--splash-gold);
+  cursor: pointer;
+}
+.splash-form {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+.splash-field {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+}
+.splash-field-k {
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+.splash-field-input {
+  width: 100%;
+  padding: 10px 10px;
+  font-size: 0.95rem;
+  color: var(--splash-fg);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 2px;
+  outline: none;
+}
+.splash-field-input:focus {
+  border-color: rgba(255, 230, 150, 0.7);
+  box-shadow: 0 0 0 2px rgba(232, 197, 71, 0.12);
+}
+.splash-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.splash-modal-actions .splash-btn {
+  width: auto;
+  min-width: 110px;
+  padding: 10px 16px;
+  font-size: 0.95rem;
+}
+.splash-modal-status {
+  margin-top: 10px;
+  font-size: 0.88rem;
+  opacity: 0.9;
+  min-height: 1.2em;
+}
+.splash-modal-status--ok {
+  color: rgba(140, 220, 150, 0.95);
+}
+.splash-modal-status--bad {
+  color: rgba(255, 170, 170, 0.95);
+}
+
 /* 与命运抉择屏切换共用 */
 .hidden {
   display: none !important;

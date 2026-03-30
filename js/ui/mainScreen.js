@@ -20,29 +20,8 @@
       global.MortalJourneyGame = G;
     }
     P.ensureGameRuntimeDefaults(G);
-    var shouldSeedDemoNpc = true;
-    try {
-      var rawSnap = sessionStorage.getItem(P.STORAGE_KEY);
-      if (rawSnap) {
-        var snap = JSON.parse(rawSnap);
-        if (
-          snap &&
-          Object.prototype.hasOwnProperty.call(snap, "nearbyNpcs") &&
-          Array.isArray(snap.nearbyNpcs)
-        ) {
-          shouldSeedDemoNpc = false;
-        }
-      }
-    } catch (seedErr) {
-      /* 忽略 */
-    }
     P.ensureNearbyNpcsArray(G);
     P.normalizeNearbyNpcListInPlace(G);
-    if (shouldSeedDemoNpc && (!G.nearbyNpcs || !G.nearbyNpcs.length)) {
-      G.nearbyNpcs = [P.buildDemoNearbyNpcSheet()];
-      P.normalizeNearbyNpcListInPlace(G);
-      P.persistBootstrapSnapshot();
-    }
     var brInit = P.applyRealmBreakthroughs(G);
     P.logBreakthroughMessages(brInit.messages);
     if (brInit.changed) {
@@ -79,6 +58,19 @@
     console.info("[主界面] 骨架已加载", G);
     if (global.GameLog && typeof global.GameLog.info === "function") {
       global.GameLog.info("[主界面] 已加载；左下角可展开调试日志面板。");
+    }
+
+    var backBtn = document.getElementById("mj-back-to-splash-btn");
+    if (backBtn) {
+      backBtn.addEventListener("click", function () {
+        try {
+          // 清理主界面缓存开局存档，返回后即可重新开始人生
+          if (P && P.STORAGE_KEY) sessionStorage.removeItem(P.STORAGE_KEY);
+        } catch (e) {
+          /* 忽略 */
+        }
+        window.location.href = "./index.html";
+      });
     }
   }
 

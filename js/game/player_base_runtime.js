@@ -109,11 +109,7 @@
     if (fc.birth && c.BIRTHS && c.BIRTHS[fc.birth] && c.BIRTHS[fc.birth].bonus) {
       list.push(c.BIRTHS[fc.birth].bonus);
     }
-    var traits = fc.traits || [];
-    for (var t = 0; t < traits.length; t++) {
-      var tr = traits[t];
-      if (tr && tr.bonus && typeof tr.bonus === "object") list.push(tr.bonus);
-    }
+    // 天赋词条已改为纯叙事/标签：不再提供属性 bonus
     if (fc.birth && typeof c.collectBirthStuffBonusObjects === "function") {
       var sb = c.collectBirthStuffBonusObjects(fc.birth);
       for (var s = 0; s < sb.length; s++) list.push(sb[s]);

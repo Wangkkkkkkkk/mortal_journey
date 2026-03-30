@@ -13,7 +13,8 @@
   var START_REALM_STAGE = "初期";
 
   var state = {
-    selectedDifficulty: null,
+    /** 难度选择已移除：统一按「简单」处理 */
+    selectedDifficulty: "简单",
     selectedBirth: null,
     customBirth: null,
     selectedGender: null,
@@ -75,7 +76,7 @@
   }
 
   function resetState() {
-    state.selectedDifficulty = null;
+    state.selectedDifficulty = "简单";
     state.selectedBirth = null;
     state.customBirth = null;
     state.selectedGender = null;
@@ -92,7 +93,7 @@
 
   var BASE_STAT_KEYS = ["hp", "mp", "patk", "pdef", "matk", "mdef", "foot", "sense"];
 
-  /** 与 mainScreen 默认一致；魅力/气运由 PlayerBaseRuntime 合并 bonus 后限制在 [0,100] */
+  /** 与 mainScreen 默认一致；魅力/气运由 PlayerBaseRuntime 合并后限制在 [0,100] */
   var DEFAULT_CHARM = 0;
   var DEFAULT_LUCK = 0;
 
@@ -108,20 +109,6 @@
     charm: "魅力",
     luck: "气运",
   };
-
-  /** 与 trait_samples bonus 键顺序一致，便于弹窗与汇总展示稳定排序 */
-  var TRAIT_BONUS_DISPLAY_ORDER = [
-    "血量",
-    "法力",
-    "物攻",
-    "物防",
-    "法攻",
-    "法防",
-    "神识",
-    "脚力",
-    "魅力",
-    "气运",
-  ];
 
   /**
    * 逆天改命刷新时：先按权重抽品质，再在该品质未排除的词条中均匀抽一条。
@@ -157,49 +144,6 @@
     return rows[rows.length - 1].rarity || "平庸";
   }
 
-  function mergeTraitBonusesForDisplay(traits) {
-    var acc = {};
-    if (!traits || !traits.length) return acc;
-    for (var i = 0; i < traits.length; i++) {
-      var tr = traits[i];
-      if (!tr || !tr.bonus || typeof tr.bonus !== "object") continue;
-      for (var k in tr.bonus) {
-        if (!Object.prototype.hasOwnProperty.call(tr.bonus, k)) continue;
-        var v = tr.bonus[k];
-        if (typeof v === "number" && isFinite(v)) acc[k] = (acc[k] || 0) + v;
-      }
-    }
-    return acc;
-  }
-
-  function formatTraitBonusLines(b) {
-    if (!b || typeof b !== "object") return [];
-    var lines = [];
-    var used = {};
-    var o;
-    for (o = 0; o < TRAIT_BONUS_DISPLAY_ORDER.length; o++) {
-      var ok = TRAIT_BONUS_DISPLAY_ORDER[o];
-      if (!Object.prototype.hasOwnProperty.call(b, ok)) continue;
-      var ov = b[ok];
-      if (typeof ov === "number" && isFinite(ov)) {
-        lines.push(ov >= 0 ? ok + " +" + ov : ok + " " + ov);
-      } else {
-        lines.push(ok + " " + String(ov));
-      }
-      used[ok] = true;
-    }
-    for (var k in b) {
-      if (!Object.prototype.hasOwnProperty.call(b, k) || used[k]) continue;
-      var v = b[k];
-      if (typeof v === "number" && isFinite(v)) {
-        lines.push(v >= 0 ? k + " +" + v : k + " " + v);
-      } else {
-        lines.push(k + " " + String(v));
-      }
-    }
-    return lines;
-  }
-
   /**
    * 与主界面一致：境界表 + 灵根 + 难度/出身/天赋/出身 stuff + 当前出身对应的功法栏与佩戴栏快照。
    */
@@ -227,7 +171,7 @@
       traits: state.selectedTraits,
       linggen: state.selectedLinggen,
       realm: { major: START_REALM_MAJOR, minor: START_REALM_STAGE },
-      worldFactors: state.selectedWorldFactors,
+      worldFactors: [],
     };
     var c = cfg();
     var ovr = {};
@@ -245,7 +189,7 @@
     logPlayerBaseIfChanged();
   }
 
-  /** 灵根或折算结果变化时打印到控制台（及 GameLog），避免每次点选世界因子刷屏 */
+  /** 灵根或折算结果变化时打印到控制台（及 GameLog） */
   function logPlayerBaseIfChanged() {
     var sig =
       (state.selectedLinggen || "") +
@@ -309,20 +253,14 @@
   }
 
   function isMortalMode() {
-    return state.selectedDifficulty === "凡人";
+    // 难度选择已移除：不再存在「凡人模式」
+    return false;
   }
 
-  /** 凡人模式：锁定出身并清空天赋；灵根每次进入该模式时随机测定（不可手动再刷） */
+  /** 兼容旧逻辑：曾有「凡人模式」锁定出身与天赋；现难度已简化，不再启用 */
   function applyMortalModeLocks() {
-    state.selectedBirth = "凡人";
-    state.customBirth = null;
-    var c = cfg();
-    var fm = c && c.BIRTHS && c.BIRTHS.凡人;
-    var mortalLoc = fm ? resolveBirthLocationNameFromDef(fm) : "";
-    if (mortalLoc) state.birthLocation = mortalLoc;
-    state.currentTraitOptions = [];
-    state.selectedTraits = [];
-    applyRandomLinggenRollToState();
+    // 难度选择已移除：该逻辑不再启用（保留函数以兼容旧调用点）
+    return;
   }
 
   function createLinggenOrb(name) {
@@ -364,10 +302,6 @@
   }
 
   function handleRandomizeLinggen() {
-    if (!state.selectedDifficulty) {
-      window.alert("请先选择难度模式。");
-      return;
-    }
     if (isMortalMode()) {
       return;
     }
@@ -409,10 +343,6 @@
   }
 
   function handleRandomizeTraits() {
-    if (!state.selectedDifficulty) {
-      window.alert("请先选择难度模式。");
-      return;
-    }
     if (isMortalMode()) {
       return;
     }
@@ -447,11 +377,6 @@
       return t.locked;
     });
     renderPage();
-  }
-
-  function formatTraitBonusLine(b) {
-    var lines = formatTraitBonusLines(b);
-    return lines.length ? lines.join("；") : "";
   }
 
   function appendFateTraitModalSection(bodyEl, label, text, opts) {
@@ -492,10 +417,6 @@
     appendFateTraitModalSection(bodyEl, "简述", trait.desc);
     if (trait.effects != null && String(trait.effects).trim() !== "") {
       appendFateTraitModalSection(bodyEl, "效果", trait.effects);
-    }
-    var bonusLines = formatTraitBonusLines(trait.bonus);
-    if (bonusLines.length) {
-      appendFateTraitModalSection(bodyEl, "属性加成（计入练气初期面板）", bonusLines.join("\n"), { multiline: true });
     }
     if (trait.item != null && String(trait.item).trim() !== "" && String(trait.item) !== "无") {
       appendFateTraitModalSection(bodyEl, "关联物品", trait.item);
@@ -548,92 +469,33 @@
     if (indicatorEl) indicatorEl.innerHTML = "";
 
     var bdSel = state.selectedBirth && c.BIRTHS && c.BIRTHS[state.selectedBirth];
-    var birthPlaceName = "";
-    if (state.birthLocation != null && String(state.birthLocation).trim() !== "") {
-      birthPlaceName = String(state.birthLocation).split("|")[0].trim();
-    } else if (bdSel) {
-      birthPlaceName = resolveBirthLocationNameFromDef(bdSel);
-    }
-    if (!birthPlaceName && state.selectedBirth === "自定义" && state.customBirth) {
-      birthPlaceName = String(state.customBirth.tag || state.customBirth.name || "自定义").trim();
-    }
-    if (!birthPlaceName) birthPlaceName = "尚未选择";
-
-    var birthPlaceDesc = bdSel ? resolveBirthLocationDescFromDef(bdSel) : "";
-    state.selectedWorldFactors = (state.selectedWorldFactors || []).filter(function (f) {
-      return !f.isCustom;
-    });
-    var selectedWorldFactors = state.selectedWorldFactors;
+    // 世界因子已移除：不再让开局选择/写入
+    state.selectedWorldFactors = [];
+    var selectedWorldFactors = [];
     var mortal = isMortalMode();
-    var diffReady = !!state.selectedDifficulty;
-    var isReady =
-      !!state.selectedDifficulty &&
-      !!state.selectedBirth &&
-      !!state.selectedGender &&
-      !!state.selectedLinggen &&
-      !!state.birthLocation;
+    // 难度选择已移除：diffReady 恒为 true
+    var diffReady = true;
+    var isReady = !!state.selectedBirth && !!state.selectedGender && !!state.selectedLinggen;
 
-    var diffKeys = ["简单", "凡人"];
-    var difficultyCardsHtml = diffKeys
-      .filter(function (k) {
-        return c.DIFFICULTIES && c.DIFFICULTIES[k];
-      })
-      .map(function (name) {
-        var data = c.DIFFICULTIES[name];
-        var selected = state.selectedDifficulty === name;
-        return (
-          '<div class="creation-card ' +
-          (selected ? "selected" : "") +
-          '" data-difficulty="' +
-          name +
-          '">' +
-          "<h4><span>" +
-          name +
-          "</span></h4>" +
-          (data.desc ? '<p style="opacity:0.9;">' + data.desc + "</p>" : "") +
-          "</div>"
-        );
-      })
-      .join("");
-
-    var birthKeys = mortal ? ["凡人"] : Object.keys(c.BIRTHS || {});
+    var birthKeys = Object.keys(c.BIRTHS || {});
 
     var lockedTraitCount = (state.currentTraitOptions || []).filter(function (t) {
       return t && t.locked;
     }).length;
-    var traitBtnDisabled = !diffReady || mortal || lockedTraitCount >= 5;
-    var linggenBtnDisabled = !diffReady || mortal;
+    var traitBtnDisabled = mortal || lockedTraitCount >= 5;
+    var linggenBtnDisabled = mortal;
     var traitRandomTitle =
-      traitBtnDisabled && diffReady && !mortal && lockedTraitCount >= 5
-        ? "五格均已锁定，请先解锁至少一格后再刷新。"
-        : "";
+      traitBtnDisabled && !mortal && lockedTraitCount >= 5 ? "五格均已锁定，请先解锁至少一格后再刷新。" : "";
 
-    var traitEmptyHint = mortal
-      ? "凡人模式不可刷新天赋。"
-      : !diffReady
-        ? "请先选择难度后再刷新候选词条。"
-        : "尚未刷新候选词条，点击「逆天改命」开始。";
+    var traitEmptyHint = mortal ? "当前模式不可刷新天赋。" : "尚未刷新候选词条，点击「逆天改命」开始。";
 
-    var linggenEmptyHint = mortal
-      ? ""
-      : !diffReady
-        ? "请先选择难度。"
-        : "尚未测定灵根，请点击「随机灵根」。";
+    var linggenEmptyHint = mortal ? "" : "尚未测定灵根，请点击「随机灵根」。";
 
-    var mergedTraitAcc = mergeTraitBonusesForDisplay(state.selectedTraits);
-    var mergedTraitLineArr = formatTraitBonusLines(mergedTraitAcc);
     var traitMergedSummaryHtml = "";
-    if (!mortal && diffReady) {
-      if (mergedTraitLineArr.length) {
+    if (!mortal) {
+      if ((state.currentTraitOptions || []).length > 0) {
         traitMergedSummaryHtml =
-          '<div class="creation-trait-bonus-summary" style="text-align:center; font-size:13px; line-height:1.6; opacity:0.92; padding: 4px 8px 0;">' +
-          '<span style="opacity:0.85">已锁定天赋累计加成（已与灵根等一并折算进练气初期属性）</span><br>' +
-          "<strong>" +
-          escapeHtml(mergedTraitLineArr.join("；")) +
-          "</strong></div>";
-      } else if ((state.currentTraitOptions || []).length > 0) {
-        traitMergedSummaryHtml =
-          '<div class="creation-trait-bonus-summary muted" style="text-align:center; font-size:12px; opacity:0.75; padding: 4px 8px 0;">点击词条上的锁可锁定；锁定后属性写入角色面板。</div>';
+          '<div class="creation-trait-bonus-summary muted" style="text-align:center; font-size:12px; opacity:0.75; padding: 4px 8px 0;">点击词条可锁定；词条不影响属性，只影响命数。</div>';
       }
     }
 
@@ -648,10 +510,6 @@
       "</div>" +
       '<div class="creation-step-subtitle">按顺序完成配置后，直接开始人生</div>' +
       "</div>" +
-      "</div>" +
-      '<div class="creation-section-title"><i class="fas fa-mountain"></i> 选择难度</div>' +
-      '<div class="creation-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">' +
-      difficultyCardsHtml +
       "</div>" +
       '<div class="creation-section-title"><i class="fas fa-venus-mars"></i> 性别</div>' +
       '<div class="creation-grid">' +
@@ -772,45 +630,6 @@
       "金灵根提升物攻与法攻；木灵根提升神识；水灵根提升法力；火灵根提升血量；土灵根提升物防与法防。灵根越多，修炼越慢。" +
       "</p>" +
       "</div>" +
-      '<div class="creation-section-title"><i class="fas fa-globe"></i> 世界因子（可多选）</div>' +
-      '<div class="creation-grid" id="world-factor-grid">' +
-      Object.entries(c.WORLD_FACTORS || {})
-        .map(function (entry) {
-          var name = entry[0];
-          var data = entry[1];
-          var selected = selectedWorldFactors.some(function (f) {
-            return f.name === name && !f.isCustom;
-          });
-          return (
-            '<div class="creation-card ' +
-            (selected ? "selected" : "") +
-            '" data-factor-name="' +
-            name +
-            '">' +
-            "<h4>" +
-            name +
-            "</h4>" +
-            "<p>" +
-            (data.desc || "") +
-            "</p>" +
-            "</div>"
-          );
-        })
-        .join("") +
-      "</div>" +
-      '<div class="creation-section-title"><i class="fas fa-map-marked-alt"></i> 出生地</div>' +
-      '<div class="panel-card creation-birthplace-card">' +
-      '<p class="creation-birthplace-line">出生地：<strong>' +
-      escapeHtml(birthPlaceName) +
-      "</strong></p>" +
-      (birthPlaceDesc
-        ? '<p class="creation-birthplace-desc">' + escapeHtml(birthPlaceDesc) + "</p>"
-        : !state.selectedBirth
-          ? '<p class="creation-birthplace-desc creation-birthplace-desc--hint">请先选择出身以查看地点描述。</p>'
-          : state.selectedBirth === "自定义"
-            ? '<p class="creation-birthplace-desc creation-birthplace-desc--hint">自定义出身暂无预设地点文案，将由剧情扩展。</p>'
-            : "") +
-      "</div>" +
       '<div id="start-game-status" style="margin: 10px 0 0; font-size: 13px; opacity: 0.95;"></div>';
 
     navEl.innerHTML =
@@ -835,16 +654,7 @@
     var navEl = getEl("creation-nav");
     if (!contentEl || !navEl) return;
 
-    contentEl.querySelectorAll("[data-difficulty]").forEach(function (card) {
-      card.addEventListener("click", function () {
-        var name = card.getAttribute("data-difficulty");
-        state.selectedDifficulty = name;
-        if (name === "凡人") {
-          applyMortalModeLocks();
-        }
-        renderPage();
-      });
-    });
+    // 难度选择已移除：不再绑定 data-difficulty 事件（统一按「简单」处理）
 
     contentEl.querySelectorAll(".creation-card[data-birth]").forEach(function (card) {
       card.addEventListener("click", function () {
@@ -904,25 +714,7 @@
       }
     });
 
-    contentEl.querySelectorAll("#world-factor-grid .creation-card").forEach(function (card) {
-      card.addEventListener("click", function () {
-        var name = card.getAttribute("data-factor-name");
-        var factorData = name && c.WORLD_FACTORS ? c.WORLD_FACTORS[name] : null;
-        if (!factorData) return;
-        var idx = state.selectedWorldFactors.findIndex(function (f) {
-          return f.name === name && !f.isCustom;
-        });
-        if (idx > -1) state.selectedWorldFactors.splice(idx, 1);
-        else
-          state.selectedWorldFactors.push({
-            name: name,
-            desc: factorData.desc,
-            effect: factorData.effect,
-            isCustom: false,
-          });
-        renderPage();
-      });
-    });
+    // 世界因子已移除：不再绑定 #world-factor-grid 事件
 
     var backBtn = navEl.querySelector("#creation-back-to-splash-btn");
     if (backBtn) {
@@ -949,15 +741,14 @@
   function handleStartGame() {
     var statusEl = getEl("start-game-status");
     var c = cfg();
-    if (state.selectedBirth && c && c.BIRTHS && c.BIRTHS[state.selectedBirth]) {
+    // 出生地 UI 已移除，但开局仍写入「出身默认地点」供主界面右侧地点条展示
+    var birthLoc = "";
+    if (state.birthLocation != null && String(state.birthLocation).trim() !== "") {
+      birthLoc = String(state.birthLocation).trim();
+    } else if (state.selectedBirth && c && c.BIRTHS && c.BIRTHS[state.selectedBirth]) {
       var bdStart = c.BIRTHS[state.selectedBirth];
       var defaultLocName = resolveBirthLocationNameFromDef(bdStart);
-      if (
-        (state.birthLocation == null || String(state.birthLocation).trim() === "") &&
-        defaultLocName
-      ) {
-        state.birthLocation = defaultLocName;
-      }
+      if (defaultLocName) birthLoc = String(defaultLocName).trim();
     }
     var payload = {
       difficulty: state.selectedDifficulty,
@@ -966,8 +757,8 @@
       customBirth: state.customBirth,
       traits: state.selectedTraits,
       linggen: state.selectedLinggen,
-      worldFactors: state.selectedWorldFactors,
-      birthLocation: state.birthLocation,
+      worldFactors: [],
+      birthLocation: birthLoc,
       realm: { major: START_REALM_MAJOR, minor: START_REALM_STAGE },
       rawRealmBase: state.rawRealmBase ? Object.assign({}, state.rawRealmBase) : null,
       playerBase: state.playerBase ? Object.assign({}, state.playerBase) : null,
