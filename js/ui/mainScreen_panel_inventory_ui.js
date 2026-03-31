@@ -918,6 +918,10 @@
       bonusLine = formatZhBonusObject(item.bonus);
     }
     if (bonusLine) sections.push({ label: "修炼加成", text: bonusLine });
+    var gfMagLine = R.resolveGongfaMagnificationLine(name, item, cfgDef);
+    if (gfMagLine) sections.push({ label: "伤害倍率", text: gfMagLine });
+    var gfManaCost = R.resolveGongfaManacostLine(name, item, cfgDef);
+    if (gfManaCost) sections.push({ label: "法力消耗", text: gfManaCost });
     var refNumGf =
       typeof item.value === "number" && isFinite(item.value)
         ? item.value
@@ -1110,6 +1114,8 @@
       bonusLine = formatZhBonusObject(item.bonus);
     }
     if (bonusLine) sections.push({ label: "属性加成", text: bonusLine });
+    var magnificationLine = R.resolveEquipmentMagnificationLine(name, item, meta);
+    if (magnificationLine) sections.push({ label: "伤害倍率", text: magnificationLine });
     var refNum =
       typeof item.value === "number" && isFinite(item.value)
         ? item.value
@@ -1155,6 +1161,10 @@
       bonusLineRoGf = formatZhBonusObject(item.bonus);
     }
     if (bonusLineRoGf) sections.push({ label: "修炼加成", text: bonusLineRoGf });
+    var gfMagLineRo = R.resolveGongfaMagnificationLine(name, item, cfgDef);
+    if (gfMagLineRo) sections.push({ label: "伤害倍率", text: gfMagLineRo });
+    var gfManaCostRo = R.resolveGongfaManacostLine(name, item, cfgDef);
+    if (gfManaCostRo) sections.push({ label: "法力消耗", text: gfManaCostRo });
     var refNumRoGf =
       typeof item.value === "number" && isFinite(item.value)
         ? item.value
@@ -1189,6 +1199,8 @@
       bonusLineRo = formatZhBonusObject(item.bonus);
     }
     if (bonusLineRo) sections.push({ label: "属性加成", text: bonusLineRo });
+    var magnificationLineRo = R.resolveEquipmentMagnificationLine(name, item, meta);
+    if (magnificationLineRo) sections.push({ label: "伤害倍率", text: magnificationLineRo });
     var refNumRo =
       typeof item.value === "number" && isFinite(item.value)
         ? item.value
@@ -1257,12 +1269,20 @@
     }
     if (pillFx) sections.push({ label: "药效", text: pillFx });
     if (bonusEq) sections.push({ label: "属性加成", text: bonusEq });
+    if (wearSlot != null) {
+      var magnificationBag = R.resolveEquipmentMagnificationLine(String(it.name), it, eqMeta);
+      if (magnificationBag) sections.push({ label: "伤害倍率", text: magnificationBag });
+    }
     if (gfMeta) {
       if (gfMeta.type != null && String(gfMeta.type).trim() !== "") {
         sections.push({ label: "功法类型", text: String(gfMeta.type).trim() });
       }
       var gfBonusLine = gfMeta.bonus ? formatZhBonusObject(gfMeta.bonus) : "";
       if (gfBonusLine) sections.push({ label: "修炼加成", text: gfBonusLine });
+      var gfMagLineBag = R.resolveGongfaMagnificationLine(String(it.name), it, gfMeta);
+      if (gfMagLineBag) sections.push({ label: "伤害倍率", text: gfMagLineBag });
+      var gfManaCostBag = R.resolveGongfaManacostLine(String(it.name), it, gfMeta);
+      if (gfManaCostBag) sections.push({ label: "法力消耗", text: gfManaCostBag });
     }
     var refNum =
       typeof it.value === "number" && isFinite(it.value)

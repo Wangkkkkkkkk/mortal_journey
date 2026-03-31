@@ -386,7 +386,7 @@
       if (typeof eff.recover.mp === "number" && eff.recover.mp > 0) {
         parts.push("法力 +" + Math.floor(eff.recover.mp));
       }
-      if (parts.length) lines.push("服用回复：" + parts.join("，"));
+      if (parts.length) lines.push(parts.join("，"));
     }
     if (Array.isArray(eff.breakthrough)) {
       for (var j = 0; j < eff.breakthrough.length; j++) {
@@ -1370,6 +1370,57 @@
     return C.getEquipmentDescribe(String(itemName).trim());
   }
 
+  function toFiniteNumberOrNull(v) {
+    return typeof v === "number" && isFinite(v) ? v : null;
+  }
+
+  function resolveEquipmentMagnificationLine(itemName, item, equipMeta) {
+    var meta = equipMeta || lookupEquipmentMetaByItemName(itemName);
+    var m0 = item && item.magnification && typeof item.magnification === "object" ? item.magnification : null;
+    var m1 = meta && meta.magnification && typeof meta.magnification === "object" ? meta.magnification : null;
+    var patkMag = toFiniteNumberOrNull(m0 && m0.物攻);
+    if (patkMag == null) patkMag = toFiniteNumberOrNull(m1 && m1.物攻);
+    var matkMag = toFiniteNumberOrNull(m0 && m0.法攻);
+    if (matkMag == null) matkMag = toFiniteNumberOrNull(m1 && m1.法攻);
+    if (patkMag == null && matkMag == null) return "";
+    if (patkMag == null) patkMag = 0;
+    if (matkMag == null) matkMag = 0;
+    return (
+      "物攻倍率=" +
+      String(Math.round(patkMag * 100) / 100) +
+      ", 法攻倍率=" +
+      String(Math.round(matkMag * 100) / 100)
+    );
+  }
+
+  function resolveGongfaMagnificationLine(gongfaName, item, gongfaMeta) {
+    var meta = gongfaMeta || lookupGongfaConfigDef(gongfaName);
+    var m0 = item && item.magnification && typeof item.magnification === "object" ? item.magnification : null;
+    var m1 = meta && meta.magnification && typeof meta.magnification === "object" ? meta.magnification : null;
+    var patkMag = toFiniteNumberOrNull(m0 && m0.物攻);
+    if (patkMag == null) patkMag = toFiniteNumberOrNull(m1 && m1.物攻);
+    var matkMag = toFiniteNumberOrNull(m0 && m0.法攻);
+    if (matkMag == null) matkMag = toFiniteNumberOrNull(m1 && m1.法攻);
+    if (patkMag == null && matkMag == null) return "";
+    if (patkMag == null) patkMag = 0;
+    if (matkMag == null) matkMag = 0;
+    return (
+      "物攻倍率=" +
+      String(Math.round(patkMag * 100) / 100) +
+      ", 法攻倍率=" +
+      String(Math.round(matkMag * 100) / 100)
+    );
+  }
+
+  function resolveGongfaManacostLine(gongfaName, item, gongfaMeta) {
+    var meta = gongfaMeta || lookupGongfaConfigDef(gongfaName);
+    var c0 = toFiniteNumberOrNull(item && item.manacost);
+    var c1 = toFiniteNumberOrNull(meta && meta.manacost);
+    var cost = c0 != null ? c0 : c1;
+    if (cost == null) return "";
+    return String(Math.max(0, Math.round(cost)));
+  }
+
   /** stuff 品阶（下品…）→ 与逆天改命槽位 data-rarity 相同的键，供 CSS 复用 */
   var GRADE_TO_TRAIT_RARITY = {
     下品: "平庸",
@@ -1607,45 +1658,6 @@
     head.appendChild(headText);
     bodyEl.appendChild(head);
 
-    var req =
-      RS && typeof RS.getCultivationRequired === "function"
-        ? RS.getCultivationRequired(major, minorForReq)
-        : null;
-    var curX =
-      typeof npc.xiuwei === "number" && isFinite(npc.xiuwei) ? Math.max(0, Math.floor(npc.xiuwei)) : 0;
-    var displayX = req != null && req > 0 ? Math.min(curX, req) : curX;
-    var cultPct = req != null && req > 0 ? clampPct((curX / req) * 100) : 0;
-    var cultLabel =
-      req != null && req > 0 ? Math.round(displayX) + " / " + Math.round(req) : Math.round(curX) + " / —";
-    var cultRow = document.createElement("div");
-    cultRow.className = "mj-resource-row";
-    var cultHead = document.createElement("div");
-    cultHead.className = "mj-resource-label";
-    var cLab = document.createElement("span");
-    cLab.textContent = "修炼进度";
-    var cNums = document.createElement("span");
-    cNums.className = "mj-resource-nums";
-    cNums.textContent = cultLabel;
-    cultHead.appendChild(cLab);
-    cultHead.appendChild(cNums);
-    var cultBar = document.createElement("div");
-    cultBar.className = "mj-bar";
-    cultBar.setAttribute("role", "progressbar");
-    cultBar.setAttribute("aria-valuenow", String(Math.round(clampPct(cultPct))));
-    var cultFill = document.createElement("div");
-    cultFill.className = "mj-bar-fill mj-bar-fill--cultivation";
-    cultBar.appendChild(cultFill);
-    cultRow.appendChild(cultHead);
-    cultRow.appendChild(cultBar);
-    bodyEl.appendChild(cultRow);
-    setBarFill(cultFill, cultBar, cultPct, cNums, cultLabel);
-    if (req != null && req > 0 && curX > req) {
-      cultBar.setAttribute(
-        "title",
-        "本阶段修为已足，当前累计 " + Math.round(curX) + "（可突破后计入下阶段）",
-      );
-    }
-
     var idBlock = document.createElement("div");
     idBlock.className = "mj-player-identity mj-npc-detail-identity";
     var rowA = document.createElement("div");
@@ -1680,43 +1692,6 @@
     idBlock.appendChild(rowA);
     idBlock.appendChild(rowB);
     bodyEl.appendChild(idBlock);
-
-    var tb = document.createElement("div");
-    tb.className = "mj-talent-block";
-    var th = document.createElement("div");
-    th.className = "mj-talent-heading";
-    th.textContent = "天赋";
-    var tr = document.createElement("div");
-    tr.className = "mj-talent-row";
-    tr.setAttribute("role", "group");
-    var traits = npc.traits || [];
-    for (var ti = 0; ti < 5; ti++) {
-      var tslot = document.createElement("div");
-      tslot.setAttribute("data-trait-slot", String(ti));
-      var trt = traits[ti];
-      if (trt && trt.name) {
-        tslot.className = "mj-trait-slot mj-trait-slot--filled";
-        if (trt.rarity) tslot.setAttribute("data-rarity", String(trt.rarity));
-        var tin = document.createElement("span");
-        tin.className = "mj-trait-slot-inner";
-        tin.textContent = String(trt.name);
-        tslot.appendChild(tin);
-        tslot.setAttribute("title", buildTraitSlotTooltip(trt));
-        tslot.setAttribute("role", "button");
-        tslot.setAttribute("tabindex", "0");
-        tslot.setAttribute("aria-label", "查看天赋：" + String(trt.name));
-      } else {
-        tslot.className = "mj-trait-slot mj-trait-slot--empty";
-        var tin2 = document.createElement("span");
-        tin2.className = "mj-trait-slot-inner";
-        tin2.textContent = "—";
-        tslot.appendChild(tin2);
-      }
-      tr.appendChild(tslot);
-    }
-    tb.appendChild(th);
-    tb.appendChild(tr);
-    bodyEl.appendChild(tb);
 
     var pb = npc.playerBase || {};
     appendNpcDetailSectionTitle(bodyEl, "属性", true);
@@ -2121,6 +2096,7 @@
     continuityFieldsFromBagItem: continuityFieldsFromBagItem, renderNearbyNpcsPanel: renderNearbyNpcsPanel, performAbsorbSpiritStonesFromBag: performAbsorbSpiritStonesFromBag,
     clampXiuweiToLateStageCapIfNeeded: clampXiuweiToLateStageCapIfNeeded, normalizeBagItem: normalizeBagItem, pickDescribeValueFromMetas: pickDescribeValueFromMetas,
     lookupStuffMetaByItemName: lookupStuffMetaByItemName, lookupEquipmentMetaByItemName: lookupEquipmentMetaByItemName, lookupGongfaConfigDef: lookupGongfaConfigDef,
+    resolveEquipmentMagnificationLine: resolveEquipmentMagnificationLine, resolveGongfaMagnificationLine: resolveGongfaMagnificationLine, resolveGongfaManacostLine: resolveGongfaManacostLine,
     formatReferenceValueFromNumber: formatReferenceValueFromNumber, formatPillEffectsForUi: formatPillEffectsForUi, getSpiritStoneRawPerPiece: getSpiritStoneRawPerPiece,
     formatSpiritStonePointsForUi: formatSpiritStonePointsForUi, getMajorBreakthroughReadyContext: getMajorBreakthroughReadyContext, closeMajorBreakthroughModal: closeMajorBreakthroughModal,
     syncLateStageBreakSuffixState: syncLateStageBreakSuffixState, bumpLateStageBreakFailCount: bumpLateStageBreakFailCount, setBarFill: setBarFill, numOrDash: numOrDash,

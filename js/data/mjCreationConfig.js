@@ -52,7 +52,9 @@
         stuff: {
           黄枫谷令牌: 1,
           下品灵石: 20,
-          筑基丹: 1,
+          止血丹: 1,
+          养灵丹: 1,
+          两仪回春丹: 1,
         },
         gongfa: ["凝元功", "青元剑诀"],
         desc: "侥幸成为越国七派之一的黄枫谷入门弟子，带有少量灵石，基础装备和功法，外加一枚筑基丹。",
@@ -115,34 +117,48 @@
     载具: 3,
   };
 
-  function cloneDescribeEffects(eff) {
-    if (!eff || typeof eff !== "object") return null;
+  function parseRecoverEffectsObject(rawRecover) {
+    if (!rawRecover || typeof rawRecover !== "object") return null;
+    var rc = {};
+    var hp = null;
+    var mp = null;
+    if (typeof rawRecover.hp === "number" && isFinite(rawRecover.hp)) hp = rawRecover.hp;
+    else if (typeof rawRecover.血量 === "number" && isFinite(rawRecover.血量)) hp = rawRecover.血量;
+    if (typeof rawRecover.mp === "number" && isFinite(rawRecover.mp)) mp = rawRecover.mp;
+    else if (typeof rawRecover.法力 === "number" && isFinite(rawRecover.法力)) mp = rawRecover.法力;
+    if (hp != null && hp > 0) rc.hp = Math.floor(hp);
+    if (mp != null && mp > 0) rc.mp = Math.floor(mp);
+    return rc.hp != null || rc.mp != null ? rc : null;
+  }
+
+  function parseBreakthroughEffectsArray(rawBreakthrough) {
+    if (!Array.isArray(rawBreakthrough)) return null;
+    var arr = [];
+    for (var i = 0; i < rawBreakthrough.length; i++) {
+      var b = rawBreakthrough[i];
+      if (!b || typeof b !== "object") continue;
+      var cb = b.chanceBonus;
+      if (typeof cb !== "number" || !isFinite(cb) || cb <= 0) continue;
+      arr.push({
+        from: b.from != null ? String(b.from).trim() : "",
+        to: b.to != null ? String(b.to).trim() : "",
+        chanceBonus: cb,
+      });
+    }
+    return arr.length ? arr : null;
+  }
+
+  function cloneDescribeEffects(eff, src) {
     var out = {};
-    if (eff.recover && typeof eff.recover === "object") {
-      var rc = {};
-      if (typeof eff.recover.hp === "number" && isFinite(eff.recover.hp) && eff.recover.hp > 0) {
-        rc.hp = Math.floor(eff.recover.hp);
-      }
-      if (typeof eff.recover.mp === "number" && isFinite(eff.recover.mp) && eff.recover.mp > 0) {
-        rc.mp = Math.floor(eff.recover.mp);
-      }
-      if (rc.hp != null || rc.mp != null) out.recover = rc;
-    }
-    if (Array.isArray(eff.breakthrough)) {
-      var arr = [];
-      for (var i = 0; i < eff.breakthrough.length; i++) {
-        var b = eff.breakthrough[i];
-        if (!b || typeof b !== "object") continue;
-        var cb = b.chanceBonus;
-        if (typeof cb !== "number" || !isFinite(cb) || cb <= 0) continue;
-        arr.push({
-          from: b.from != null ? String(b.from).trim() : "",
-          to: b.to != null ? String(b.to).trim() : "",
-          chanceBonus: cb,
-        });
-      }
-      if (arr.length) out.breakthrough = arr;
-    }
+    var effObj = eff && typeof eff === "object" ? eff : null;
+    var recover =
+      parseRecoverEffectsObject(effObj && effObj.recover) ||
+      parseRecoverEffectsObject(src && src.recover);
+    if (recover) out.recover = recover;
+    var bt =
+      parseBreakthroughEffectsArray(effObj && effObj.breakthrough) ||
+      parseBreakthroughEffectsArray(src && src.breakthrough);
+    if (bt) out.breakthrough = bt;
     return Object.keys(out).length ? out : null;
   }
 
@@ -155,10 +171,23 @@
     if (src.type != null && String(src.type).trim() !== "") out.type = String(src.type).trim();
     if (typeof src.value === "number" && isFinite(src.value)) out.value = src.value;
     if (src.grade != null && String(src.grade).trim() !== "") out.grade = String(src.grade).trim();
-    var eff = cloneDescribeEffects(src.effects);
+    var eff = cloneDescribeEffects(src.effects, src);
     if (eff) out.effects = eff;
     if (src.property && typeof src.property === "object") {
       out.property = Object.assign({}, src.property);
+    }
+    if (src.magnification && typeof src.magnification === "object") {
+      var m = {};
+      if (typeof src.magnification.物攻 === "number" && isFinite(src.magnification.物攻)) {
+        m.物攻 = src.magnification.物攻;
+      }
+      if (typeof src.magnification.法攻 === "number" && isFinite(src.magnification.法攻)) {
+        m.法攻 = src.magnification.法攻;
+      }
+      if (Object.keys(m).length) out.magnification = m;
+    }
+    if (typeof src.manacost === "number" && isFinite(src.manacost)) {
+      out.manacost = Math.max(0, src.manacost);
     }
     return out;
   }

@@ -21,52 +21,42 @@
         "练气期修士突破筑基的关键丹药，药性猛烈，一丹难求，是凡人修士改变命运的希望。",
       grade: "中品",
       type: "丹药",
+      effects: "进阶",
+      breakthrough: [{ from: "练气", to: "筑基", chanceBonus: 0.3 }],
       value: 1000,
-      effects: {
-        recover: { hp: 0, mp: 0 },
-        breakthrough: [{ from: "练气", to: "筑基", chanceBonus: 0.3 }],
-      },
     },
     降尘丹: {
       desc: "筑基期突破结丹期的珍贵丹药，可降低结丹门槛、增加结丹几率。",
       grade: "上品",
       type: "丹药",
+      effects: "进阶",
+      breakthrough: [{ from: "筑基", to: "结丹", chanceBonus: 0.2 }],
       value: 10000,
-      effects: {
-        recover: { hp: 0, mp: 0 },
-        breakthrough: [{ from: "筑基", to: "结丹", chanceBonus: 0.2 }],
-      },
     },
     九曲灵参丹: {
       desc: "以天地灵药九曲灵参为主材炼制。此丹可大幅提升凝结元婴的几率。",
       grade: "极品",
       type: "丹药",
+      effects: "进阶",
+      breakthrough: [{ from: "结丹", to: "元婴", chanceBonus: 0.15 }],
       value: 100000,
-      effects: {
-        recover: { hp: 0, mp: 0 },
-        breakthrough: [{ from: "结丹", to: "元婴", chanceBonus: 0.15 }],
-      },
     },
     化阴丹: {
       desc:
         "辅助结婴的丹药，用于“碎丹化婴”阶段，可帮助修士化丹成婴，是突破元婴期的关键辅助丹药之一。",
       grade: "极品",
       type: "丹药",
+      effects: "进阶",
+      breakthrough: [{ from: "结丹", to: "元婴", chanceBonus: 0.15 }],
       value: 100000,
-      effects: {
-        recover: { hp: 0, mp: 0 },
-        breakthrough: [{ from: "结丹", to: "元婴", chanceBonus: 0.15 }],
-      },
     },
     魔炼天元丹: {
       desc: "魔道修士用于突破化神期瓶颈的珍贵丹药，对化神境界的进阶有极大助益。",
       grade: "仙品",
       type: "丹药",
+      effects: "进阶",
+      breakthrough: [{ from: "元婴", to: "化神", chanceBonus: 0.1 }],
       value: 1000000,
-      effects: {
-        recover: { hp: 0, mp: 0 },
-        breakthrough: [{ from: "元婴", to: "化神", chanceBonus: 0.1 }],
-      },
     },
 
     止血丹: {
@@ -74,18 +64,24 @@
         grade: "下品",
         type: "丹药",
         value: 10,
-        effects: {
-            recover: { hp: 20 },
-        },
+        effects: "恢复",
+        recover: { 血量: 20 },
     },
     养灵丹: {
         desc: "养灵丹，用于恢复法力，是修士常用的丹药之一。",
         grade: "下品",
         type: "丹药",
         value: 10,
-        effects: {
-            recover: { mp: 10 },
-        },
-    }
+        effects: "恢复",
+        recover: { 法力: 10 },
+    },
+    两仪回春丹: {
+        desc: "两仪回春丹，用于恢复生命和法力，是修士常用的丹药之一。",
+        grade: "中品",
+        type: "丹药",
+        effects: "恢复",
+        recover: { 血量: 30, 法力: 20 },
+        value: 50,
+    },
   };
 })(typeof window !== "undefined" ? window : globalThis);
