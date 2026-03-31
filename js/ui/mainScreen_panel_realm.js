@@ -21,8 +21,8 @@
   var DEFAULT_WORLD_TIME = "0001年 01月 01日 08:00";
   var DEFAULT_AGE = 16;
   var DEFAULT_SHOUYUAN = 100;
-  var DEFAULT_CHARM = 0;
-  var DEFAULT_LUCK = 0;
+  var DEFAULT_CHARM = 10;
+  var DEFAULT_LUCK = 10;
   var INVENTORY_SLOT_COUNT = 12;
   /** 功法栏固定 2×4，共 8 格（不需要滚动框） */
   var GONGFA_SLOT_COUNT = 8;
@@ -1067,6 +1067,65 @@
     if (!Array.isArray(G.nearbyNpcs)) G.nearbyNpcs = [];
   }
 
+  function npcPresenceKey(npc) {
+    if (!npc || typeof npc !== "object") return "";
+    var id = npc.id != null ? String(npc.id).trim() : "";
+    if (id) return "id:" + id;
+    var dn = npc.displayName != null ? String(npc.displayName).trim() : "";
+    if (dn) return "name:" + dn;
+    return "";
+  }
+
+  function buildNearbyNpcMergedList(prevList, incomingList) {
+    var prev = Array.isArray(prevList) ? prevList : [];
+    var incoming = Array.isArray(incomingList) ? incomingList : [];
+    var prevMap = {};
+    var i;
+    for (i = 0; i < prev.length; i++) {
+      var p = prev[i];
+      var pk = npcPresenceKey(p);
+      if (!pk || prevMap[pk]) continue;
+      prevMap[pk] = p;
+    }
+
+    var seen = {};
+    var merged = [];
+    for (i = 0; i < incoming.length; i++) {
+      var cur = incoming[i];
+      if (!cur || typeof cur !== "object") continue;
+      var k = npcPresenceKey(cur);
+      var old = k ? prevMap[k] : null;
+      if (old && (cur.avatarUrl == null || String(cur.avatarUrl).trim() === "") && old.avatarUrl) {
+        cur.avatarUrl = old.avatarUrl;
+      }
+      cur.isTemporarilyAway = false;
+      merged.push(cur);
+      if (k) seen[k] = true;
+    }
+
+    for (i = 0; i < prev.length; i++) {
+      var oldNpc = prev[i];
+      var oldKey = npcPresenceKey(oldNpc);
+      if (!oldKey || seen[oldKey]) continue;
+      var awayCopy;
+      try {
+        awayCopy = JSON.parse(JSON.stringify(oldNpc));
+      } catch (_e) {
+        awayCopy = oldNpc;
+      }
+      awayCopy.isTemporarilyAway = true;
+      merged.push(awayCopy);
+    }
+    return merged;
+  }
+
+  function mergeNearbyNpcListInPlace(G, incomingList) {
+    if (!G) return;
+    ensureNearbyNpcsArray(G);
+    G.nearbyNpcs = buildNearbyNpcMergedList(G.nearbyNpcs, incomingList);
+    normalizeNearbyNpcListInPlace(G);
+  }
+
   function normalizeNearbyNpcListInPlace(G) {
     if (!G || !Array.isArray(G.nearbyNpcs)) return;
     var MCS = global.MjCharacterSheet;
@@ -1075,7 +1134,9 @@
     var next = [];
     for (var i = 0; i < G.nearbyNpcs.length; i++) {
       try {
+        var wasAway = !!(G.nearbyNpcs[i] && G.nearbyNpcs[i].isTemporarilyAway);
         var n = MCS.normalize(G.nearbyNpcs[i]);
+        n.isTemporarilyAway = wasAway;
         if (PBR && typeof PBR.applyComputedPlayerBaseToCharacterSheet === "function") {
           PBR.applyComputedPlayerBaseToCharacterSheet(n);
         }
@@ -1168,18 +1229,30 @@
       return;
     }
     var MCS = global.MjCharacterSheet;
-    for (var i = 0; i < G.nearbyNpcs.length; i++) {
-      var rawNpc = G.nearbyNpcs[i];
+    var cards = G.nearbyNpcs.slice();
+    cards.sort(function (a, b) {
+      var aa = a && a.isTemporarilyAway ? 1 : 0;
+      var bb = b && b.isTemporarilyAway ? 1 : 0;
+      if (aa !== bb) return aa - bb;
+      return 0;
+    });
+    for (var i = 0; i < cards.length; i++) {
+      var rawNpc = cards[i];
       var npc =
         MCS && typeof MCS.normalize === "function"
           ? MCS.normalize(rawNpc)
           : rawNpc;
       if (!npc || !npc.id) continue;
+      var isAway = !!(rawNpc && rawNpc.isTemporarilyAway);
 
       var card = document.createElement("button");
       card.type = "button";
       card.className = "mj-npc-card mj-npc-card--sheet";
       card.setAttribute("data-npc-id", String(npc.id));
+      if (isAway) {
+        card.classList.add("mj-npc-card--away");
+        card.style.opacity = "0.45";
+      }
 
       var realmLine =
         MCS && typeof MCS.formatRealmLine === "function"
@@ -1219,7 +1292,7 @@
 
       card.setAttribute(
         "aria-label",
-        (npc.displayName || "NPC") + "，" + realmLine + "，点击查看详情",
+        (npc.displayName || "NPC") + "，" + realmLine + (isAway ? "，临时离场" : "") + "，点击查看详情",
       );
 
       var maxH = typeof npc.maxHp === "number" && isFinite(npc.maxHp) ? Math.max(1, npc.maxHp) : 1;
@@ -2090,6 +2163,7 @@
     EQUIP_SLOT_COUNT: EQUIP_SLOT_COUNT, EQUIP_SLOT_EMPTY_TITLE: EQUIP_SLOT_EMPTY_TITLE, EQUIP_SLOT_KIND_LABELS: EQUIP_SLOT_KIND_LABELS,
     bindMajorBreakthroughUi: bindMajorBreakthroughUi, bindNpcDetailModalUi: bindNpcDetailModalUi, restoreBootstrap: restoreBootstrap, ensureGameRuntimeDefaults: ensureGameRuntimeDefaults,
     ensureNearbyNpcsArray: ensureNearbyNpcsArray, normalizeNearbyNpcListInPlace: normalizeNearbyNpcListInPlace, buildDemoNearbyNpcSheet: buildDemoNearbyNpcSheet,
+    mergeNearbyNpcListInPlace: mergeNearbyNpcListInPlace,
     applyRealmBreakthroughs: applyRealmBreakthroughs, logBreakthroughMessages: logBreakthroughMessages, computeCultivationUi: computeCultivationUi,
     persistBootstrapSnapshot: persistBootstrapSnapshot, syncNpcShouyuanFromRealmState: syncNpcShouyuanFromRealmState, ensureEquippedSlots: ensureEquippedSlots,
     ensureGongfaSlots: ensureGongfaSlots, ensureInventorySlots: ensureInventorySlots, enrichInventoryGradesFromDescribe: enrichInventoryGradesFromDescribe,

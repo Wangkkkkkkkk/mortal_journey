@@ -938,9 +938,13 @@
       }
       list.push(n);
     }
-    G.nearbyNpcs = list;
+    if (P && typeof P.mergeNearbyNpcListInPlace === "function") {
+      P.mergeNearbyNpcListInPlace(G, list);
+    } else {
+      G.nearbyNpcs = list;
+    }
     out.applied = true;
-    out.count = list.length;
+    out.count = Array.isArray(G.nearbyNpcs) ? G.nearbyNpcs.length : list.length;
     return out;
   }
 

@@ -99,8 +99,8 @@
   var BASE_STAT_KEYS = ["hp", "mp", "patk", "pdef", "matk", "mdef", "foot", "sense"];
 
   /** 与 mainScreen 默认一致；魅力/气运由 PlayerBaseRuntime 合并后限制在 [0,100] */
-  var DEFAULT_CHARM = 0;
-  var DEFAULT_LUCK = 0;
+  var DEFAULT_CHARM = 10;
+  var DEFAULT_LUCK = 10;
 
   var STAT_LABEL_ZH = {
     hp: "血量",
@@ -251,9 +251,19 @@
     if (state.playerBase) {
       G.playerBase = Object.assign({}, state.playerBase);
       if (typeof G.playerBase.charm === "number") G.charm = G.playerBase.charm;
+      else {
+        G.playerBase.charm = DEFAULT_CHARM;
+        G.charm = DEFAULT_CHARM;
+      }
       if (typeof G.playerBase.luck === "number") G.luck = G.playerBase.luck;
+      else {
+        G.playerBase.luck = DEFAULT_LUCK;
+        G.luck = DEFAULT_LUCK;
+      }
     } else {
       G.playerBase = null;
+      G.charm = DEFAULT_CHARM;
+      G.luck = DEFAULT_LUCK;
     }
   }
 
@@ -908,11 +918,27 @@
     var PBR = global.PlayerBaseRuntime;
     if (PBR && typeof PBR.applyToGame === "function") {
       PBR.applyToGame(G0, payload);
+      if (typeof G0.charm !== "number" || !isFinite(G0.charm)) G0.charm = DEFAULT_CHARM;
+      if (typeof G0.luck !== "number" || !isFinite(G0.luck)) G0.luck = DEFAULT_LUCK;
+      if (G0.playerBase) {
+        if (typeof G0.playerBase.charm !== "number" || !isFinite(G0.playerBase.charm)) {
+          G0.playerBase.charm = DEFAULT_CHARM;
+        }
+        if (typeof G0.playerBase.luck !== "number" || !isFinite(G0.playerBase.luck)) {
+          G0.playerBase.luck = DEFAULT_LUCK;
+        }
+      }
       if (G0.playerBase) payload.playerBase = Object.assign({}, G0.playerBase);
       if (G0.rawRealmBase) payload.rawRealmBase = Object.assign({}, G0.rawRealmBase);
     } else {
       G0.playerBase = payload.playerBase ? Object.assign({}, payload.playerBase) : null;
       G0.rawRealmBase = payload.rawRealmBase ? Object.assign({}, payload.rawRealmBase) : null;
+      G0.charm = DEFAULT_CHARM;
+      G0.luck = DEFAULT_LUCK;
+      if (G0.playerBase) {
+        G0.playerBase.charm = typeof G0.playerBase.charm === "number" ? G0.playerBase.charm : DEFAULT_CHARM;
+        G0.playerBase.luck = typeof G0.playerBase.luck === "number" ? G0.playerBase.luck : DEFAULT_LUCK;
+      }
     }
 
     G0.xiuwei = 0;

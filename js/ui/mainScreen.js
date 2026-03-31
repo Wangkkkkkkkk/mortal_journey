@@ -195,7 +195,11 @@
       } else {
         out = list.slice();
       }
-      G.nearbyNpcs = out;
+      if (P && typeof P.mergeNearbyNpcListInPlace === "function") {
+        P.mergeNearbyNpcListInPlace(G, out);
+      } else {
+        G.nearbyNpcs = out;
+      }
       P.persistBootstrapSnapshot();
       P.renderNearbyNpcsPanel(G);
       return true;

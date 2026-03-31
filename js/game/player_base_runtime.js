@@ -8,8 +8,8 @@
   "use strict";
 
   var BASE_STAT_KEYS = ["hp", "mp", "patk", "pdef", "matk", "mdef", "foot", "sense"];
-  var DEFAULT_CHARM = 0;
-  var DEFAULT_LUCK = 0;
+  var DEFAULT_CHARM = 10;
+  var DEFAULT_LUCK = 10;
   var SPECIAL_MIN = 0;
   var SPECIAL_MAX = 100;
 
