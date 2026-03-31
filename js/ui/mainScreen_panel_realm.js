@@ -1079,6 +1079,14 @@
   function buildNearbyNpcMergedList(prevList, incomingList) {
     var prev = Array.isArray(prevList) ? prevList : [];
     var incoming = Array.isArray(incomingList) ? incomingList : [];
+    var PRESERVE_TEXT_FIELDS = [
+      "identity",
+      "currentStageGoal",
+      "longTermGoal",
+      "hobby",
+      "fear",
+      "personality",
+    ];
     var prevMap = {};
     var i;
     for (i = 0; i < prev.length; i++) {
@@ -1097,6 +1105,17 @@
       var old = k ? prevMap[k] : null;
       if (old && (cur.avatarUrl == null || String(cur.avatarUrl).trim() === "") && old.avatarUrl) {
         cur.avatarUrl = old.avatarUrl;
+      }
+      if (old) {
+        for (var pf = 0; pf < PRESERVE_TEXT_FIELDS.length; pf++) {
+          var key = PRESERVE_TEXT_FIELDS[pf];
+          var hasNew = cur[key] != null && String(cur[key]).trim() !== "";
+          var hasOld = old[key] != null && String(old[key]).trim() !== "";
+          if (!hasNew && hasOld) cur[key] = old[key];
+        }
+        var hasNewFav = typeof cur.favorability === "number" && isFinite(cur.favorability);
+        var hasOldFav = typeof old.favorability === "number" && isFinite(old.favorability);
+        if (!hasNewFav && hasOldFav) cur.favorability = old.favorability;
       }
       cur.isTemporarilyAway = false;
       merged.push(cur);
@@ -1274,11 +1293,18 @@
       var realmBelow = document.createElement("div");
       realmBelow.className = "mj-npc-card-realm-below";
       realmBelow.textContent = realmLine;
+      var favRaw = typeof npc.favorability === "number" && isFinite(npc.favorability) ? npc.favorability : 0;
+      var favVal = Math.max(-100, Math.min(100, Math.round(favRaw)));
+      var favBelow = document.createElement("div");
+      favBelow.className = "mj-npc-card-realm-below";
+      favBelow.textContent = "好感度 " + String(favVal);
+      favBelow.style.opacity = "0.72";
 
       var lead = document.createElement("div");
       lead.className = "mj-npc-card-lead";
       lead.appendChild(av);
       lead.appendChild(realmBelow);
+      lead.appendChild(favBelow);
 
       var main = document.createElement("div");
       main.className = "mj-npc-card-main";
@@ -1292,7 +1318,13 @@
 
       card.setAttribute(
         "aria-label",
-        (npc.displayName || "NPC") + "，" + realmLine + (isAway ? "，临时离场" : "") + "，点击查看详情",
+        (npc.displayName || "NPC") +
+          "，" +
+          realmLine +
+          "，好感度 " +
+          String(favVal) +
+          (isAway ? "，临时离场" : "") +
+          "，点击查看详情",
       );
 
       var maxH = typeof npc.maxHp === "number" && isFinite(npc.maxHp) ? Math.max(1, npc.maxHp) : 1;
@@ -1725,11 +1757,53 @@
     headText.className = "mj-npc-detail-head-text";
     var realmBig = document.createElement("div");
     realmBig.className = "mj-npc-detail-realm-big";
-    realmBig.textContent = "境界：" + realmLine;
+    realmBig.style.display = "flex";
+    realmBig.style.justifyContent = "space-between";
+    realmBig.style.gap = "12px";
+    var realmSpan = document.createElement("span");
+    realmSpan.textContent = "境界：" + realmLine;
+    var favRaw = typeof npc.favorability === "number" && isFinite(npc.favorability) ? npc.favorability : 0;
+    var favVal = Math.max(-100, Math.min(100, Math.round(favRaw)));
+    var favSpan = document.createElement("span");
+    favSpan.textContent = "好感度：" + String(favVal);
+    realmBig.appendChild(realmSpan);
+    realmBig.appendChild(favSpan);
     headText.appendChild(realmBig);
     head.appendChild(avWrap);
     head.appendChild(headText);
     bodyEl.appendChild(head);
+
+    var tabWrap = document.createElement("div");
+    tabWrap.className = "mj-npc-detail-tabs";
+    tabWrap.style.display = "flex";
+    tabWrap.style.gap = "8px";
+    tabWrap.style.margin = "8px 0 10px";
+    var tabAttrBtn = document.createElement("button");
+    tabAttrBtn.type = "button";
+    tabAttrBtn.className = "mj-item-detail-action-btn mj-item-detail-action-btn--primary";
+    tabAttrBtn.textContent = "属性";
+    var tabBaseBtn = document.createElement("button");
+    tabBaseBtn.type = "button";
+    tabBaseBtn.className = "mj-item-detail-action-btn";
+    tabBaseBtn.textContent = "基础信息";
+    tabWrap.appendChild(tabAttrBtn);
+    tabWrap.appendChild(tabBaseBtn);
+    bodyEl.appendChild(tabWrap);
+
+    var attrPanel = document.createElement("div");
+    attrPanel.className = "mj-npc-detail-panel-attr";
+    var basePanel = document.createElement("div");
+    basePanel.className = "mj-npc-detail-panel-basic";
+    basePanel.style.display = "none";
+    // 两个页签统一可视高度，避免切换时弹窗高度跳变；内容超出则内部滚动
+    attrPanel.style.maxHeight = "56vh";
+    attrPanel.style.minHeight = "56vh";
+    attrPanel.style.overflowY = "auto";
+    basePanel.style.maxHeight = "56vh";
+    basePanel.style.minHeight = "56vh";
+    basePanel.style.overflowY = "auto";
+    bodyEl.appendChild(attrPanel);
+    bodyEl.appendChild(basePanel);
 
     var idBlock = document.createElement("div");
     idBlock.className = "mj-player-identity mj-npc-detail-identity";
@@ -1764,10 +1838,10 @@
     rowB.appendChild(syCell);
     idBlock.appendChild(rowA);
     idBlock.appendChild(rowB);
-    bodyEl.appendChild(idBlock);
+    attrPanel.appendChild(idBlock);
 
     var pb = npc.playerBase || {};
-    appendNpcDetailSectionTitle(bodyEl, "属性", true);
+    appendNpcDetailSectionTitle(attrPanel, "属性", true);
 
     var maxH = typeof npc.maxHp === "number" && isFinite(npc.maxHp) ? Math.max(1, npc.maxHp) : 1;
     var maxM = typeof npc.maxMp === "number" && isFinite(npc.maxMp) ? Math.max(1, npc.maxMp) : 1;
@@ -1798,7 +1872,7 @@
       bar.appendChild(fl);
       row.appendChild(hd);
       row.appendChild(bar);
-      bodyEl.appendChild(row);
+      attrPanel.appendChild(row);
       setBarFill(fl, bar, pct, nums, cur + " / " + maxV);
     }
     appendHpMpRow("hp", "血量", pctH, curH, maxH);
@@ -1828,7 +1902,7 @@
     combat.appendChild(r2);
     combat.appendChild(r3);
     combat.appendChild(r4);
-    bodyEl.appendChild(combat);
+    attrPanel.appendChild(combat);
 
     var eqWrap = document.createElement("div");
     eqWrap.className = "mj-equip-block";
@@ -1875,7 +1949,7 @@
     }
     eqWrap.appendChild(eqH);
     eqWrap.appendChild(eqRow);
-    bodyEl.appendChild(eqWrap);
+    attrPanel.appendChild(eqWrap);
 
     var bagStack = document.createElement("div");
     bagStack.className = "mj-player-bag-stack";
@@ -1948,7 +2022,49 @@
     gfScroll.appendChild(gfGrid);
     bagStack.appendChild(gfH);
     bagStack.appendChild(gfScroll);
-    bodyEl.appendChild(bagStack);
+    attrPanel.appendChild(bagStack);
+
+    appendNpcDetailSectionTitle(basePanel, "基础信息", true);
+    function appendBasicInfoBlock(label, value) {
+      var wrap = document.createElement("div");
+      wrap.className = "mj-trait-modal-section";
+      var kEl = document.createElement("span");
+      kEl.className = "mj-trait-modal-k";
+      kEl.textContent = label;
+      var vEl = document.createElement("div");
+      vEl.className = "mj-trait-modal-v";
+      var txt = value != null && String(value).trim() !== "" ? String(value) : "—";
+      vEl.textContent = txt;
+      wrap.appendChild(kEl);
+      wrap.appendChild(vEl);
+      basePanel.appendChild(wrap);
+    }
+    appendBasicInfoBlock("身份", npc.identity);
+    appendBasicInfoBlock("当前阶段目标", npc.currentStageGoal);
+    appendBasicInfoBlock("长期目标", npc.longTermGoal);
+    appendBasicInfoBlock("爱好", npc.hobby);
+    appendBasicInfoBlock("害怕的事", npc.fear);
+    appendBasicInfoBlock("性格特征", npc.personality);
+
+    function setNpcDetailTab(showBasic) {
+      if (showBasic) {
+        attrPanel.style.display = "none";
+        basePanel.style.display = "";
+        tabAttrBtn.classList.remove("mj-item-detail-action-btn--primary");
+        tabBaseBtn.classList.add("mj-item-detail-action-btn--primary");
+      } else {
+        attrPanel.style.display = "";
+        basePanel.style.display = "none";
+        tabBaseBtn.classList.remove("mj-item-detail-action-btn--primary");
+        tabAttrBtn.classList.add("mj-item-detail-action-btn--primary");
+      }
+    }
+    tabAttrBtn.addEventListener("click", function () {
+      setNpcDetailTab(false);
+    });
+    tabBaseBtn.addEventListener("click", function () {
+      setNpcDetailTab(true);
+    });
   }
 
   function openNpcDetailModal(npcRaw) {

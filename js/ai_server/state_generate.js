@@ -372,6 +372,16 @@
         gender: n.gender != null ? String(n.gender) : "",
         linggen: n.linggen != null ? String(n.linggen) : "",
         age: typeof n.age === "number" && isFinite(n.age) ? Math.floor(n.age) : null,
+        favorability:
+          typeof n.favorability === "number" && isFinite(n.favorability)
+            ? Math.max(-100, Math.min(100, Math.round(n.favorability)))
+            : null,
+        identity: n.identity != null ? String(n.identity) : "",
+        currentStageGoal: n.currentStageGoal != null ? String(n.currentStageGoal) : "",
+        longTermGoal: n.longTermGoal != null ? String(n.longTermGoal) : "",
+        hobby: n.hobby != null ? String(n.hobby) : "",
+        fear: n.fear != null ? String(n.fear) : "",
+        personality: n.personality != null ? String(n.personality) : "",
       };
       compact.push(row);
     }

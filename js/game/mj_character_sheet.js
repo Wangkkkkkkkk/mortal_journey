@@ -22,6 +22,11 @@
     return x;
   }
 
+  function clampFavorability(v) {
+    if (typeof v !== "number" || !isFinite(v)) return 0;
+    return clampInt(v, -100, 100);
+  }
+
   /**
    * @param {Object|null|undefined} pb
    * @returns {{ hp:number, mp:number, patk:number, pdef:number, matk:number, mdef:number, foot:number, sense:number, charm?: number, luck?: number }}
@@ -91,6 +96,9 @@
       currentHp: currentHp,
       currentMp: currentMp,
     };
+    if (typeof src.favorability === "number" && isFinite(src.favorability)) {
+      out.favorability = clampFavorability(src.favorability);
+    }
     if (src.avatarUrl != null && String(src.avatarUrl).trim() !== "") {
       out.avatarUrl = String(src.avatarUrl).trim();
     }
@@ -99,6 +107,24 @@
     if (typeof src.age === "number" && isFinite(src.age)) out.age = Math.max(0, Math.floor(src.age));
     if (typeof src.shouyuan === "number" && isFinite(src.shouyuan)) {
       out.shouyuan = Math.max(0, Math.floor(src.shouyuan));
+    }
+    if (src.identity != null && String(src.identity).trim() !== "") {
+      out.identity = String(src.identity).trim();
+    }
+    if (src.currentStageGoal != null && String(src.currentStageGoal).trim() !== "") {
+      out.currentStageGoal = String(src.currentStageGoal).trim();
+    }
+    if (src.longTermGoal != null && String(src.longTermGoal).trim() !== "") {
+      out.longTermGoal = String(src.longTermGoal).trim();
+    }
+    if (src.hobby != null && String(src.hobby).trim() !== "") {
+      out.hobby = String(src.hobby).trim();
+    }
+    if (src.fear != null && String(src.fear).trim() !== "") {
+      out.fear = String(src.fear).trim();
+    }
+    if (src.personality != null && String(src.personality).trim() !== "") {
+      out.personality = String(src.personality).trim();
     }
     if (Array.isArray(src.traits)) out.traits = src.traits.slice();
     if (Array.isArray(src.inventorySlots)) out.inventorySlots = JSON.parse(JSON.stringify(src.inventorySlots));
