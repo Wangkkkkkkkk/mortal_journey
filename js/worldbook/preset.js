@@ -20,11 +20,28 @@
    * @property {boolean} appendRuntimeState
    * @property {string} activePresetId
    * @property {string} activePresetName
+   * @property {{id:string,name:string,systemPrompt:string}[]} runtimeRules
    */
+
+  /** 规则类预设（与普通剧情预设同层存放在 presets 内） */
+  var STORY_RULE_PRESET_IDS = ["outputFormat", "bagNarrative", "valueScale", "npcStoryHints"];
 
   function getContentRoot() {
     var c = global.MortalJourneyPresetContent;
     return c && typeof c === "object" ? c : null;
+  }
+
+  function isStoryRulePresetId(id) {
+    return STORY_RULE_PRESET_IDS.indexOf(String(id || "").trim()) >= 0;
+  }
+
+  function fillTemplateVars(template, vars) {
+    var out = String(template || "");
+    if (!vars || typeof vars !== "object") return out;
+    return out.replace(/\{\{([A-Z_]+)\}\}/g, function (m, key) {
+      if (Object.prototype.hasOwnProperty.call(vars, key)) return String(vars[key]);
+      return m;
+    });
   }
 
   function normalizePresetRow(row) {
@@ -60,9 +77,27 @@
   function resolveActiveRow(content, list) {
     var want = content && content.activePresetId != null ? String(content.activePresetId).trim() : "";
     var row = want ? findPresetById(list, want) : null;
+    if (row && isStoryRulePresetId(row.id)) row = null;
     if (row) return row;
-    if (list.length) return list[0];
+    for (var i = 0; i < list.length; i++) {
+      if (!isStoryRulePresetId(list[i] && list[i].id)) return list[i];
+    }
     return null;
+  }
+
+  function buildRuntimeRulesFromList(list) {
+    var out = [];
+    for (var i = 0; i < STORY_RULE_PRESET_IDS.length; i++) {
+      var id = STORY_RULE_PRESET_IDS[i];
+      var row = findPresetById(list, id);
+      if (!row) continue;
+      out.push({
+        id: row.id,
+        name: row.name,
+        content: row.systemPrompt,
+      });
+    }
+    return out;
   }
 
   function buildConfigFromContent(content) {
@@ -70,9 +105,9 @@
     var row = resolveActiveRow(content, list);
     var globalPrefix = content && content.userPrefix != null ? String(content.userPrefix) : "";
     var appendRt = !(content && content.appendRuntimeState === false);
-
     var systemPrompt = row ? row.systemPrompt : "";
     var userPrefix = row && String(row.userPrefix || "").trim() !== "" ? String(row.userPrefix) : globalPrefix;
+    var runtimeRules = buildRuntimeRulesFromList(list);
 
     return {
       systemPrompt: systemPrompt,
@@ -80,6 +115,7 @@
       appendRuntimeState: appendRt,
       activePresetId: row ? row.id : "",
       activePresetName: row ? row.name : "",
+      runtimeRules: runtimeRules,
       _presetList: list,
     };
   }
@@ -97,6 +133,7 @@
     appendRuntimeState: true,
     activePresetId: "",
     activePresetName: "",
+    runtimeRules: [],
     _presetList: [],
   };
 
@@ -107,6 +144,7 @@
     CONFIG.appendRuntimeState = bundle.appendRuntimeState;
     CONFIG.activePresetId = bundle.activePresetId;
     CONFIG.activePresetName = bundle.activePresetName;
+    CONFIG.runtimeRules = bundle.runtimeRules || [];
     CONFIG._presetList = bundle._presetList || [];
   }
 
@@ -117,6 +155,9 @@
       appendRuntimeState: CONFIG.appendRuntimeState,
       activePresetId: CONFIG.activePresetId,
       activePresetName: CONFIG.activePresetName,
+      runtimeRules: (CONFIG.runtimeRules || []).map(function (r) {
+        return { id: r.id, name: r.name, systemPrompt: r.content };
+      }),
     };
   }
 
@@ -135,12 +176,24 @@
   function getPresetSummaries() {
     var list = CONFIG._presetList || [];
     return list.map(function (p) {
-      return { id: p.id, name: p.name };
-    });
+      return !isStoryRulePresetId(p.id) ? { id: p.id, name: p.name } : null;
+    }).filter(Boolean);
   }
 
   function getActivePresetId() {
     return String(CONFIG.activePresetId || "");
+  }
+
+  function getRuntimeRuleBlocks(vars) {
+    var rows = Array.isArray(CONFIG.runtimeRules) ? CONFIG.runtimeRules : [];
+    var out = [];
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      if (!row || row.content == null) continue;
+      var text = fillTemplateVars(String(row.content), vars).trim();
+      if (text) out.push(text);
+    }
+    return out;
   }
 
   /**
@@ -151,6 +204,7 @@
     var list = content ? getPresetListFromContent(content) : CONFIG._presetList || [];
     var row = findPresetById(list, presetId);
     if (!row) throw new Error("预设不存在: " + presetId);
+    if (isStoryRulePresetId(row.id)) throw new Error("该条目是剧情规则模块，不能作为主预设激活: " + presetId);
     if (content) content.activePresetId = row.id;
     var src =
       content ||
@@ -181,6 +235,7 @@
     getSystemPrompt: getSystemPrompt,
     getUserPrefix: getUserPrefix,
     shouldAppendRuntimeState: shouldAppendRuntimeState,
+    getRuntimeRuleBlocks: getRuntimeRuleBlocks,
 
     getPresetSummaries: getPresetSummaries,
     getActivePresetId: getActivePresetId,

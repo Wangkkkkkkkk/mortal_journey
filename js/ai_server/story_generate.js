@@ -217,17 +217,29 @@
     return 10;
   }
 
-  /**
-   * 剧情模型易把多轮收支心算成「当前袋内总灵石」且与真实存档脱节（玩家可能在对话间隙用灵石修炼等）。
-   * 附在存档摘要末尾，约束正文不要写死绝对库存。
-   */
-  var STORY_BAG_NARRATIVE_RULES_BLOCK =
-    "【剧情写作 · 储物袋与灵石（务必遵守）】\n" +
-    "· 下方【储物袋】等仅为**发送本请求瞬间**的快照；玩家可能在对话过程中已消耗或获得物品，实际以游戏为准。\n" +
-    "· 叙事中**禁止**写死背包或下品灵石的**绝对数量**（如「袋中还剩二十块灵石」「储物袋里共有××块」），也**禁止**把**上一段剧情及更早**的奖励、花费与本段新发生的情节**合并成一句心算总账**当作当前库存。\n" +
-    "· 本回合若涉及买卖、赏酬、遗失等，只写**本段情节内的过程与相对说法**（谁交割、手感多寡），让读者感到得失即可；**细账与堆叠件数**留给后续「状态回合」用 add/remove 同步，你不是背包账本。\n" +
-    "· 一旦本段情节明确涉及「获得/收下/赏酬/成交价/支付/递出/购入」下品灵石，必须写成明确整数 N（如“下品灵石×20”或“二十块下品灵石”），禁止写区间或模糊词（如“二三十”“十来”“约摸”），也禁止只用相对表述（如“一半酬劳/抵得上几何”）而不给出等价 N。\n" +
-    "· 需要烘托贫富时，可只用处境与语气描写，不写具体块数；但只要涉及交易/赏酬/支付，就必须给出 N。";
+  function getActiveRuntimeRuleBlocks(vars) {
+    var P = getPresetApi();
+    if (P && typeof P.getRuntimeRuleBlocks === "function") {
+      var blocks = P.getRuntimeRuleBlocks(vars);
+      if (Array.isArray(blocks) && blocks.length) return blocks;
+    }
+    return [];
+  }
+
+  function buildRuntimeRuleBlock(lsv) {
+    var ruleVars = {
+      NPC_TAG_OPEN: NPC_STORY_HINTS_TAG_OPEN,
+      NPC_TAG_CLOSE: NPC_STORY_HINTS_TAG_CLOSE,
+      LSV: lsv,
+    };
+    var runtimeRuleBlocks = getActiveRuntimeRuleBlocks(ruleVars);
+    var bits = [];
+    for (var i = 0; i < runtimeRuleBlocks.length; i++) {
+      var block = runtimeRuleBlocks[i] != null ? String(runtimeRuleBlocks[i]).trim() : "";
+      if (block) bits.push(block);
+    }
+    return bits.join("\n\n");
+  }
 
   /**
    * 供关键词扫描与 system 摘要（分块排版：角色概要 / 面板 / 世界因子 / 天赋 / 装备行囊）
@@ -293,52 +305,6 @@
     if (loadout.length) sections.push(loadout.join("\n"));
 
     if (!sections.length) return "";
-    sections.push(
-      "【剧情写作 · 输出格式（务必遵守）】\n" +
-        "· **唯一合法外显内容**：① 面向玩家的**简体中文**修仙叙事；② 需要时按后文规则在**全文最后**追加 " +
-        NPC_STORY_HINTS_TAG_OPEN +
-        "…" +
-        NPC_STORY_HINTS_TAG_CLOSE +
-        "（可无新人写 []）。\n" +
-        "· **严禁**输出英文「元叙述」「模型自述」或题解过程：例如以 **Analyzing**、**Reflection**、**Planning**、Note to self 等标题开头，或以 I've just / I need to / My focus shifted / The user wants / Let me analyze 等开头的整段英文。\n" +
-        "· 思考、策划、角色拆解仅在内部完成，**不得**写入对玩家的回复；除功法/法宝名等专有词外，**不要用整句英文**写剧情。\n" +
-        "· 不要在中途用 Markdown 英文小节标题切换出戏；不要附加双语摘要、角色卡提纲。",
-    );
-    sections.push(STORY_BAG_NARRATIVE_RULES_BLOCK);
-    var lsv = lowerSpiritStoneValueUnit();
-    sections.push(
-      "【剧情写作 · 价值刻度与下品灵石（口径一致）】\n" +
-        "· 设定里物品/装备的 **value** 是「灵石等价刻度」，与同设定表「下品灵石」条目的 value **同一数轴**，不是下品灵石的颗数。\n" +
-        "· 单颗下品灵石在该轴上的刻度为 **" +
-        lsv +
-        "**，即 **" +
-        lsv +
-        " 点刻度 ≈ 1 颗下品灵石**；口述「战利品合计值多少灵石」「折算酬劳」时，勿把 **刻度总和** 直接说成 **同等数量的下品灵石块数**（例：刻度合计 202、基数 " +
-        lsv +
-        " 时，应写成「二十块下品灵石」（四舍五入后的整数），而不是「二十来块」「二三十块」「约摸二十块」或「二百零二块」）。\n" +
-        "· 具体袋内增减仍以状态回合为准；此处与游戏表口径对齐即可。",
-    );
-    sections.push(
-      "【剧情写作 · 新出场 NPC 战设摘要（务必遵守）】\n" +
-        "· 若本段叙事中出现了**当前与主角同场、且可能继续互动**的**新**人物（有名有姓或可稳定称呼的同门、路遇修士等），在**全部叙事正文写完之后**、单独追加一对闭合标签（区分大小写）：\n" +
-        "  " +
-        NPC_STORY_HINTS_TAG_OPEN +
-        " 与 " +
-        NPC_STORY_HINTS_TAG_CLOSE +
-        "。\n" +
-        "· 标签内【只有】一个 **JSON 数组**（不要用 Markdown 代码围栏包裹标签）。无新人物则写 " +
-        NPC_STORY_HINTS_TAG_OPEN +
-        "[]" +
-        NPC_STORY_HINTS_TAG_CLOSE +
-        "。\n" +
-        "· 数组元素字段：① `sceneLabel`（叙事里用的简称，如「小师妹」「青衣少女」）② `displayName`（**必填**，须为**明确姓名或面板用正式称呼**，至少二三字；剧情尚未交代真名时**自拟合理姓名**，或「七玄门·外门弟子李清容」等可唯一辨识的称呼。**禁止**填空字符串、禁止仅用「少女」「路人」等无法建档的泛称）③ `intro` **一句话**中文摘要，**必须**依次交代或暗示：\n" +
-        "  **境界**（大境界+小境界，如 练气初期）；**武器槽**（手持何物，如无则写「徒手」）；**是否佩戴法器、防具**（可写「没有法器与防具」）；**主修/显露的功法**（尽量说成与设定表接近的名称，如「似入门长春功」「像基础剑诀」）；**可选**：灵根、年龄感、一眼能看出的体质/剑道天赋等；intro 里提到人物时请与 `displayName` 一致。\n" +
-        "· 叙事正文里仍可文学描写；本条 `intro` 是给下一回合「状态 AI」落表用的**紧凑战设**，勿写纯废话。\n" +
-        "· 示例（单条）：" +
-        NPC_STORY_HINTS_TAG_OPEN +
-        '[{"sceneLabel":"小师妹","displayName":"李清容","intro":"境界在练气初期，手持木剑，没有佩戴法器和防具，所修功法像基础长春功，剑术略显生涩，年约十五六岁"}]' +
-        NPC_STORY_HINTS_TAG_CLOSE,
-    );
     return "【当前存档摘要】\n\n" + sections.join("\n\n");
   }
 
@@ -376,10 +342,13 @@
       if (sp) systemParts.push(sp);
     }
 
+    var lsv = lowerSpiritStoneValueUnit();
+    var runtimeRuleBlock = buildRuntimeRuleBlock(lsv);
+    if (runtimeRuleBlock) systemParts.push(runtimeRuleBlock);
+
     var stateBlock = "";
     if (P && typeof P.shouldAppendRuntimeState === "function" && P.shouldAppendRuntimeState()) {
       stateBlock = buildRuntimeStateBlock(G, fc);
-      if (stateBlock) systemParts.push(stateBlock);
     }
 
     var scanText = buildScanText(userText, priorHistory, stateBlock);
@@ -388,6 +357,8 @@
       var wbBlock = WB.formatForSystem(entries);
       if (wbBlock) systemParts.push(wbBlock);
     }
+    // 实时状态块始终置于 system 最后，确保模型将其视为最新口径
+    if (stateBlock) systemParts.push(stateBlock);
 
     var systemContent = systemParts.filter(Boolean).join(SYSTEM_BLOCK_SEPARATOR);
 
