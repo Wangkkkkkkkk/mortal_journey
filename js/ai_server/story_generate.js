@@ -182,6 +182,7 @@
       var brief = "· " + name + "（" + realm + "）";
       if (iden) brief += "｜身份：" + iden;
       brief += "｜好感度：" + fav;
+      if (n.isDead === true) brief += "｜阵亡（血量 0）";
       lines.push(brief);
       pushed++;
     }
@@ -196,6 +197,8 @@
   var NPC_STORY_HINTS_TAG_CLOSE = "</mj_npc_story_hints>";
   var ACTION_SUGGESTIONS_TAG_OPEN = "<mj_action_suggestions>";
   var ACTION_SUGGESTIONS_TAG_CLOSE = "</mj_action_suggestions>";
+  var BATTLE_TRIGGER_TAG_OPEN = "<mj_battle_trigger>";
+  var BATTLE_TRIGGER_TAG_CLOSE = "</mj_battle_trigger>";
 
   /** system 内各大块之间的分隔（便于模型与人类阅读日志） */
   var SYSTEM_BLOCK_SEPARATOR = "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
@@ -213,6 +216,12 @@
   function stripActionSuggestionsFromNarrative(text) {
     var raw = String(text || "");
     var re = /<mj_action_suggestions\s*>\s*[\s\S]*?<\/mj_action_suggestions\s*>/gi;
+    return raw.replace(re, "").trim();
+  }
+
+  function stripBattleTriggerFromNarrative(text) {
+    var raw = String(text || "");
+    var re = /<mj_battle_trigger\s*>\s*[\s\S]*?<\/mj_battle_trigger\s*>/gi;
     return raw.replace(re, "").trim();
   }
 
@@ -238,6 +247,85 @@
       return out;
     } catch (_e) {
       return out;
+    }
+  }
+
+  function normalizeBattleSide(rawList, fallbackName) {
+    var out = [];
+    var list = Array.isArray(rawList) ? rawList : [];
+    for (var i = 0; i < list.length && out.length < 3; i++) {
+      var u = list[i];
+      if (!u || typeof u !== "object") continue;
+      var nm = u.displayName != null ? String(u.displayName).trim() : "";
+      if (!nm) continue;
+      var idRaw = u.id != null ? String(u.id).trim() : "";
+      var row = {
+        displayName: nm,
+        roleHint: u.roleHint != null ? String(u.roleHint).trim() : "",
+      };
+      if (idRaw) row.id = idRaw;
+      out.push(row);
+    }
+    if (!out.length && fallbackName) {
+      out.push({ displayName: String(fallbackName), roleHint: "主角" });
+    }
+    if (out.length > 3) out = out.slice(0, 3);
+    return out;
+  }
+
+  function extractBattleTriggerFromNarrative(text, game) {
+    var raw = String(text || "");
+    var G = game || global.MortalJourneyGame || {};
+    var fallbackPlayerName =
+      G &&
+      G.fateChoice &&
+      G.fateChoice.playerName != null &&
+      String(G.fateChoice.playerName).trim() !== ""
+        ? String(G.fateChoice.playerName).trim()
+        : "主角";
+    var empty = {
+      shouldEnterBattle: false,
+      triggerKind: "",
+      triggerReason: "",
+      allies: normalizeBattleSide([], fallbackPlayerName),
+      enemies: [],
+    };
+    var m = /<mj_battle_trigger\s*>([\s\S]*?)<\/mj_battle_trigger\s*>/i.exec(raw);
+    if (!m || !m[1]) return empty;
+    var body = String(m[1]).trim();
+    if (!body) return empty;
+    try {
+      var obj = JSON.parse(body);
+      if (!obj || typeof obj !== "object") return empty;
+      var should = !!obj.shouldEnterBattle;
+      var kind = obj.triggerKind != null ? String(obj.triggerKind).trim() : "";
+      var reason = obj.triggerReason != null ? String(obj.triggerReason).trim() : "";
+      var allies = normalizeBattleSide(obj.allies, fallbackPlayerName);
+      var enemies = normalizeBattleSide(obj.enemies, "");
+      if (allies.length > 3) allies = allies.slice(0, 3);
+      if (enemies.length > 3) enemies = enemies.slice(0, 3);
+      if (!should) {
+        return {
+          shouldEnterBattle: false,
+          triggerKind: kind,
+          triggerReason: reason,
+          allies: allies,
+          enemies: enemies,
+        };
+      }
+      if (!allies.length) allies = normalizeBattleSide([], fallbackPlayerName);
+      if (!enemies.length) {
+        return empty;
+      }
+      return {
+        shouldEnterBattle: true,
+        triggerKind: kind || "passive",
+        triggerReason: reason,
+        allies: allies,
+        enemies: enemies,
+      };
+    } catch (_e) {
+      return empty;
     }
   }
 
@@ -315,6 +403,47 @@
   }
 
   /**
+   * 上一场程序结算的战斗摘要，注入剧情 system，供下一段叙事承接；剧情成功出文后由主界面置 storyBattleContextConsumed。
+   */
+  function buildStoryPromptBattleSection(G) {
+    if (!G || G.storyBattleContextConsumed) return "";
+    var lb = G.lastBattleResult;
+    if (!lb || typeof lb !== "object" || !lb.settlement || typeof lb.settlement !== "object") return "";
+    var MC = global.MjMainScreenChat;
+    var body =
+      MC && typeof MC.formatBattleSettlementText === "function"
+        ? MC.formatBattleSettlementText(lb.settlement)
+        : "";
+    if (!body) {
+      var vic0 =
+        lb.victor === "ally"
+          ? "主角方胜利"
+          : lb.victor === "enemy"
+            ? "主角方撤退（未胜）"
+            : String(lb.victor || "");
+      var r0 = typeof lb.rounds === "number" && isFinite(lb.rounds) ? Math.max(0, Math.floor(lb.rounds)) : 0;
+      body = "【战斗结算】" + vic0 + " · 共 " + r0 + " 轮（详情略）";
+    }
+    var head =
+      "【上一场战斗（程序已回合制结算）】\n" +
+      "以下为真实结算结果。你写下一段剧情时必须与此一致承接：可作文学描写，但不得改写胜负、各方大致伤势与法力消耗；若需再次动手，应推进为新的交战情境而非否认本场结果。\n";
+    var meta = [];
+    var pb = G.pendingBattle;
+    if (pb && typeof pb === "object") {
+      if (pb.triggerKind != null && String(pb.triggerKind).trim() !== "")
+        meta.push("触发类型：" + String(pb.triggerKind).trim());
+      if (pb.triggerReason != null && String(pb.triggerReason).trim() !== "")
+        meta.push("触发说明：" + String(pb.triggerReason).trim());
+      if (pb.worldTimeString != null && String(pb.worldTimeString).trim() !== "")
+        meta.push("战时世界时间：" + String(pb.worldTimeString).trim());
+      if (pb.currentLocation != null && String(pb.currentLocation).trim() !== "")
+        meta.push("战时地点：" + String(pb.currentLocation).trim());
+    }
+    var metaStr = meta.length ? meta.join("\n") + "\n" : "";
+    return head + metaStr + "\n" + body;
+  }
+
+  /**
    * 供关键词扫描与 system 摘要（分块排版：角色概要 / 面板 / 世界因子 / 天赋 / 装备行囊）
    */
   function buildRuntimeStateBlock(G, fc) {
@@ -385,6 +514,8 @@
     appendEquippedLines(loadout, G);
     appendBagAndGongfaLines(loadout, G);
 
+    var battleStory = buildStoryPromptBattleSection(G);
+
     var sections = [];
     if (profile.length) sections.push("【角色概要】\n" + profile.join("\n"));
     if (nearby.length) sections.push(nearby.join("\n"));
@@ -392,6 +523,7 @@
     if (wf.length) sections.push(wf.join("\n"));
     if (traits.length) sections.push(traits.join("\n"));
     if (loadout.length) sections.push(loadout.join("\n"));
+    if (battleStory) sections.push(battleStory);
 
     if (!sections.length) return "";
     return "【当前存档摘要】\n\n" + sections.join("\n\n");
@@ -403,7 +535,9 @@
     if (priorHistory && priorHistory.length) {
       for (var i = 0; i < priorHistory.length; i++) {
         var m = priorHistory[i];
-        if (m && m.content) parts.push(String(m.content));
+        if (!m || m.content == null) continue;
+        if (m.role === "battle_settlement") continue;
+        parts.push(String(m.content));
       }
     }
     parts.push(String(userText || ""));
@@ -419,6 +553,7 @@
   function buildMessages(opts) {
     var userText = String((opts && opts.userText) || "").trim();
     var priorHistory = opts && Array.isArray(opts.priorHistory) ? opts.priorHistory : [];
+    var forceBattleIntent = !!(opts && opts.forceBattleIntent);
 
     var P = getPresetApi();
     var WB = getWorldBookApi();
@@ -457,12 +592,16 @@
     for (var h = 0; h < priorHistory.length; h++) {
       var msg = priorHistory[h];
       if (!msg || !msg.role || msg.content == null) continue;
+      if (msg.role === "battle_settlement") continue;
       var role = msg.role === "assistant" ? "assistant" : "user";
       messages.push({ role: role, content: String(msg.content) });
     }
 
     var prefix = P && typeof P.getUserPrefix === "function" ? P.getUserPrefix() : "";
-    var userBody = (prefix ? prefix + "\n" : "") + userText;
+    var battleIntentHint = forceBattleIntent
+      ? "\n[系统战斗意图提示] 玩家本轮明确表达了战斗/击杀/对战意图；若对象存在且可开战，本轮应触发战斗流程。"
+      : "";
+    var userBody = (prefix ? prefix + "\n" : "") + userText + battleIntentHint;
     messages.push({ role: "user", content: userBody });
 
     return messages;
@@ -515,15 +654,20 @@
   global.MortalJourneyStoryChat = {
     buildMessages: buildMessages,
     buildRuntimeStateBlock: buildRuntimeStateBlock,
+    buildStoryPromptBattleSection: buildStoryPromptBattleSection,
     formatMessagesForHumanLog: formatMessagesForHumanLog,
     sendTurn: sendTurn,
     NPC_STORY_HINTS_TAG_OPEN: NPC_STORY_HINTS_TAG_OPEN,
     NPC_STORY_HINTS_TAG_CLOSE: NPC_STORY_HINTS_TAG_CLOSE,
     ACTION_SUGGESTIONS_TAG_OPEN: ACTION_SUGGESTIONS_TAG_OPEN,
     ACTION_SUGGESTIONS_TAG_CLOSE: ACTION_SUGGESTIONS_TAG_CLOSE,
+    BATTLE_TRIGGER_TAG_OPEN: BATTLE_TRIGGER_TAG_OPEN,
+    BATTLE_TRIGGER_TAG_CLOSE: BATTLE_TRIGGER_TAG_CLOSE,
     stripNpcStoryHintsFromNarrative: stripNpcStoryHintsFromNarrative,
     stripActionSuggestionsFromNarrative: stripActionSuggestionsFromNarrative,
+    stripBattleTriggerFromNarrative: stripBattleTriggerFromNarrative,
     extractActionSuggestionsFromNarrative: extractActionSuggestionsFromNarrative,
+    extractBattleTriggerFromNarrative: extractBattleTriggerFromNarrative,
     stripStoryAiMetaLeakFromNarrative: stripStoryAiMetaLeakFromNarrative,
   };
 })(typeof window !== "undefined" ? window : globalThis);

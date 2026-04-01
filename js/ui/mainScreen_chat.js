@@ -8,6 +8,36 @@
     return global.MjMainScreenPanel;
   }
 
+  function hasExplicitBattleIntent(text) {
+    var s = String(text || "").trim();
+    if (!s) return false;
+    return /(战斗|对战|交手|开打|动手|击杀|斩杀|诛杀|袭击|讨伐|杀了|杀死)/.test(s);
+  }
+
+  function triggerCombatFromBattleResult(G, battleResult, source) {
+    var payload = {
+      source: source != null && String(source).trim() !== "" ? String(source).trim() : "state_ai",
+      triggerKind: battleResult && battleResult.triggerKind ? String(battleResult.triggerKind) : "passive",
+      triggerReason: battleResult && battleResult.triggerReason ? String(battleResult.triggerReason) : "",
+      allies: battleResult && Array.isArray(battleResult.allies) ? battleResult.allies : [],
+      enemies: battleResult && Array.isArray(battleResult.enemies) ? battleResult.enemies : [],
+      worldTimeString: G && G.worldTimeString != null ? String(G.worldTimeString) : "",
+      currentLocation: G && G.currentLocation != null ? String(G.currentLocation) : "",
+    };
+    if (G) G.pendingBattle = payload;
+    try {
+      global.dispatchEvent(new CustomEvent("mj:battle-triggered", { detail: payload }));
+    } catch (_e) {}
+    if (global.MortalJourneyBattle && typeof global.MortalJourneyBattle.startBattle === "function") {
+      try {
+        global.MortalJourneyBattle.startBattle(payload);
+      } catch (eStart) {
+        console.warn("[主界面] 战斗触发后调用 startBattle 失败", eStart);
+      }
+    }
+    return payload;
+  }
+
   function getChatLogEl() {
     return document.getElementById("mj-chat-log");
   }
@@ -36,6 +66,410 @@
   /** 状态栏与处理记录中的分类名称（与气泡「剧情」无关） */
   var AI_KIND_STORY_LABEL = "剧情生成";
   var AI_KIND_STATE_LABEL = "状态更新";
+
+  /** 剧情请求失败时重试用（同一条用户发言 + 当时 prior） */
+  var _mjStoryRetryContext = null;
+  /** 状态请求失败时重试用（上一段已成功落盘的剧情原文，含标签） */
+  var _mjStateRetryStoryRaw = null;
+
+  function getChatComposerRefs() {
+    return {
+      textarea: document.getElementById("mj-chat-input"),
+      sendBtn: document.getElementById("mj-chat-send"),
+    };
+  }
+
+  function isTimeoutError(err) {
+    var msg = err && err.message ? String(err.message) : "";
+    if (/timeout_300s/i.test(msg)) return true;
+    if (/超时/i.test(msg)) return true;
+    if (/timeout/i.test(msg)) return true;
+    if (err && (err.name === "AbortError" || err.code === "ABORT_ERR")) return true;
+    return false;
+  }
+
+  /**
+   * 在「你」的气泡后插入空的「剧情」占位气泡（用于剧情失败重试时 DOM 已被移除的情况）
+   */
+  function insertAssistantBubbleAfterUser(userRoot) {
+    var log = getChatLogEl();
+    if (!log || !userRoot) return null;
+    clearChatPlaceholders();
+    var wrap = document.createElement("div");
+    wrap.className = "mj-chat-msg--role mj-chat-msg--assistant";
+    var label = document.createElement("span");
+    label.className = "mj-chat-role-label";
+    label.textContent = "剧情";
+    var body = document.createElement("div");
+    body.textContent = "";
+    wrap.appendChild(label);
+    wrap.appendChild(body);
+    if (userRoot.nextSibling) log.insertBefore(wrap, userRoot.nextSibling);
+    else log.appendChild(wrap);
+    scrollChatLog();
+    return { root: wrap, body: body };
+  }
+
+  /**
+   * @param {string} fullMessage
+   * @param {"story"|"state"} retryKind
+   */
+  function appendChatErrorWithRetry(fullMessage, retryKind) {
+    var log = getChatLogEl();
+    if (!log) return;
+    clearChatPlaceholders();
+    var wrap = document.createElement("div");
+    wrap.className = "mj-chat-msg--role mj-chat-msg--error mj-chat-msg--error-retryable";
+    var label = document.createElement("span");
+    label.className = "mj-chat-role-label";
+    label.textContent = "提示";
+    var body = document.createElement("div");
+    body.className = "mj-chat-msg-error-body";
+    body.textContent = fullMessage != null ? String(fullMessage) : "";
+    var row = document.createElement("div");
+    row.className = "mj-chat-msg-retry-row";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mj-chat-retry-btn";
+    btn.textContent = retryKind === "state" ? "重试状态更新 AI" : "重试剧情生成 AI";
+    btn.addEventListener("click", function () {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      var refs = getChatComposerRefs();
+      if (retryKind === "state") {
+        retryLastStateAi(refs.textarea, refs.sendBtn, btn);
+      } else {
+        retryLastStoryAi(refs.textarea, refs.sendBtn, btn);
+      }
+    });
+    row.appendChild(btn);
+    wrap.appendChild(label);
+    wrap.appendChild(body);
+    wrap.appendChild(row);
+    log.appendChild(wrap);
+    scrollChatLog();
+  }
+
+  /**
+   * @param {Object} opts
+   */
+  function runStoryAiTurn(opts) {
+    var G = opts.G;
+    var SC = opts.SC;
+    var textarea = opts.textarea;
+    var sendBtn = opts.sendBtn;
+    var userText = opts.userText;
+    var priorHistory = opts.priorHistory;
+    var forceBattleIntent = opts.forceBattleIntent;
+    var assistantBody = opts.assistantBody;
+    var assistantRoot = opts.assistantRoot;
+    var userHistIndex = opts.userHistIndex;
+    var isRetry = !!opts.isRetry;
+    var allowRollbackOnTimeout = !!opts.allowRollbackOnTimeout;
+    var rollbackFn = opts.rollbackFn;
+    var retryBtnEl = opts.retryButtonEl || null;
+
+    _mjStateRetryStoryRaw = null;
+    _mjStoryRetryContext = {
+      priorHistory: priorHistory.slice(),
+      userText: userText,
+      userRoot: opts.userRoot || null,
+      assistantRoot: assistantRoot,
+      assistantBody: assistantBody,
+      userHistIndex: userHistIndex,
+      forceBattleIntent: forceBattleIntent,
+    };
+
+    var useStreamChat = getBridgeUseStreamingChat();
+    var feedbackGenStory = startAiReplyFeedback(textarea, false, {
+      kind: AI_KIND_STORY_LABEL,
+      wholeResponseWait: !useStreamChat,
+    });
+    var streamNotified = false;
+
+    var messages =
+      typeof SC.buildMessages === "function"
+        ? SC.buildMessages({
+            userText: userText,
+            priorHistory: priorHistory,
+            forceBattleIntent: forceBattleIntent,
+          })
+        : null;
+    if (messages && global.GameLog && typeof global.GameLog.info === "function") {
+      try {
+        var human =
+          typeof SC.formatMessagesForHumanLog === "function"
+            ? SC.formatMessagesForHumanLog(messages)
+            : "";
+        var jsonStr = JSON.stringify(messages, null, 2);
+        global.GameLog.info(
+          "[剧情→AI] " +
+            (isRetry ? "（重试）" : "") +
+            "本次请求\n\n—— 易读排版 ——\n" +
+            (human || jsonStr) +
+            "\n\n—— 原始 JSON（可复制） ——\n" +
+            jsonStr,
+        );
+      } catch (logErr) {
+        global.GameLog.info("[剧情→AI] 用户输入（messages 无法序列化）：" + String(userText).slice(0, 800));
+      }
+    }
+
+    var timeoutMs = 300000;
+    var ac = null;
+    try {
+      ac = new AbortController();
+    } catch (_eac) {
+      ac = null;
+    }
+    var tid = null;
+    if (ac) {
+      tid = setTimeout(function () {
+        try {
+          ac.abort("timeout_300s");
+        } catch (_eab) {}
+      }, timeoutMs);
+    }
+    function clearTimeoutIfAny() {
+      if (tid != null) {
+        clearTimeout(tid);
+        tid = null;
+      }
+    }
+
+    return SC.sendTurn({
+      messages: messages,
+      userText: userText,
+      priorHistory: priorHistory,
+      shouldStream: useStreamChat,
+      signal: ac ? ac.signal : undefined,
+      onDelta: useStreamChat
+        ? function (_delta, full) {
+            if (!streamNotified) {
+              streamNotified = true;
+              markAiStreamStarted();
+            }
+            if (assistantBody) {
+              var vis = full || "";
+              if (SC && typeof SC.stripStoryAiMetaLeakFromNarrative === "function") {
+                vis = SC.stripStoryAiMetaLeakFromNarrative(vis);
+              }
+              assistantBody.textContent = vis;
+            }
+            scrollChatLog();
+          }
+        : undefined,
+    })
+      .then(function (full) {
+        clearTimeoutIfAny();
+        var replyRaw = full != null ? String(full) : "";
+        var sansLeak =
+          SC && typeof SC.stripStoryAiMetaLeakFromNarrative === "function"
+            ? SC.stripStoryAiMetaLeakFromNarrative(replyRaw)
+            : replyRaw;
+        var actionSuggestions =
+          SC && typeof SC.extractActionSuggestionsFromNarrative === "function"
+            ? SC.extractActionSuggestionsFromNarrative(sansLeak)
+            : null;
+        if (global.MainScreen && typeof global.MainScreen.setChatSuggestions === "function") {
+          try {
+            global.MainScreen.setChatSuggestions(actionSuggestions);
+          } catch (_esugg) {}
+        }
+        var sansSuggestionTags =
+          SC && typeof SC.stripActionSuggestionsFromNarrative === "function"
+            ? SC.stripActionSuggestionsFromNarrative(sansLeak)
+            : sansLeak;
+        var replyForChat =
+          SC && typeof SC.stripNpcStoryHintsFromNarrative === "function"
+            ? SC.stripNpcStoryHintsFromNarrative(sansSuggestionTags)
+            : sansSuggestionTags;
+        var trimmed = replyForChat.replace(/^\uFEFF/, "").trim();
+        if (trimmed === "") {
+          var hadStream = streamNotified;
+          var emptyMsg =
+            "【剧情 AI 回复为空】\n\n" +
+            (!useStreamChat
+              ? "当前为「非流式」整段请求，但解析后正文仍为空。可能原因：\n" +
+                "· 上游 JSON 里 choices[0].message 无 content / reasoning_content\n" +
+                "· 网关返回体被截断或非正常 JSON\n\n"
+              : hadStream
+                ? "流式连接已结束，但拼接后的正文长度为 0。可能原因：\n" +
+                  "· 上游把可见文本写在非标准字段（桥接已尝试多种 delta 字段）\n" +
+                  "· 内容被服务商安全策略拦截或未下发\n" +
+                  "· 模型异常结束、仅返回空白 token\n\n"
+                : "未收到任何文本块（可能未进入流式输出或首包即结束）。可能原因：\n" +
+                  "· 代理/网关截断或返回体异常\n" +
+                  "· 流式包里没有可用正文字段\n\n") +
+            "建议：展开左下角日志查看「剧情→AI」请求；检查 silly_tarven/bridge-config.js 的 API、模型；可将 useStreamingChat 设为 false 使用整段模式；在浏览器控制台查看 [ST Bridge] 提示。";
+          G.chatHistory.push({ role: "assistant", content: emptyMsg });
+          if (assistantBody) assistantBody.textContent = emptyMsg;
+          if (assistantRoot) {
+            assistantRoot.classList.add("mj-chat-msg--assistant-empty");
+            var rlab = assistantRoot.querySelector(".mj-chat-role-label");
+            if (rlab) rlab.textContent = "剧情（无内容）";
+          }
+          scrollChatLog();
+          finishAiReplyFeedback(
+            feedbackGenStory,
+            textarea,
+            "error",
+            "剧情 AI 返回空正文",
+            { kind: AI_KIND_STORY_LABEL },
+          );
+          if (global.GameLog && typeof global.GameLog.info === "function") {
+            global.GameLog.info(
+              "[剧情←AI] 空回复：hadStream=" +
+                String(hadStream) +
+                "，raw 字符串长度=" +
+                String(replyForChat.length) +
+                "。",
+            );
+          }
+          appendChatErrorWithRetry(
+            "剧情 AI 返回空正文。无需重写输入框，点击下方按钮可用同一条发言再次请求剧情生成。",
+            "story",
+          );
+          if (retryBtnEl) retryBtnEl.disabled = false;
+          return Promise.resolve();
+        }
+        if (assistantRoot) assistantRoot.classList.remove("mj-chat-msg--assistant-empty");
+        if (isRetry && Array.isArray(G.chatHistory)) {
+          while (G.chatHistory.length > userHistIndex + 1) {
+            G.chatHistory.pop();
+          }
+        }
+        G.chatHistory.push({ role: "assistant", content: replyForChat });
+        if (assistantBody) assistantBody.textContent = replyForChat;
+        scrollChatLog();
+        try {
+          G.storyBattleContextConsumed = true;
+        } catch (_consume) {}
+        _mjStoryRetryContext = null;
+        finishAiReplyFeedback(feedbackGenStory, textarea, "done", undefined, { kind: AI_KIND_STORY_LABEL });
+        if (retryBtnEl) retryBtnEl.disabled = false;
+        return runStateInventoryAiTurn(G, textarea, sansLeak);
+      })
+      .catch(function (err) {
+        clearTimeoutIfAny();
+        if (isTimeoutError(err)) {
+          if (allowRollbackOnTimeout && typeof rollbackFn === "function") {
+            finishAiReplyFeedback(feedbackGenStory, textarea, "error", "请求超时（300 秒）", {
+              kind: AI_KIND_STORY_LABEL,
+            });
+            rollbackFn();
+            _mjStoryRetryContext = null;
+          } else {
+            finishAiReplyFeedback(feedbackGenStory, textarea, "error", "请求超时（300 秒）", {
+              kind: AI_KIND_STORY_LABEL,
+            });
+            appendChatErrorWithRetry("剧情 AI：请求超时（300 秒）。可点击下方按钮重试，无需重新打字。", "story");
+          }
+          if (retryBtnEl) retryBtnEl.disabled = false;
+          return;
+        }
+        if (
+          assistantBody &&
+          !String(assistantBody.textContent || "").trim() &&
+          assistantRoot &&
+          assistantRoot.parentNode
+        ) {
+          assistantRoot.parentNode.removeChild(assistantRoot);
+          _mjStoryRetryContext.assistantRoot = null;
+          _mjStoryRetryContext.assistantBody = null;
+        }
+        var msg =
+          err && err.message
+            ? String(err.message)
+            : "请求失败。若未配置 API，请检查 silly_tarven/bridge-config.js 中的 fixedPreset。";
+        finishAiReplyFeedback(feedbackGenStory, textarea, "error", msg, { kind: AI_KIND_STORY_LABEL });
+        appendChatErrorWithRetry("剧情 AI：" + msg, "story");
+        console.warn("[主界面] 剧情请求失败", err);
+        if (global.GameLog && typeof global.GameLog.info === "function") {
+          global.GameLog.info("[主界面] 剧情请求失败：" + msg.slice(0, 300));
+        }
+        if (retryBtnEl) retryBtnEl.disabled = false;
+      })
+      .then(function () {
+        clearTimeoutIfAny();
+        if (sendBtn) sendBtn.disabled = false;
+        if (textarea) textarea.disabled = false;
+      });
+  }
+
+  function retryLastStoryAi(textarea, sendBtn, clickedBtn) {
+    var ctx = _mjStoryRetryContext;
+    var G = global.MortalJourneyGame;
+    var SC = global.MortalJourneyStoryChat;
+    if (!ctx || !G || !SC || typeof SC.sendTurn !== "function") {
+      if (clickedBtn) clickedBtn.disabled = false;
+      flashChatStatusError("没有可重试的剧情请求，请直接在输入框发送一条新消息。");
+      return;
+    }
+    textarea = textarea || getChatComposerRefs().textarea;
+    sendBtn = sendBtn || getChatComposerRefs().sendBtn;
+    if (sendBtn) sendBtn.disabled = true;
+    if (textarea) textarea.disabled = true;
+    var assistantRoot = ctx.assistantRoot;
+    var assistantBody = ctx.assistantBody;
+    if (!assistantRoot || !assistantRoot.parentNode || !assistantBody) {
+      var ins = insertAssistantBubbleAfterUser(ctx.userRoot);
+      if (ins) {
+        assistantRoot = ins.root;
+        assistantBody = ins.body;
+        ctx.assistantRoot = assistantRoot;
+        ctx.assistantBody = assistantBody;
+      }
+    }
+    if (assistantBody) assistantBody.textContent = "";
+    if (assistantRoot) assistantRoot.classList.remove("mj-chat-msg--assistant-empty");
+    var rlab2 = assistantRoot && assistantRoot.querySelector(".mj-chat-role-label");
+    if (rlab2) rlab2.textContent = "剧情";
+
+    runStoryAiTurn({
+      G: G,
+      SC: SC,
+      textarea: textarea,
+      sendBtn: sendBtn,
+      userText: ctx.userText,
+      priorHistory: ctx.priorHistory,
+      forceBattleIntent: ctx.forceBattleIntent,
+      assistantBody: ctx.assistantBody,
+      assistantRoot: ctx.assistantRoot,
+      userRoot: ctx.userRoot,
+      userHistIndex: ctx.userHistIndex,
+      isRetry: true,
+      allowRollbackOnTimeout: false,
+      rollbackFn: null,
+      retryButtonEl: clickedBtn || null,
+    });
+  }
+
+  function retryLastStateAi(textarea, sendBtn, clickedBtn) {
+    var raw = _mjStateRetryStoryRaw;
+    var G = global.MortalJourneyGame;
+    if (raw == null || raw === "" || !G) {
+      if (clickedBtn) clickedBtn.disabled = false;
+      flashChatStatusError("没有可重试的状态更新：需要已成功生成剧情但状态 AI 未同步成功。");
+      return;
+    }
+    textarea = textarea || getChatComposerRefs().textarea;
+    sendBtn = sendBtn || getChatComposerRefs().sendBtn;
+    if (sendBtn) sendBtn.disabled = true;
+    if (textarea) textarea.disabled = true;
+    var p = runStateInventoryAiTurn(G, textarea, raw);
+    if (p && typeof p.finally === "function") {
+      p.finally(function () {
+        if (clickedBtn) clickedBtn.disabled = false;
+        if (sendBtn) sendBtn.disabled = false;
+        if (textarea) textarea.disabled = false;
+      });
+    } else {
+      if (clickedBtn) clickedBtn.disabled = false;
+      if (sendBtn) sendBtn.disabled = false;
+      if (textarea) textarea.disabled = false;
+    }
+  }
 
   function padAiLog2(n) {
     var x = Math.floor(Number(n));
@@ -228,6 +662,114 @@
   }
 
   /**
+   * @param {{ victor?: string, rounds?: number, allies?: Array, enemies?: Array }} settlement
+   */
+  function formatBattleSettlementText(settlement) {
+    if (!settlement || typeof settlement !== "object") return "";
+    var vic =
+      settlement.victor === "ally"
+        ? "主角方胜利"
+        : settlement.victor === "enemy"
+          ? "主角方撤退（未胜）"
+          : settlement.victor != null && String(settlement.victor).trim() !== ""
+            ? String(settlement.victor)
+            : "结束";
+    var rounds = typeof settlement.rounds === "number" && isFinite(settlement.rounds) ? Math.max(0, Math.floor(settlement.rounds)) : 0;
+    var lines = [];
+    lines.push("【战斗结算】" + vic + " · 共 " + rounds + " 轮");
+    lines.push("");
+    var allies = Array.isArray(settlement.allies) ? settlement.allies : [];
+    var enemies = Array.isArray(settlement.enemies) ? settlement.enemies : [];
+    if (allies.length) {
+      lines.push("— 我方 —");
+      for (var i = 0; i < allies.length; i++) {
+        var a = allies[i];
+        if (!a) continue;
+        var who =
+          (a.displayName != null ? String(a.displayName) : "未命名") +
+          "（" +
+          (a.isProtagonist ? "主角" : "队友") +
+          "）";
+        lines.push(who);
+        lines.push(
+          "  造成：法攻伤害 " +
+            (a.dealtFa | 0) +
+            "　物攻伤害 " +
+            (a.dealtWu | 0),
+        );
+        lines.push(
+          "  承受：法攻伤害 " +
+            (a.takenFa | 0) +
+            "　物攻伤害 " +
+            (a.takenWu | 0),
+        );
+      }
+      lines.push("");
+    }
+    if (enemies.length) {
+      lines.push("— 敌方 —");
+      for (var j = 0; j < enemies.length; j++) {
+        var e = enemies[j];
+        if (!e) continue;
+        var enName = e.displayName != null ? String(e.displayName) : "未命名";
+        lines.push(enName);
+        lines.push(
+          "  造成：法攻伤害 " +
+            (e.dealtFa | 0) +
+            "　物攻伤害 " +
+            (e.dealtWu | 0),
+        );
+        lines.push(
+          "  承受：法攻伤害 " +
+            (e.takenFa | 0) +
+            "　物攻伤害 " +
+            (e.takenWu | 0),
+        );
+      }
+    }
+    return lines.join("\n").trim();
+  }
+
+  /** 仅渲染战斗结算 DOM（不写 chatHistory；读档回放与战后事件共用） */
+  function appendBattleSettlementDom(text) {
+    var t = text != null ? String(text).trim() : "";
+    if (!t) return;
+    var log = getChatLogEl();
+    if (!log) return;
+    clearChatPlaceholders();
+    var wrap = document.createElement("div");
+    wrap.className = "mj-chat-msg--role mj-chat-msg--battle-settlement";
+    var label = document.createElement("span");
+    label.className = "mj-chat-role-label";
+    label.textContent = "战斗结算";
+    var body = document.createElement("div");
+    body.textContent = t;
+    wrap.appendChild(label);
+    wrap.appendChild(body);
+    log.appendChild(wrap);
+    scrollChatLog();
+  }
+
+  /** 战斗结束后在聊天区插入结算框（监听 mj:battle-finished） */
+  function appendBattleSettlementFromDetail(detail) {
+    var s = detail && detail.settlement;
+    if (!s || typeof s !== "object") return;
+    var text = formatBattleSettlementText(s);
+    if (!text) return;
+    var G = global.MortalJourneyGame;
+    if (G && Array.isArray(G.chatHistory)) {
+      G.chatHistory.push({ role: "battle_settlement", content: text });
+      var P = mjPanel();
+      if (P && typeof P.persistBootstrapSnapshot === "function") {
+        try {
+          P.persistBootstrapSnapshot();
+        } catch (_ePersist) {}
+      }
+    }
+    appendBattleSettlementDom(text);
+  }
+
+  /**
    * 剧情 AI 成功后：请求状态 AI（储物袋等），状态栏计时与剧情一致。
    * @returns {Promise<void>}
    */
@@ -245,6 +787,7 @@
       return Promise.resolve();
     }
     var reply = storyReply != null ? String(storyReply) : "";
+    _mjStateRetryStoryRaw = reply;
     var useStreamState = getBridgeUseStreamingChat();
     var feedbackGenState = startAiReplyFeedback(textarea, false, {
       kind: AI_KIND_STATE_LABEL,
@@ -262,7 +805,15 @@
         (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
           ? global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
           : "<mj_npc_story_hints>") +
-        " 中一致，禁止留空。",
+        " 中一致，禁止留空。④若剧情已明确进入即时战斗：在全文末（上述标签之后亦可）输出 " +
+        (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_OPEN
+          ? global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_OPEN
+          : "<mj_battle_trigger>") +
+        "…" +
+        (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
+          ? global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
+          : "</mj_battle_trigger>") +
+        "，JSON 内 allies/enemies 的 displayName 必须与 user 快照中主角名及周边人物完全一致。若剧情已写主角运转主攻功法待发、只待一击，或妖兽已扑杀前摇/敌意对峙且无法脱战，须 shouldEnterBattle=true（交战回合起点即可，不要求已击中）；不得以「仅对峙」为由漏标。无交战预备则可省略该标签（详见状态 system 第 13 条）。",
       game: G,
     });
     if (stateMsgs && global.GameLog && typeof global.GameLog.info === "function") {
@@ -311,6 +862,7 @@
     })
       .then(function (stateFull) {
         clearTimeoutIfAny();
+        _mjStateRetryStoryRaw = null;
         var raw = stateFull != null ? String(stateFull) : "";
         var app = ST.applyStateTurnFromAssistantText(G, raw);
         var P = mjPanel();
@@ -347,6 +899,24 @@
           }
           global.GameLog.info(parts.join("；") + "\n" + raw.slice(0, 2000));
         }
+        var SCBattle = global.MortalJourneyStoryChat;
+        var battleFromState =
+          SCBattle && typeof SCBattle.extractBattleTriggerFromNarrative === "function"
+            ? SCBattle.extractBattleTriggerFromNarrative(raw, G)
+            : { shouldEnterBattle: false };
+        if (battleFromState && battleFromState.shouldEnterBattle) {
+          var pb = triggerCombatFromBattleResult(G, battleFromState, "state_ai");
+          if (global.GameLog && typeof global.GameLog.info === "function") {
+            global.GameLog.info(
+              "[状态→战斗] 已触发；类型=" +
+                String(pb.triggerKind || "") +
+                "；我方=" +
+                ((pb.allies && pb.allies.length) || 0) +
+                "；敌方=" +
+                ((pb.enemies && pb.enemies.length) || 0),
+            );
+          }
+        }
       })
       .catch(function (err) {
         clearTimeoutIfAny();
@@ -355,7 +925,12 @@
             ? String(err.message)
             : "状态请求失败。若未配置 API，请检查 silly_tarven/bridge-config.js。";
         finishAiReplyFeedback(feedbackGenState, textarea, "error", msg, { kind: AI_KIND_STATE_LABEL });
-        appendChatBubble("error", "状态 AI：" + msg);
+        appendChatErrorWithRetry(
+          "状态 AI：" +
+            msg +
+            "\n\n仍可重试：上方剧情已生成成功，点击下方按钮会再次请求状态同步（不会重跑剧情）。",
+          "state",
+        );
         if (global.GameLog && typeof global.GameLog.info === "function") {
           global.GameLog.info("[状态←AI] 失败：" + msg.slice(0, 300));
         }
@@ -385,229 +960,48 @@
     var userUi = appendChatBubble("user", text);
     var userRoot = userUi ? userUi.root : null;
 
-    var useStreamChat = getBridgeUseStreamingChat();
-    var feedbackGenStory = startAiReplyFeedback(textarea, false, {
-      kind: AI_KIND_STORY_LABEL,
-      wholeResponseWait: !useStreamChat,
-    });
-    var streamNotified = false;
-
-    var messages =
-      typeof SC.buildMessages === "function"
-        ? SC.buildMessages({ userText: text, priorHistory: prior })
-        : null;
-    if (messages && global.GameLog && typeof global.GameLog.info === "function") {
-      try {
-        var human =
-          typeof SC.formatMessagesForHumanLog === "function"
-            ? SC.formatMessagesForHumanLog(messages)
-            : "";
-        var jsonStr = JSON.stringify(messages, null, 2);
-        global.GameLog.info(
-          "[剧情→AI] 本次请求\n\n—— 易读排版 ——\n" +
-            (human || jsonStr) +
-            "\n\n—— 原始 JSON（可复制） ——\n" +
-            jsonStr,
-        );
-      } catch (logErr) {
-        global.GameLog.info("[剧情→AI] 用户输入（messages 无法序列化）：" + text.slice(0, 800));
-      }
-    }
-
     var asstUi = appendChatBubble("assistant", "");
     var assistantBody = asstUi ? asstUi.body : null;
     var assistantRoot = asstUi ? asstUi.root : null;
     sendBtn.disabled = true;
 
-    // 300s 超时：超时后回退本次发送（撤销气泡与 chatHistory，并回填输入框）
-    var timeoutMs = 300000;
-    var ac = null;
-    try {
-      ac = new AbortController();
-    } catch (_eac) {
-      ac = null;
-    }
-    var tid = null;
-    if (ac) {
-      tid = setTimeout(function () {
-        try {
-          ac.abort("timeout_300s");
-        } catch (_eab) {}
-      }, timeoutMs);
-    }
-
-    function clearTimeoutIfAny() {
-      if (tid != null) {
-        clearTimeout(tid);
-        tid = null;
-      }
-    }
-
-    function isTimeoutError(err) {
-      var msg = err && err.message ? String(err.message) : "";
-      if (/timeout_300s/i.test(msg)) return true;
-      if (/超时/i.test(msg)) return true;
-      if (/timeout/i.test(msg)) return true;
-      if (err && (err.name === "AbortError" || err.code === "ABORT_ERR")) return true;
-      return false;
-    }
-
     function rollbackSendUiAndHistory() {
-      // 回填输入框（保留原内容）
       try {
         if (textarea) {
           textarea.value = text;
           textarea.focus();
         }
       } catch (_e) {}
-
-      // 移除刚追加的气泡（你 + 空 assistant）
       try {
         if (assistantRoot && assistantRoot.parentNode) assistantRoot.parentNode.removeChild(assistantRoot);
       } catch (_e2) {}
       try {
         if (userRoot && userRoot.parentNode) userRoot.parentNode.removeChild(userRoot);
       } catch (_e3) {}
-
-      // 回退 chatHistory：删掉本次 push 的 user（以及可能追加的空 assistant）
       try {
         if (Array.isArray(G.chatHistory) && G.chatHistory.length > userHistIndex) {
-          // 仅删除从 userHistIndex 起新增的内容
           G.chatHistory.splice(userHistIndex);
         }
       } catch (_e4) {}
     }
 
-    SC.sendTurn({
-      messages: messages,
+    runStoryAiTurn({
+      G: G,
+      SC: SC,
+      textarea: textarea,
+      sendBtn: sendBtn,
       userText: text,
       priorHistory: prior,
-      shouldStream: useStreamChat,
-      signal: ac ? ac.signal : undefined,
-      onDelta: useStreamChat
-        ? function (_delta, full) {
-            if (!streamNotified) {
-              streamNotified = true;
-              markAiStreamStarted();
-            }
-            if (assistantBody) {
-              var vis = full || "";
-              if (SC && typeof SC.stripStoryAiMetaLeakFromNarrative === "function") {
-                vis = SC.stripStoryAiMetaLeakFromNarrative(vis);
-              }
-              assistantBody.textContent = vis;
-            }
-            scrollChatLog();
-          }
-        : undefined,
-    })
-      .then(function (full) {
-        clearTimeoutIfAny();
-        var replyRaw = full != null ? String(full) : "";
-        var sansLeak =
-          SC && typeof SC.stripStoryAiMetaLeakFromNarrative === "function"
-            ? SC.stripStoryAiMetaLeakFromNarrative(replyRaw)
-            : replyRaw;
-        var actionSuggestions =
-          SC && typeof SC.extractActionSuggestionsFromNarrative === "function"
-            ? SC.extractActionSuggestionsFromNarrative(sansLeak)
-            : null;
-        if (global.MainScreen && typeof global.MainScreen.setChatSuggestions === "function") {
-          try {
-            global.MainScreen.setChatSuggestions(actionSuggestions);
-          } catch (_esugg) {}
-        }
-        var sansSuggestionTags =
-          SC && typeof SC.stripActionSuggestionsFromNarrative === "function"
-            ? SC.stripActionSuggestionsFromNarrative(sansLeak)
-            : sansLeak;
-        var replyForChat =
-          SC && typeof SC.stripNpcStoryHintsFromNarrative === "function"
-            ? SC.stripNpcStoryHintsFromNarrative(sansSuggestionTags)
-            : sansSuggestionTags;
-        var trimmed = replyForChat.replace(/^\uFEFF/, "").trim();
-        if (trimmed === "") {
-          var hadStream = streamNotified;
-          var emptyMsg =
-            "【剧情 AI 回复为空】\n\n" +
-            (!useStreamChat
-              ? "当前为「非流式」整段请求，但解析后正文仍为空。可能原因：\n" +
-                "· 上游 JSON 里 choices[0].message 无 content / reasoning_content\n" +
-                "· 网关返回体被截断或非正常 JSON\n\n"
-              : hadStream
-                ? "流式连接已结束，但拼接后的正文长度为 0。可能原因：\n" +
-                  "· 上游把可见文本写在非标准字段（桥接已尝试多种 delta 字段）\n" +
-                  "· 内容被服务商安全策略拦截或未下发\n" +
-                  "· 模型异常结束、仅返回空白 token\n\n"
-                : "未收到任何文本块（可能未进入流式输出或首包即结束）。可能原因：\n" +
-                  "· 代理/网关截断或返回体异常\n" +
-                  "· 流式包里没有可用正文字段\n\n") +
-            "建议：展开左下角日志查看「剧情→AI」请求；检查 silly_tarven/bridge-config.js 的 API、模型；可将 useStreamingChat 设为 false 使用整段模式；在浏览器控制台查看 [ST Bridge] 提示。";
-          G.chatHistory.push({ role: "assistant", content: emptyMsg });
-          if (assistantBody) assistantBody.textContent = emptyMsg;
-          if (assistantRoot) {
-            assistantRoot.classList.add("mj-chat-msg--assistant-empty");
-            var rlab = assistantRoot.querySelector(".mj-chat-role-label");
-            if (rlab) rlab.textContent = "剧情（无内容）";
-          }
-          scrollChatLog();
-          finishAiReplyFeedback(
-            feedbackGenStory,
-            textarea,
-            "error",
-            "剧情 AI 返回空正文",
-            { kind: AI_KIND_STORY_LABEL },
-          );
-          if (global.GameLog && typeof global.GameLog.info === "function") {
-            global.GameLog.info(
-              "[剧情←AI] 空回复：hadStream=" +
-                String(hadStream) +
-                "，raw 字符串长度=" +
-                String(replyForChat.length) +
-                "。",
-            );
-          }
-          return Promise.resolve();
-        }
-        if (assistantRoot) assistantRoot.classList.remove("mj-chat-msg--assistant-empty");
-        G.chatHistory.push({ role: "assistant", content: replyForChat });
-        if (assistantBody) assistantBody.textContent = replyForChat;
-        scrollChatLog();
-        finishAiReplyFeedback(feedbackGenStory, textarea, "done", undefined, { kind: AI_KIND_STORY_LABEL });
-        return runStateInventoryAiTurn(G, textarea, sansLeak);
-      })
-      .catch(function (err) {
-        clearTimeoutIfAny();
-        if (isTimeoutError(err)) {
-          // 超时：回退本次发送，不保留失败提示气泡
-          finishAiReplyFeedback(feedbackGenStory, textarea, "error", "请求超时（300 秒）", { kind: AI_KIND_STORY_LABEL });
-          rollbackSendUiAndHistory();
-          return;
-        }
-        if (
-          assistantBody &&
-          !String(assistantBody.textContent || "").trim() &&
-          assistantRoot &&
-          assistantRoot.parentNode
-        ) {
-          assistantRoot.parentNode.removeChild(assistantRoot);
-        }
-        var msg =
-          err && err.message
-            ? String(err.message)
-            : "请求失败。若未配置 API，请检查 silly_tarven/bridge-config.js 中的 fixedPreset。";
-        finishAiReplyFeedback(feedbackGenStory, textarea, "error", msg, { kind: AI_KIND_STORY_LABEL });
-        appendChatBubble("error", msg);
-        console.warn("[主界面] 剧情请求失败", err);
-        if (global.GameLog && typeof global.GameLog.info === "function") {
-          global.GameLog.info("[主界面] 剧情请求失败：" + msg.slice(0, 300));
-        }
-      })
-      .then(function () {
-        clearTimeoutIfAny();
-        sendBtn.disabled = false;
-        if (textarea) textarea.disabled = false;
-      });
+      forceBattleIntent: hasExplicitBattleIntent(text),
+      assistantBody: assistantBody,
+      assistantRoot: assistantRoot,
+      userRoot: userRoot,
+      userHistIndex: userHistIndex,
+      isRetry: false,
+      allowRollbackOnTimeout: true,
+      rollbackFn: rollbackSendUiAndHistory,
+      retryButtonEl: null,
+    });
   }
 
   global.MjMainScreenChat = {
@@ -620,9 +1014,21 @@
         var it = arr[i];
         if (!it || !it.role) continue;
         var role = String(it.role);
+        if (role === "battle_settlement") {
+          appendBattleSettlementDom(it.content != null ? String(it.content) : "");
+          continue;
+        }
         if (role !== "user" && role !== "assistant" && role !== "error") continue;
         appendChatBubble(role, it.content != null ? String(it.content) : "");
       }
     },
+    appendBattleSettlementFromDetail: appendBattleSettlementFromDetail,
+    formatBattleSettlementText: formatBattleSettlementText,
   };
+
+  try {
+    global.addEventListener("mj:battle-finished", function (ev) {
+      appendBattleSettlementFromDetail(ev && ev.detail);
+    });
+  } catch (_battleEv) {}
 })(typeof window !== "undefined" ? window : globalThis);

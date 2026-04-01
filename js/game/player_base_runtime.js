@@ -249,6 +249,10 @@
    */
   function applyComputedPlayerBaseToCharacterSheet(sheet) {
     if (!sheet || typeof sheet !== "object") return false;
+    if (sheet.isDead === true) {
+      sheet.currentHp = 0;
+      return true;
+    }
     var pb = computePlayerBaseFromCharacterSheet(sheet);
     if (!pb) return false;
     var prevMaxH = sheet.maxHp;

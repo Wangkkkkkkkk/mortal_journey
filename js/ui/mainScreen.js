@@ -258,6 +258,7 @@
         P.mergeNearbyNpcListInPlace(G, out);
       } else {
         G.nearbyNpcs = out;
+        if (P && typeof P.sortNearbyNpcsForDisplay === "function") P.sortNearbyNpcsForDisplay(G);
       }
       P.persistBootstrapSnapshot();
       P.renderNearbyNpcsPanel(G);

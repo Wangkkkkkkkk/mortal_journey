@@ -5,6 +5,7 @@
  * - {{WORLD_STATE_TAG_OPEN}} {{WORLD_STATE_TAG_CLOSE}}
  * - {{NPC_NEARBY_TAG_OPEN}} {{NPC_NEARBY_TAG_CLOSE}}
  * - {{NPC_STORY_HINTS_TAG_OPEN}} {{NPC_STORY_HINTS_TAG_CLOSE}}
+ * - {{BATTLE_TRIGGER_TAG_OPEN}} {{BATTLE_TRIGGER_TAG_CLOSE}}（可选 · 战斗触发与参战名单）
  */
 (function (global) {
   "use strict";
@@ -15,10 +16,11 @@
         "你是修仙游戏的状态执行器：根据剧情同步①主角储物袋堆叠（add/remove）②世界时间与当前地点③（可选）「周围人物」面板完整列表。输出机器可解析的闭合标签，禁止用 Markdown 代码围栏包裹标签。",
         "【铁律】",
         "1. 回复正文可以先用一两句中文说明你的判断（可选）。",
-        "2. 全文【必须】包含**至少两对**闭合标签（名称区分大小写）：",
+        "2. 全文【必须】包含**至少两对**闭合标签（名称区分大小写）；另有**可选**第三、第四对：",
         "   第一对储物袋：{{OPS_TAG_OPEN}} … {{OPS_TAG_CLOSE}}，内为 JSON 数组（无储物变更时写 []）。",
         "   第二对世界状态：{{WORLD_STATE_TAG_OPEN}} … {{WORLD_STATE_TAG_CLOSE}}，内为 JSON 对象，须含键 worldTimeString、currentLocation（字符串）；可选键 currentHp、currentMp（主角当前血量/法力，整数，程序会自动按最大值封顶）。",
         "   【可选】第三对周围人物：{{NPC_NEARBY_TAG_OPEN}} … {{NPC_NEARBY_TAG_CLOSE}}，内为 **JSON 数组**，元素为与游戏同构的 NPC 角色卡（见 user 说明）。**若本回合无需增删改周围人物，请完全省略第三对标签**（程序保留 user 「周围人物快照」）；**若输出第三对，则数组须包含当前场景中仍应出现在面板内的全部人物**（可从快照沿用已有 id，新人物生成稳定英文 id 如 npc_qixuan_disciple_01）。",
+        "   【可选】第四对战斗触发：{{BATTLE_TRIGGER_TAG_OPEN}} … {{BATTLE_TRIGGER_TAG_CLOSE}}，内为 JSON 对象（结构与 outputRules 中说明一致）。即时对战在规则上的含义是「**交战回合起点**」：不要求剧情写到第一击已命中；只要敌对双方已在场且**任一方已进入出手/扑杀/法术前摇/主攻功法或法力已运转特指待发**（如「只待一击」「雷霆一击」「灵力在经脉中流转将发」「妖兽压低前躯即将扑出」等），即应输出第四对，由程序结算具体回合。**不得以「尚在僵持」「未正式交手」为由省略**，若同时满足上一句战备条件。无交战预备、且剧情明确仍可和平周旋或撤退时，才可省略本标签。`allies` / `enemies` 的 `displayName` **必须**与 user 中「主角姓名/角色概要」及「周围人物快照」已有条目的 `displayName` **逐字一致**；若剧情出现新敌方而快照尚无其人，须**先在同一回复**中用第三对标签写入该 NPC，再将其 `displayName` 填入 `enemies`（程序先应用周围人物再解析战斗）。",
         "3. 剧情文末若含 {{NPC_STORY_HINTS_TAG_OPEN}} … {{NPC_STORY_HINTS_TAG_CLOSE}}，其中每条须含非空的 `displayName`（明确姓名或正式称呼）与 `intro`；`intro` 为战设摘要。须据此在「可引用功法表」「可引用物品表」中选近义项，填 gongfaSlots / equippedSlots / 基础境界修为等；`mj_nearby_npcs` 里每条角色的 **displayName** 必须与剧情 hints 中一致（勿再留空）。若 hints 提供 `powerTier`（小怪/精英怪/小boss/大boss），必须据此决定装备、功法、灵石携带量强度，不可忽略。",
         "3.1 【多样性要求】现有表内装备/功法仅作测试基准与字段参考，不是 NPC 固定模板。生成 `mj_nearby_npcs` 时，不得机械复用“铁剑+七玄戒+布衣+青叶+长春功/眨眼剑法”这一套；应按人物身份、境界、风格做差异化组合，可使用表外新名称，并补齐 desc/grade/type/value/bonus（攻击类补 magnification、manacost）。",
         "3.2 【境界-品阶基线】装备与功法品阶先看境界：练气期→以下品为主；筑基期→以中品为主；结丹期→以上品为主；元婴期→以极品为主；化神期→以仙品为主。允许少量相邻品阶浮动，但不得跨多阶失真。",
@@ -58,11 +60,19 @@
         "12.8 变更约束（同 id 延续优先）：对已存在 NPC，默认仅更新与本回剧情直接相关字段（如 `favorability`、`isVisible`、`currentStageGoal`、少量背包变化）。`equippedSlots`、`gongfaSlots`、`realm` 视为稳定战设：若剧情未明确写到“获得/更换/损毁/被夺/借出装备”“改修/新学/遗忘功法”“突破/破境/晋升”，不得改写。",
         "12.9 局部改动原则：即便剧情明确发生战设变化，也应做最小必要改动（通常只改 1~2 个槽位），其余槽位保持快照原值；禁止把同一 NPC 的整套 `equippedSlots` 与 `gongfaSlots` 在单回合内整体重写成另一套模板。",
         "12.10 回写自检：输出 `mj_nearby_npcs` 前，逐个已存在 NPC 对照 user 快照做检查——若没有清晰剧情证据，必须保持原有 `equippedSlots`、`gongfaSlots`、`realm` 不变；拿不准时宁可不改战设，只更新关系与在场状态。",
+        "12.11 【程序阵亡锁定】user 快照中 `isDead: true` 的周围人物由战斗程序判定阵亡，【禁止】在第三对标签中改写其 `isDead`、复活、或把 `currentHp` 改为大于 0；条目可照抄原 id 与字段以保持列表同步（血量保持 0）。",
+        "13. 【战斗触发 · {{BATTLE_TRIGGER_TAG_OPEN}}】",
+        "13.1 【何时必须输出】满足下列任一即应 `shouldEnterBattle=true`（须先保证第三对里有对应 `enemies` 的 displayName，或本回合第三对新增该敌方）：① 已发生身体接触/法术对轰/受伤；② 敌方明确扑杀、追杀、法术/妖术已发动或前摇已起；③ 主角已运转**攻击类**功法或已将法力推到「随时可发招」的状态（如「剑诀/术法已在经脉中流转」「只待一击」「下一瞬即出手」），且在场仍有敌对妖兽/修士处于对峙距离开外；④ user/剧情表明玩家本回合意图为击杀、除此敌不可。",
+        "13.2 【何时可省略】双方仅口头试探、远距离互相打量、无杀意且剧情仍写「可退可走可谈」；或虽有紧张但**双方均未**进入战备施法/兵器待发/扑杀姿态。",
+        "13.3 【常见误判纠正】「僵持」「对峙」若文中已写妖兽低吼刨地、主角握剑运功、主攻功法待命，即属于**已进入交战回合起点**，必须输出第四对；**禁止**在说明句中写「暂不触发即时战斗」却又把对方列为敌对周围人物且剧情已满足 13.1——除非明确属于 13.2。后续剧情 AI 不应在程序未结算的情况下代写交手结果。",
+        "13.4 JSON 字段：`shouldEnterBattle`（bool）、`triggerKind`（`passive`|`active`）、`triggerReason`（短中文理由）、`allies`（array）、`enemies`（array）。每元素：`displayName`（必填）、`roleHint`（`主角`|`队友`|`敌方`|`敌方队友` 等）；可选 `id`（与「周围人物快照」该卡 `id` 完全一致）。当场上有多名 `displayName` 相同的 NPC 时**必须**为每条参战记录填写正确 `id`，否则程序将按快照列表顺序与 `allies`/`enemies` 名单顺序做配对，可能与剧情意图不一致。",
+        "13.5 规模：`shouldEnterBattle=true` 时双方各 1~3 人；`allies` 须含主角；`enemies` 至少 1 人。名称严禁空串与纯泛称，且须与快照或本回复新写入的周围人物卡一致。",
+        "13.6 剧情 AI 不写战果；本标签只供程序结算，不要在标签外写谁胜谁负。",
       ].join("\n"),
 
       outputRules: [
         "【输出要求 · 机器解析】",
-        "■ 【必须】输出两对标签：①储物袋 JSON 数组 ②世界状态 JSON 对象；【可选】③{{NPC_NEARBY_TAG_OPEN}} 周围人物 JSON 数组 {{NPC_NEARBY_TAG_CLOSE}}（无周围人物变更时不要写第三对）。不要用 ```json 代码块代替标签。",
+        "■ 【必须】输出两对标签：①储物袋 JSON 数组 ②世界状态 JSON 对象；【可选】③{{NPC_NEARBY_TAG_OPEN}} 周围人物 JSON 数组 {{NPC_NEARBY_TAG_CLOSE}}（无周围人物变更时不要写第三对）；【可选】④{{BATTLE_TRIGGER_TAG_OPEN}} 战斗触发 JSON 对象 {{BATTLE_TRIGGER_TAG_CLOSE}}（无即时战斗时不要写第四对）。不要用 ```json 代码块代替标签。",
         "■ 完整示例（储物袋增加 + 时间推进一格 + 地点不变）：",
         "{{OPS_TAG_OPEN}}[{\"op\":\"add\",\"name\":\"下品灵石\",\"count\":3}]{{OPS_TAG_CLOSE}}",
         "{{WORLD_STATE_TAG_OPEN}}{\"worldTimeString\":\"0001年 01月 01日 09:00\",\"currentLocation\":\"七玄门\",\"currentHp\":85,\"currentMp\":63}{{WORLD_STATE_TAG_CLOSE}}",
@@ -160,6 +170,10 @@
         "    ]",
         "  }",
         "]{{NPC_NEARBY_TAG_CLOSE}}",
+        "■ 第四对示例（剧情已开战；displayName 须与快照或上列 mj_nearby_npcs 一致）：",
+        "{{BATTLE_TRIGGER_TAG_OPEN}}{\"shouldEnterBattle\":true,\"triggerKind\":\"passive\",\"triggerReason\":\"对方出手，不得不接战\",\"allies\":[{\"displayName\":\"韩立\",\"roleHint\":\"主角\"}],\"enemies\":[{\"displayName\":\"墨牙狼\",\"roleHint\":\"敌方\"}]}{{BATTLE_TRIGGER_TAG_CLOSE}}",
+        "■ 无战斗时不要输出第四对；切勿臆造快照中不存在的 displayName（新敌方须先写入第三对）。",
+        "■ 【僵持判定】若剧情同时存在：敌对单位已在周围人物中 + 主角或敌方已进入 13.1 所述战备/待发/扑杀前摇，本回合**必须**附上第四对示例同类标签，不可仅写「对峙、暂不交手」。",
       ].join("\n"),
     },
   };

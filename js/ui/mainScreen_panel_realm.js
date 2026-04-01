@@ -811,12 +811,39 @@
       if (!G || !G.fateChoice) return;
       ensureGameRuntimeDefaults(G);
       var ls = G.lateStageBreakSuffix;
+      var lbSnap = null;
+      if (G.lastBattleResult && typeof G.lastBattleResult === "object") {
+        try {
+          lbSnap = JSON.parse(JSON.stringify(G.lastBattleResult));
+        } catch (_lbE) {
+          lbSnap = null;
+        }
+      }
       var data = {
         fateChoice: G.fateChoice,
         startedAt: G.startedAt || 0,
         xiuwei: typeof G.xiuwei === "number" ? G.xiuwei : 0,
         shouyuan: typeof G.shouyuan === "number" && isFinite(G.shouyuan) ? Math.floor(G.shouyuan) : 0,
         age: typeof G.age === "number" && isFinite(G.age) ? Math.floor(G.age) : DEFAULT_AGE,
+        worldTimeString:
+          typeof G.worldTimeString === "string" && G.worldTimeString.trim() !== ""
+            ? String(G.worldTimeString)
+            : null,
+        currentLocation:
+          G.currentLocation != null && String(G.currentLocation).trim() !== ""
+            ? String(G.currentLocation)
+            : null,
+        maxHp: typeof G.maxHp === "number" && isFinite(G.maxHp) ? G.maxHp : null,
+        maxMp: typeof G.maxMp === "number" && isFinite(G.maxMp) ? G.maxMp : null,
+        currentHp: typeof G.currentHp === "number" && isFinite(G.currentHp) ? G.currentHp : null,
+        currentMp: typeof G.currentMp === "number" && isFinite(G.currentMp) ? G.currentMp : null,
+        cultivationProgress:
+          typeof G.cultivationProgress === "number" && isFinite(G.cultivationProgress)
+            ? G.cultivationProgress
+            : null,
+        storyBattleContextConsumed:
+          typeof G.storyBattleContextConsumed === "boolean" ? G.storyBattleContextConsumed : null,
+        lastBattleResult: lbSnap,
         inventorySlots: JSON.parse(JSON.stringify(G.inventorySlots)),
         gongfaSlots: JSON.parse(JSON.stringify(G.gongfaSlots || [])),
         equippedSlots: JSON.parse(JSON.stringify(G.equippedSlots || [])),
@@ -996,6 +1023,41 @@
         global.MortalJourneyGame.age = Math.max(0, Math.floor(data.age));
       }
 
+      if (typeof data.worldTimeString === "string" && data.worldTimeString.trim() !== "") {
+        global.MortalJourneyGame.worldTimeString = String(data.worldTimeString);
+      }
+      if (data.currentLocation != null && String(data.currentLocation).trim() !== "") {
+        global.MortalJourneyGame.currentLocation = String(data.currentLocation);
+      }
+      if (typeof data.maxHp === "number" && isFinite(data.maxHp) && data.maxHp > 0) {
+        global.MortalJourneyGame.maxHp = Math.floor(data.maxHp);
+      }
+      if (typeof data.maxMp === "number" && isFinite(data.maxMp) && data.maxMp > 0) {
+        global.MortalJourneyGame.maxMp = Math.floor(data.maxMp);
+      }
+      if (typeof data.currentHp === "number" && isFinite(data.currentHp)) {
+        global.MortalJourneyGame.currentHp = data.currentHp;
+      }
+      if (typeof data.currentMp === "number" && isFinite(data.currentMp)) {
+        global.MortalJourneyGame.currentMp = data.currentMp;
+      }
+      if (typeof data.cultivationProgress === "number" && isFinite(data.cultivationProgress)) {
+        global.MortalJourneyGame.cultivationProgress = Math.max(
+          0,
+          Math.min(1, data.cultivationProgress),
+        );
+      }
+      if (typeof data.storyBattleContextConsumed === "boolean") {
+        global.MortalJourneyGame.storyBattleContextConsumed = data.storyBattleContextConsumed;
+      }
+      if (data.lastBattleResult != null && typeof data.lastBattleResult === "object") {
+        try {
+          global.MortalJourneyGame.lastBattleResult = JSON.parse(JSON.stringify(data.lastBattleResult));
+        } catch (_lbR) {
+          global.MortalJourneyGame.lastBattleResult = null;
+        }
+      }
+
       if (data.lateStageBreakSuffix && typeof data.lateStageBreakSuffix === "object") {
         global.MortalJourneyGame.lateStageBreakSuffix = {
           realmKey: String(data.lateStageBreakSuffix.realmKey != null ? data.lateStageBreakSuffix.realmKey : ""),
@@ -1047,6 +1109,12 @@
       if (G.maxMp == null) G.maxMp = Math.max(1, pb.mp);
       if (G.currentMp == null) G.currentMp = pb.mp;
     }
+    if (typeof G.maxHp === "number" && isFinite(G.maxHp) && G.maxHp > 0 && typeof G.currentHp === "number" && isFinite(G.currentHp)) {
+      G.currentHp = Math.min(G.maxHp, Math.max(0, G.currentHp));
+    }
+    if (typeof G.maxMp === "number" && isFinite(G.maxMp) && G.maxMp > 0 && typeof G.currentMp === "number" && isFinite(G.currentMp)) {
+      G.currentMp = Math.min(G.maxMp, Math.max(0, G.currentMp));
+    }
     if (!Array.isArray(G.chatHistory)) G.chatHistory = [];
     if (G.currentLocation == null || String(G.currentLocation).trim() === "") {
       var fc0 = G.fateChoice;
@@ -1076,6 +1144,52 @@
     return "";
   }
 
+  /**
+   * 周围人物展示顺序：① 本次对话（chatHistory 近期正文）出现过其姓名的；② 可见且非阵亡；③ 不可见且非阵亡；④ 阵亡（固定置底）。
+   */
+  function sortNearbyNpcsForDisplay(G) {
+    if (!G || !Array.isArray(G.nearbyNpcs) || G.nearbyNpcs.length < 2) return;
+    var hist = Array.isArray(G.chatHistory) ? G.chatHistory : [];
+    var tail = hist.slice(Math.max(0, hist.length - 16));
+    var blob = [];
+    for (var h = 0; h < tail.length; h++) {
+      if (tail[h] && tail[h].content != null) blob.push(String(tail[h].content));
+    }
+    var blobText = blob.join("\n");
+    var involved = {};
+    for (var u = 0; u < G.nearbyNpcs.length; u++) {
+      var nx = G.nearbyNpcs[u];
+      if (!nx) continue;
+      var dn = nx.displayName != null ? String(nx.displayName).trim() : "";
+      if (dn.length < 2) continue;
+      if (blobText.indexOf(dn) < 0) continue;
+      var ik = nx.id != null ? String(nx.id).trim() : "";
+      if (ik) involved[ik] = true;
+    }
+    var base = G.nearbyNpcs.slice();
+    for (var s = 0; s < base.length; s++) {
+      if (base[s]) base[s].__mjSortIdx = s;
+    }
+    function tier(n) {
+      if (!n) return 9;
+      if (n.isDead === true) return 3;
+      var idk = n.id != null ? String(n.id).trim() : "";
+      if (idk && involved[idk]) return 0;
+      if (n.isVisible === false) return 2;
+      return 1;
+    }
+    base.sort(function (a, b) {
+      var ta = tier(a);
+      var tb = tier(b);
+      if (ta !== tb) return ta - tb;
+      return (a && a.__mjSortIdx) - (b && b.__mjSortIdx);
+    });
+    for (var r = 0; r < base.length; r++) {
+      if (base[r] && base[r].__mjSortIdx != null) delete base[r].__mjSortIdx;
+    }
+    G.nearbyNpcs = base;
+  }
+
   function buildNearbyNpcMergedList(prevList, incomingList) {
     var prev = Array.isArray(prevList) ? prevList : [];
     var incoming = Array.isArray(incomingList) ? incomingList : [];
@@ -1102,7 +1216,22 @@
       var cur = incoming[i];
       if (!cur || typeof cur !== "object") continue;
       var k = npcPresenceKey(cur);
+      if (k && seen[k]) continue;
       var old = k ? prevMap[k] : null;
+      if (old && old.isDead === true) {
+        var deadKeep;
+        try {
+          deadKeep = JSON.parse(JSON.stringify(old));
+        } catch (_eDead) {
+          deadKeep = Object.assign({}, old);
+        }
+        deadKeep.isTemporarilyAway = false;
+        deadKeep.currentHp = 0;
+        deadKeep.isDead = true;
+        merged.push(deadKeep);
+        if (k) seen[k] = true;
+        continue;
+      }
       if (old && (cur.avatarUrl == null || String(cur.avatarUrl).trim() === "") && old.avatarUrl) {
         cur.avatarUrl = old.avatarUrl;
       }
@@ -1130,6 +1259,19 @@
       var oldNpc = prev[i];
       var oldKey = npcPresenceKey(oldNpc);
       if (!oldKey || seen[oldKey]) continue;
+      if (oldNpc && oldNpc.isDead === true) {
+        var deadRest;
+        try {
+          deadRest = JSON.parse(JSON.stringify(oldNpc));
+        } catch (_eR) {
+          deadRest = oldNpc;
+        }
+        deadRest.isTemporarilyAway = false;
+        deadRest.currentHp = 0;
+        deadRest.isDead = true;
+        merged.push(deadRest);
+        continue;
+      }
       var awayCopy;
       try {
         awayCopy = JSON.parse(JSON.stringify(oldNpc));
@@ -1147,6 +1289,7 @@
     ensureNearbyNpcsArray(G);
     G.nearbyNpcs = buildNearbyNpcMergedList(G.nearbyNpcs, incomingList);
     normalizeNearbyNpcListInPlace(G);
+    sortNearbyNpcsForDisplay(G);
   }
 
   function normalizeNearbyNpcListInPlace(G) {
@@ -1160,10 +1303,14 @@
         var wasAway = !!(G.nearbyNpcs[i] && G.nearbyNpcs[i].isTemporarilyAway);
         var n = MCS.normalize(G.nearbyNpcs[i]);
         n.isTemporarilyAway = wasAway;
-        if (PBR && typeof PBR.applyComputedPlayerBaseToCharacterSheet === "function") {
+        if (n.isDead === true) {
+          n.currentHp = 0;
+          n.isTemporarilyAway = false;
+        } else if (PBR && typeof PBR.applyComputedPlayerBaseToCharacterSheet === "function") {
           PBR.applyComputedPlayerBaseToCharacterSheet(n);
         }
         syncNpcShouyuanFromRealmState(n);
+        if (n.isDead === true) n.currentHp = 0;
         next.push(n);
       } catch (err) {
         console.warn("[主界面] 周围人物条目已跳过", err);
@@ -1243,6 +1390,7 @@
     if (!host) return;
     host.innerHTML = "";
     ensureNearbyNpcsArray(G);
+    sortNearbyNpcsForDisplay(G);
     if (!G || !G.nearbyNpcs.length) {
       var empty = document.createElement("p");
       empty.className = "mj-npc-list-empty";
@@ -1253,12 +1401,6 @@
     }
     var MCS = global.MjCharacterSheet;
     var cards = G.nearbyNpcs.slice();
-    cards.sort(function (a, b) {
-      var aa = a && a.isTemporarilyAway ? 1 : 0;
-      var bb = b && b.isTemporarilyAway ? 1 : 0;
-      if (aa !== bb) return aa - bb;
-      return 0;
-    });
     for (var i = 0; i < cards.length; i++) {
       var rawNpc = cards[i];
       var npc =
@@ -1266,12 +1408,16 @@
           ? MCS.normalize(rawNpc)
           : rawNpc;
       if (!npc || !npc.id) continue;
-      var isAway = !!(rawNpc && (rawNpc.isTemporarilyAway || rawNpc.isVisible === false));
+      var isDead = !!(rawNpc && rawNpc.isDead === true);
+      var isAway = !isDead && !!(rawNpc && (rawNpc.isTemporarilyAway || rawNpc.isVisible === false));
 
       var card = document.createElement("button");
       card.type = "button";
       card.className = "mj-npc-card mj-npc-card--sheet";
       card.setAttribute("data-npc-id", String(npc.id));
+      if (isDead) {
+        card.classList.add("mj-npc-card--dead");
+      }
       if (isAway) {
         card.classList.add("mj-npc-card--away");
         card.style.opacity = "0.45";
@@ -1319,6 +1465,12 @@
       nameSp.className = "mj-npc-name";
       nameSp.textContent = npc.displayName || "—";
       title.appendChild(nameSp);
+      if (isDead) {
+        var deadTag = document.createElement("span");
+        deadTag.className = "mj-npc-card-dead-tag";
+        deadTag.textContent = "阵亡";
+        title.appendChild(deadTag);
+      }
 
       card.setAttribute(
         "aria-label",
@@ -1327,13 +1479,17 @@
           realmLine +
           "，好感度 " +
           String(favVal) +
-          (isAway ? "，临时离场" : "") +
+          (isDead ? "，已阵亡" : isAway ? "，临时离场" : "") +
           "，点击查看详情",
       );
 
       var maxH = typeof npc.maxHp === "number" && isFinite(npc.maxHp) ? Math.max(1, npc.maxHp) : 1;
       var maxM = typeof npc.maxMp === "number" && isFinite(npc.maxMp) ? Math.max(1, npc.maxMp) : 1;
-      var curH = typeof npc.currentHp === "number" && isFinite(npc.currentHp) ? npc.currentHp : maxH;
+      var curH = isDead
+        ? 0
+        : typeof npc.currentHp === "number" && isFinite(npc.currentHp)
+          ? npc.currentHp
+          : maxH;
       var curM = typeof npc.currentMp === "number" && isFinite(npc.currentMp) ? npc.currentMp : maxM;
       curH = Math.max(0, Math.min(maxH, Math.round(curH)));
       curM = Math.max(0, Math.min(maxM, Math.round(curM)));
@@ -1798,6 +1954,12 @@
     headText.appendChild(realmBig);
     head.appendChild(avWrap);
     head.appendChild(headText);
+    if (npc.isDead === true) {
+      var deadBan = document.createElement("div");
+      deadBan.className = "mj-npc-detail-dead-banner";
+      deadBan.textContent = "已阵亡";
+      bodyEl.appendChild(deadBan);
+    }
     bodyEl.appendChild(head);
 
     var tabWrap = document.createElement("div");
@@ -1872,7 +2034,12 @@
 
     var maxH = typeof npc.maxHp === "number" && isFinite(npc.maxHp) ? Math.max(1, npc.maxHp) : 1;
     var maxM = typeof npc.maxMp === "number" && isFinite(npc.maxMp) ? Math.max(1, npc.maxMp) : 1;
-    var curH = typeof npc.currentHp === "number" && isFinite(npc.currentHp) ? npc.currentHp : maxH;
+    var curH =
+      npc.isDead === true
+        ? 0
+        : typeof npc.currentHp === "number" && isFinite(npc.currentHp)
+          ? npc.currentHp
+          : maxH;
     var curM = typeof npc.currentMp === "number" && isFinite(npc.currentMp) ? npc.currentMp : maxM;
     curH = Math.max(0, Math.min(maxH, Math.round(curH)));
     curM = Math.max(0, Math.min(maxM, Math.round(curM)));
@@ -2304,6 +2471,7 @@
     bindMajorBreakthroughUi: bindMajorBreakthroughUi, bindNpcDetailModalUi: bindNpcDetailModalUi, restoreBootstrap: restoreBootstrap, ensureGameRuntimeDefaults: ensureGameRuntimeDefaults,
     ensureNearbyNpcsArray: ensureNearbyNpcsArray, normalizeNearbyNpcListInPlace: normalizeNearbyNpcListInPlace, buildDemoNearbyNpcSheet: buildDemoNearbyNpcSheet,
     mergeNearbyNpcListInPlace: mergeNearbyNpcListInPlace,
+    sortNearbyNpcsForDisplay: sortNearbyNpcsForDisplay,
     applyRealmBreakthroughs: applyRealmBreakthroughs, logBreakthroughMessages: logBreakthroughMessages, computeCultivationUi: computeCultivationUi,
     persistBootstrapSnapshot: persistBootstrapSnapshot, syncNpcShouyuanFromRealmState: syncNpcShouyuanFromRealmState, ensureEquippedSlots: ensureEquippedSlots,
     ensureGongfaSlots: ensureGongfaSlots, ensureInventorySlots: ensureInventorySlots, enrichInventoryGradesFromDescribe: enrichInventoryGradesFromDescribe,

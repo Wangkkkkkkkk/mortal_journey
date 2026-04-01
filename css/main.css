@@ -1590,6 +1590,43 @@ body.mj-main-body {
   color: #f0c0c0;
 }
 
+.mj-chat-msg-retry-row {
+  margin-top: 10px;
+}
+
+.mj-chat-retry-btn {
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid rgba(232, 197, 71, 0.55);
+  background: rgba(45, 55, 42, 0.85);
+  color: var(--mj-gold, #e8c547);
+}
+
+.mj-chat-retry-btn:hover:not(:disabled) {
+  background: rgba(55, 68, 50, 0.92);
+  border-color: rgba(232, 197, 71, 0.75);
+}
+
+.mj-chat-retry-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/** 程序战斗结束后的伤害统计气泡 */
+.mj-chat-msg--battle-settlement {
+  margin-right: 6%;
+  background: rgba(55, 48, 78, 0.42);
+  border: 1px solid rgba(160, 140, 200, 0.4);
+  color: #e6e0f5;
+}
+
+.mj-chat-msg--battle-settlement .mj-chat-role-label {
+  color: rgba(200, 185, 235, 0.92);
+}
+
 .mj-chat-role-label {
   display: block;
   font-size: 0.72rem;
@@ -1860,6 +1897,38 @@ button.mj-npc-card.mj-npc-card--sheet:focus-visible {
   flex-direction: row;
   align-items: flex-start;
   gap: 10px;
+}
+
+button.mj-npc-card.mj-npc-card--dead {
+  background: rgba(35, 28, 32, 0.65);
+  border-color: rgba(120, 70, 80, 0.55);
+  opacity: 0.88;
+}
+
+button.mj-npc-card.mj-npc-card--dead:hover {
+  border-color: rgba(160, 90, 100, 0.55);
+  background: rgba(40, 32, 36, 0.72);
+}
+
+.mj-npc-card-dead-tag {
+  margin-left: 6px;
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(90, 45, 52, 0.75);
+  color: #e8b4bc;
+  vertical-align: middle;
+}
+
+.mj-npc-detail-dead-banner {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  background: rgba(70, 38, 44, 0.55);
+  border: 1px solid rgba(150, 80, 90, 0.45);
+  color: #ecc6cc;
 }
 
 .mj-npc-card-lead {

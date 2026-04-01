@@ -17,6 +17,8 @@
   /** 周围人物完整列表替换（可选标签；省略则不改 G.nearbyNpcs） */
   var NPC_NEARBY_TAG_OPEN = "<mj_nearby_npcs>";
   var NPC_NEARBY_TAG_CLOSE = "</mj_nearby_npcs>";
+  var BATTLE_TRIGGER_TAG_OPEN = "<mj_battle_trigger>";
+  var BATTLE_TRIGGER_TAG_CLOSE = "</mj_battle_trigger>";
   function getStateRulesApi() {
     return global.MortalJourneyStateRules;
   }
@@ -46,6 +48,14 @@
         global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_CLOSE
           ? global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_CLOSE
           : "</mj_npc_story_hints>",
+      BATTLE_TRIGGER_TAG_OPEN:
+        global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_OPEN
+          ? global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_OPEN
+          : BATTLE_TRIGGER_TAG_OPEN,
+      BATTLE_TRIGGER_TAG_CLOSE:
+        global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
+          ? global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
+          : BATTLE_TRIGGER_TAG_CLOSE,
     };
   }
 
@@ -422,6 +432,10 @@
         currentHp: typeof n.currentHp === "number" && isFinite(n.currentHp) ? Math.max(0, Math.floor(n.currentHp)) : null,
         currentMp: typeof n.currentMp === "number" && isFinite(n.currentMp) ? Math.max(0, Math.floor(n.currentMp)) : null,
       };
+      if (n.isDead === true) {
+        row.isDead = true;
+        row.currentHp = 0;
+      }
       compact.push(row);
     }
     return JSON.stringify(compact);
@@ -1071,6 +1085,8 @@
       P.mergeNearbyNpcListInPlace(G, list);
     } else {
       G.nearbyNpcs = list;
+      if (P && typeof P.normalizeNearbyNpcListInPlace === "function") P.normalizeNearbyNpcListInPlace(G);
+      if (P && typeof P.sortNearbyNpcsForDisplay === "function") P.sortNearbyNpcsForDisplay(G);
     }
     out.applied = true;
     out.count = Array.isArray(G.nearbyNpcs) ? G.nearbyNpcs.length : list.length;
@@ -1289,6 +1305,8 @@
     WORLD_STATE_TAG_CLOSE: WORLD_STATE_TAG_CLOSE,
     NPC_NEARBY_TAG_OPEN: NPC_NEARBY_TAG_OPEN,
     NPC_NEARBY_TAG_CLOSE: NPC_NEARBY_TAG_CLOSE,
+    BATTLE_TRIGGER_TAG_OPEN: BATTLE_TRIGGER_TAG_OPEN,
+    BATTLE_TRIGGER_TAG_CLOSE: BATTLE_TRIGGER_TAG_CLOSE,
     buildStuffDescribeCatalog: buildStuffDescribeCatalog,
     buildStuffDescribeCatalogJson: buildStuffDescribeCatalogJson,
     buildGongfaDescribeCatalog: buildGongfaDescribeCatalog,
