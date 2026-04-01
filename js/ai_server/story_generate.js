@@ -153,6 +153,33 @@
     }
   }
 
+  function appendNearbyNpcsLines(lines, G) {
+    if (!G || !Array.isArray(G.nearbyNpcs) || !G.nearbyNpcs.length) return;
+    var pushed = 0;
+    lines.push("【当前可见人物】");
+    for (var i = 0; i < G.nearbyNpcs.length; i++) {
+      var n = G.nearbyNpcs[i];
+      if (!n || typeof n !== "object") continue;
+      if (n.isVisible === false) continue;
+      var name = n.displayName != null && String(n.displayName).trim() !== "" ? String(n.displayName).trim() : "未命名";
+      var realm = formatRealmLine(n, n);
+      var fav =
+        typeof n.favorability === "number" && isFinite(n.favorability)
+          ? Math.max(-99, Math.min(99, Math.round(n.favorability)))
+          : 0;
+      var iden = n.identity != null && String(n.identity).trim() !== "" ? String(n.identity).trim() : "";
+      var brief = "· " + name + "（" + realm + "）";
+      if (iden) brief += "｜身份：" + iden;
+      brief += "｜好感度：" + fav;
+      lines.push(brief);
+      pushed++;
+    }
+    // 兜底：避免该块只有标题，显式告知当前无可见 NPC。
+    if (!pushed) {
+      lines.push("· 当前无可见 NPC");
+    }
+  }
+
   /** 剧情文末：新出场人物一句话战设简介，供状态 AI 映射到功法/装备表（与 state_generate 解析成对） */
   var NPC_STORY_HINTS_TAG_OPEN = "<mj_npc_story_hints>";
   var NPC_STORY_HINTS_TAG_CLOSE = "</mj_npc_story_hints>";
@@ -283,6 +310,8 @@
       }
       profile.push(b);
     }
+    var nearby = [];
+    appendNearbyNpcsLines(nearby, G);
 
     var attr = [];
     appendPlayerBaseLines(attr, G, fc);
@@ -299,6 +328,7 @@
 
     var sections = [];
     if (profile.length) sections.push("【角色概要】\n" + profile.join("\n"));
+    if (nearby.length) sections.push(nearby.join("\n"));
     if (attr.length) sections.push(attr.join("\n"));
     if (wf.length) sections.push(wf.join("\n"));
     if (traits.length) sections.push(traits.join("\n"));

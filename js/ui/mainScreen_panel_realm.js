@@ -1116,7 +1116,11 @@
         var hasNewFav = typeof cur.favorability === "number" && isFinite(cur.favorability);
         var hasOldFav = typeof old.favorability === "number" && isFinite(old.favorability);
         if (!hasNewFav && hasOldFav) cur.favorability = old.favorability;
+        var hasNewVisible = typeof cur.isVisible === "boolean";
+        var hasOldVisible = typeof old.isVisible === "boolean";
+        if (!hasNewVisible && hasOldVisible) cur.isVisible = old.isVisible;
       }
+      if (typeof cur.isVisible !== "boolean") cur.isVisible = true;
       cur.isTemporarilyAway = false;
       merged.push(cur);
       if (k) seen[k] = true;
@@ -1262,7 +1266,7 @@
           ? MCS.normalize(rawNpc)
           : rawNpc;
       if (!npc || !npc.id) continue;
-      var isAway = !!(rawNpc && rawNpc.isTemporarilyAway);
+      var isAway = !!(rawNpc && (rawNpc.isTemporarilyAway || rawNpc.isVisible === false));
 
       var card = document.createElement("button");
       card.type = "button";

@@ -24,7 +24,7 @@
 
   function clampFavorability(v) {
     if (typeof v !== "number" || !isFinite(v)) return 0;
-    return clampInt(v, -100, 100);
+    return clampInt(v, -99, 99);
   }
 
   /**
@@ -95,6 +95,7 @@
       maxMp: maxMp,
       currentHp: currentHp,
       currentMp: currentMp,
+      isVisible: src && src.isVisible === false ? false : true,
     };
     if (typeof src.favorability === "number" && isFinite(src.favorability)) {
       out.favorability = clampFavorability(src.favorability);

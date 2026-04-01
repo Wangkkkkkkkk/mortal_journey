@@ -372,9 +372,15 @@
         gender: n.gender != null ? String(n.gender) : "",
         linggen: n.linggen != null ? String(n.linggen) : "",
         age: typeof n.age === "number" && isFinite(n.age) ? Math.floor(n.age) : null,
+        isVisible:
+          typeof n.isVisible === "boolean"
+            ? n.isVisible
+            : n.isTemporarilyAway
+              ? false
+              : true,
         favorability:
           typeof n.favorability === "number" && isFinite(n.favorability)
-            ? Math.max(-100, Math.min(100, Math.round(n.favorability)))
+            ? Math.max(-99, Math.min(99, Math.round(n.favorability)))
             : null,
         identity: n.identity != null ? String(n.identity) : "",
         currentStageGoal: n.currentStageGoal != null ? String(n.currentStageGoal) : "",
@@ -893,6 +899,54 @@
     return out;
   }
 
+  function npcPresenceKey(npc) {
+    if (!npc || typeof npc !== "object") return "";
+    var id = npc.id != null ? String(npc.id).trim() : "";
+    if (id) return "id:" + id;
+    var dn = npc.displayName != null ? String(npc.displayName).trim() : "";
+    if (dn) return "name:" + dn;
+    return "";
+  }
+
+  function cloneJsonSafe(v) {
+    try {
+      return JSON.parse(JSON.stringify(v));
+    } catch (_e) {
+      return v;
+    }
+  }
+
+  function hasAnyValidSlot(arr) {
+    if (!Array.isArray(arr) || !arr.length) return false;
+    for (var i = 0; i < arr.length; i++) {
+      var cell = arr[i];
+      if (cell && typeof cell === "object") {
+        var nm = cell.name != null ? String(cell.name).trim() : "";
+        if (nm) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 同一 NPC 二次更新时，仅在新数据未提供有效槽位时，回退继承旧战设。
+   * 这样既避免“每回合重抽”，也允许剧情明确的换装/换功法生效。
+   */
+  function inheritStableNpcLoadoutFromPrev(prevNpc, nextNpc) {
+    if (!prevNpc || !nextNpc || typeof prevNpc !== "object" || typeof nextNpc !== "object") return nextNpc;
+    var oldEquip = Array.isArray(prevNpc.equippedSlots) ? prevNpc.equippedSlots : null;
+    var oldGongfa = Array.isArray(prevNpc.gongfaSlots) ? prevNpc.gongfaSlots : null;
+    var nextEquip = Array.isArray(nextNpc.equippedSlots) ? nextNpc.equippedSlots : null;
+    var nextGongfa = Array.isArray(nextNpc.gongfaSlots) ? nextNpc.gongfaSlots : null;
+    if (oldEquip && oldEquip.length && !hasAnyValidSlot(nextEquip)) {
+      nextNpc.equippedSlots = cloneJsonSafe(oldEquip);
+    }
+    if (oldGongfa && oldGongfa.length && !hasAnyValidSlot(nextGongfa)) {
+      nextNpc.gongfaSlots = cloneJsonSafe(oldGongfa);
+    }
+    return nextNpc;
+  }
+
   /** AI 可能只填前几格，补齐与主界面一致的长度后再 normalize */
   function ensureNpcSheetSlotLengths(n) {
     if (!n || typeof n !== "object") return n;
@@ -920,6 +974,13 @@
     var MCS = global.MjCharacterSheet;
     var PBR = global.PlayerBaseRuntime;
     var P = global.MjMainScreenPanel || global.MjMainScreenPanelRealm;
+    var oldList = Array.isArray(G.nearbyNpcs) ? G.nearbyNpcs : [];
+    var oldMap = {};
+    for (var oi = 0; oi < oldList.length; oi++) {
+      var ok = npcPresenceKey(oldList[oi]);
+      if (!ok || oldMap[ok]) continue;
+      oldMap[ok] = oldList[oi];
+    }
     var list = [];
     for (var i = 0; i < arr.length; i++) {
       var raw = arr[i];
@@ -929,6 +990,10 @@
         copy = JSON.parse(JSON.stringify(raw));
       } catch (e0) {
         continue;
+      }
+      var key = npcPresenceKey(copy);
+      if (key && oldMap[key]) {
+        copy = inheritStableNpcLoadoutFromPrev(oldMap[key], copy);
       }
       ensureNpcSheetSlotLengths(copy);
       var n = MCS && typeof MCS.normalize === "function" ? MCS.normalize(copy) : copy;
