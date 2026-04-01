@@ -31,6 +31,7 @@
         <div class="mj-pane-body mj-player-body">
           <div class="mj-player-body-fixed">
           <div class="mj-player-avatar-wrap">
+            <div class="mj-player-name-vertical" id="mj-player-name-vertical">韩立</div>
             <img class="mj-player-avatar hidden" id="mj-player-avatar" src="" alt="角色" width="96" height="96" />
             <div class="mj-player-avatar mj-player-avatar--placeholder" id="mj-player-avatar-placeholder" aria-hidden="true">
               立绘
@@ -214,6 +215,33 @@
           <div id="mj-ai-process-log" class="mj-ai-process-log">
             <div id="mj-ai-process-log-story" class="mj-ai-process-log__line" hidden></div>
             <div id="mj-ai-process-log-state" class="mj-ai-process-log__line" hidden></div>
+          </div>
+        </div>
+        <div class="mj-chat-suggestion-toggle-wrap">
+          <button
+            type="button"
+            id="mj-chat-suggestion-toggle"
+            class="mj-chat-suggestion-toggle-btn"
+            aria-label="展开提示选项"
+            aria-expanded="false"
+          >
+            <span id="mj-chat-suggestion-toggle-icon">⌃</span>
+          </button>
+        </div>
+        <div class="mj-chat-suggestion-wrap" id="mj-chat-suggestion-wrap" aria-label="对话建议选项" hidden>
+          <div class="mj-chat-suggestion-grid">
+            <button type="button" class="mj-chat-suggestion-btn" data-mj-chat-suggestion-level="aggressive">
+              激进
+            </button>
+            <button type="button" class="mj-chat-suggestion-btn" data-mj-chat-suggestion-level="neutral">
+              中立
+            </button>
+            <button type="button" class="mj-chat-suggestion-btn" data-mj-chat-suggestion-level="cautious">
+              保守
+            </button>
+            <button type="button" class="mj-chat-suggestion-btn" data-mj-chat-suggestion-level="very-cautious">
+              最保守
+            </button>
           </div>
         </div>
         <div class="mj-chat-composer">

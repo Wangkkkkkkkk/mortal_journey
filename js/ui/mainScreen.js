@@ -7,6 +7,27 @@
 
   var P = global.MjMainScreenPanel;
   var Chat = global.MjMainScreenChat;
+  var CHAT_SUGGESTION_FALLBACK = {
+    aggressive: "激进",
+    neutral: "中立",
+    cautious: "保守",
+    veryCautious: "最保守",
+  };
+
+  function setChatSuggestions(next) {
+    var obj = next && typeof next === "object" ? next : null;
+    var levels = ["aggressive", "neutral", "cautious", "very-cautious"];
+    for (var i = 0; i < levels.length; i++) {
+      var lv = levels[i];
+      var el = document.querySelector('[data-mj-chat-suggestion-level="' + lv + '"]');
+      if (!el) continue;
+      var key = lv === "very-cautious" ? "veryCautious" : lv;
+      var txt = obj && obj[key] != null ? String(obj[key]).trim() : "";
+      if (!txt) txt = CHAT_SUGGESTION_FALLBACK[key] || "";
+      el.textContent = txt;
+      el.title = txt;
+    }
+  }
 
   function init() {
     P.bindTraitDetailModalUi();
@@ -62,6 +83,43 @@
         Chat.handleChatSend(textarea, sendBtn);
       });
     }
+    var suggestionBtns = document.querySelectorAll("[data-mj-chat-suggestion-level]");
+    var suggestionWrap = document.getElementById("mj-chat-suggestion-wrap");
+    var suggestionToggleBtn = document.getElementById("mj-chat-suggestion-toggle");
+    var suggestionToggleIcon = document.getElementById("mj-chat-suggestion-toggle-icon");
+    if (suggestionWrap && suggestionToggleBtn) {
+      suggestionToggleBtn.addEventListener("click", function () {
+        var willExpand = suggestionWrap.hasAttribute("hidden");
+        if (willExpand) {
+          suggestionWrap.removeAttribute("hidden");
+          suggestionToggleBtn.setAttribute("aria-expanded", "true");
+          suggestionToggleBtn.setAttribute("aria-label", "收起提示选项");
+          if (suggestionToggleIcon) suggestionToggleIcon.textContent = "⌄";
+        } else {
+          suggestionWrap.setAttribute("hidden", "");
+          suggestionToggleBtn.setAttribute("aria-expanded", "false");
+          suggestionToggleBtn.setAttribute("aria-label", "展开提示选项");
+          if (suggestionToggleIcon) suggestionToggleIcon.textContent = "⌃";
+        }
+      });
+    }
+    if (textarea && suggestionBtns && suggestionBtns.length) {
+      for (var si = 0; si < suggestionBtns.length; si++) {
+        (function (btn) {
+          btn.addEventListener("click", function () {
+            var text = String(btn.textContent || "").replace(/\s+/g, " ").trim();
+            if (!text) return;
+            var current = String(textarea.value || "").trim();
+            textarea.value = current ? current + "\n" + text : text;
+            textarea.focus();
+            try {
+              textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            } catch (_esel) {}
+          });
+        })(suggestionBtns[si]);
+      }
+    }
+    setChatSuggestions(null);
 
     console.info("[主界面] 骨架已加载", G);
     if (global.GameLog && typeof global.GameLog.info === "function") {
@@ -164,6 +222,7 @@
   }
 
   global.MainScreen = {
+    setChatSuggestions: setChatSuggestions,
     /** 重新从 DOM 刷新左栏（在修改 MortalJourneyGame 后调用） */
     refreshLeftPanel: function () {
       var fc = global.MortalJourneyGame && global.MortalJourneyGame.fateChoice;

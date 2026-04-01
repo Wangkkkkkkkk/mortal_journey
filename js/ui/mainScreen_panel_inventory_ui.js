@@ -789,6 +789,91 @@
     return true;
   }
 
+  function consumeOneBagItem(G, bagIdx) {
+    if (!G || !Array.isArray(G.inventorySlots)) return false;
+    var bi = Number(bagIdx);
+    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    var it = G.inventorySlots[bi];
+    if (!it || !it.name) return false;
+    var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(0, Math.floor(it.count)) : 1;
+    if (cnt <= 1) G.inventorySlots[bi] = null;
+    else {
+      G.inventorySlots[bi] = R.normalizeBagItem(
+        Object.assign({ name: it.name, count: cnt - 1 }, R.continuityFieldsFromBagItem(it)),
+      );
+    }
+    return true;
+  }
+
+  function resolveRecoverFromEffects(effects) {
+    if (!effects || typeof effects !== "object") return { hp: 0, mp: 0 };
+    var rec = effects.recover && typeof effects.recover === "object" ? effects.recover : null;
+    if (!rec) return { hp: 0, mp: 0 };
+    var hpRaw =
+      typeof rec.hp === "number" && isFinite(rec.hp)
+        ? rec.hp
+        : typeof rec.血量 === "number" && isFinite(rec.血量)
+          ? rec.血量
+          : 0;
+    var mpRaw =
+      typeof rec.mp === "number" && isFinite(rec.mp)
+        ? rec.mp
+        : typeof rec.法力 === "number" && isFinite(rec.法力)
+          ? rec.法力
+          : 0;
+    return {
+      hp: Math.max(0, Math.floor(hpRaw)),
+      mp: Math.max(0, Math.floor(mpRaw)),
+    };
+  }
+
+  function performUsePillFromBag(bagIdx) {
+    var G = global.MortalJourneyGame;
+    if (!G || !Array.isArray(G.inventorySlots)) return false;
+    R.ensureGameRuntimeDefaults(G);
+    var bi = Number(bagIdx);
+    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    var it = G.inventorySlots[bi];
+    if (!it || !it.name) return false;
+    var meta = R.lookupStuffMetaByItemName(it.name);
+    var fromMeta = resolveRecoverFromEffects(meta && meta.effects);
+    var fromItem = resolveRecoverFromEffects(it.effects);
+    var healHp = Math.max(fromMeta.hp, fromItem.hp);
+    var healMp = Math.max(fromMeta.mp, fromItem.mp);
+    if (healHp <= 0 && healMp <= 0) return false;
+
+    var maxHp =
+      typeof G.maxHp === "number" && isFinite(G.maxHp) && G.maxHp > 0
+        ? Math.floor(G.maxHp)
+        : G.playerBase && typeof G.playerBase.hp === "number" && isFinite(G.playerBase.hp)
+          ? Math.max(1, Math.floor(G.playerBase.hp))
+          : 1;
+    var maxMp =
+      typeof G.maxMp === "number" && isFinite(G.maxMp) && G.maxMp > 0
+        ? Math.floor(G.maxMp)
+        : G.playerBase && typeof G.playerBase.mp === "number" && isFinite(G.playerBase.mp)
+          ? Math.max(1, Math.floor(G.playerBase.mp))
+          : 1;
+    var curHp =
+      typeof G.currentHp === "number" && isFinite(G.currentHp)
+        ? Math.max(0, Math.min(maxHp, Math.floor(G.currentHp)))
+        : maxHp;
+    var curMp =
+      typeof G.currentMp === "number" && isFinite(G.currentMp)
+        ? Math.max(0, Math.min(maxMp, Math.floor(G.currentMp)))
+        : maxMp;
+    var nextHp = Math.min(maxHp, curHp + healHp);
+    var nextMp = Math.min(maxMp, curMp + healMp);
+    if (nextHp === curHp && nextMp === curMp) return false;
+
+    if (!consumeOneBagItem(G, bi)) return false;
+    G.currentHp = nextHp;
+    G.currentMp = nextMp;
+    R.persistBootstrapSnapshot();
+    renderLeftPanel(G.fateChoice, G);
+    return true;
+  }
+
   function appendItemDetailActionButtons(bodyEl, actionButtons) {
     if (!bodyEl || !Array.isArray(actionButtons) || !actionButtons.length) return;
     var wrap = document.createElement("div");
@@ -1065,6 +1150,19 @@
         onClick: function () {
           closeItemDetailModal();
           performEquipGongfaFromBag(idx);
+        },
+      });
+    }
+    var recMeta = resolveRecoverFromEffects(stuffMeta && stuffMeta.effects);
+    var recCell = resolveRecoverFromEffects(it.effects);
+    var canUsePill = Math.max(recMeta.hp, recCell.hp) > 0 || Math.max(recMeta.mp, recCell.mp) > 0;
+    if (canUsePill) {
+      actions.push({
+        label: "服用",
+        primary: !hasSpiritStoneCult && wearSlot == null && !isGongfaBagItem,
+        onClick: function () {
+          if (!performUsePillFromBag(idx)) return;
+          closeItemDetailModal();
         },
       });
     }
@@ -1651,6 +1749,16 @@
 
     var realmEl = document.getElementById("mj-realm-line");
     if (realmEl) realmEl.textContent = formatRealmLine(fc, G);
+    var playerNameVerticalEl = document.getElementById("mj-player-name-vertical");
+    if (playerNameVerticalEl) {
+      var pname =
+        fc && fc.playerName != null && String(fc.playerName).trim() !== ""
+          ? String(fc.playerName).trim()
+          : "韩立";
+      playerNameVerticalEl.textContent = pname;
+      playerNameVerticalEl.setAttribute("aria-label", "主角姓名：" + pname);
+      playerNameVerticalEl.setAttribute("title", pname);
+    }
 
     var cultFill = document.getElementById("mj-cultivation-bar-fill");
     var cultBar = document.getElementById("mj-cultivation-bar");

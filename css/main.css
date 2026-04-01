@@ -240,8 +240,32 @@ body.mj-main-body {
 .mj-player-avatar-wrap {
   display: flex;
   justify-content: center;
+  align-items: center;
   margin-bottom: 12px;
   position: relative;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mj-player-name-vertical {
+  position: static;
+  transform: none;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+  letter-spacing: 0.08em;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(232, 197, 71, 0.92);
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  user-select: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 .mj-player-avatar-wrap .mj-player-avatar.hidden {
@@ -1643,6 +1667,99 @@ body.mj-main-body {
   color: #ef9a9a;
 }
 
+.mj-chat-suggestion-wrap {
+  flex-shrink: 0;
+  padding: 8px 14px 10px;
+  border-top: 1px solid rgba(140, 120, 83, 0.15);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.mj-chat-suggestion-toggle-wrap {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  padding: 5px 0;
+  border-top: 1px solid rgba(140, 120, 83, 0.15);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.mj-chat-suggestion-toggle-btn {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(187, 152, 93, 0.45);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 236, 195, 0.18), transparent 45%),
+    linear-gradient(180deg, rgba(102, 81, 47, 0.92), rgba(70, 55, 31, 0.92));
+  color: rgba(248, 234, 201, 0.96);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 0.72rem;
+  box-shadow:
+    0 0 0 1px rgba(20, 14, 8, 0.45) inset,
+    0 1px 4px rgba(0, 0, 0, 0.35);
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    filter 0.2s ease;
+}
+
+.mj-chat-suggestion-toggle-btn:hover {
+  border-color: rgba(216, 178, 106, 0.62);
+  box-shadow:
+    0 0 0 1px rgba(36, 26, 15, 0.5) inset,
+    0 0 0 3px rgba(232, 197, 71, 0.14),
+    0 4px 10px rgba(0, 0, 0, 0.34);
+  filter: brightness(1.05);
+}
+
+.mj-chat-suggestion-toggle-btn:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.mj-chat-suggestion-toggle-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px rgba(36, 26, 15, 0.5) inset,
+    0 0 0 3px rgba(232, 197, 71, 0.2),
+    0 4px 10px rgba(0, 0, 0, 0.34);
+}
+
+.mj-chat-suggestion-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mj-chat-suggestion-btn {
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid rgba(159, 132, 84, 0.45);
+  border-radius: 8px;
+  background: rgba(56, 44, 27, 0.55);
+  color: rgba(238, 224, 191, 0.94);
+  font-size: 0.8rem;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.12s ease;
+}
+
+.mj-chat-suggestion-btn:hover {
+  background: rgba(82, 64, 38, 0.75);
+  border-color: rgba(193, 158, 97, 0.58);
+}
+
+.mj-chat-suggestion-btn:active {
+  transform: translateY(1px);
+}
+
 .mj-chat-composer {
   flex-shrink: 0;
   display: flex;
@@ -1870,6 +1987,10 @@ button.mj-npc-card.mj-npc-card--sheet:focus-visible {
 }
 
 @media (max-width: 640px) {
+  .mj-chat-suggestion-grid {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+
   *::-webkit-scrollbar {
     width: 3px;
     height: 3px;

@@ -141,7 +141,7 @@
       var sec = formatElapsedSec(_chatStatusStart);
       if (_chatStatusStream) return "正在接收「" + kind + "」回复… 已 " + sec + " 秒";
       if (fo.wholeResponseWait) {
-        return "等待「" + kind + "」整段生成… 已 " + sec + " 秒";
+        return "等待「" + kind + "」 已 " + sec + " 秒";
       }
       return "等待「" + kind + "」回复中… 已等待 " + sec + " 秒";
     }
@@ -508,10 +508,23 @@
           SC && typeof SC.stripStoryAiMetaLeakFromNarrative === "function"
             ? SC.stripStoryAiMetaLeakFromNarrative(replyRaw)
             : replyRaw;
+        var actionSuggestions =
+          SC && typeof SC.extractActionSuggestionsFromNarrative === "function"
+            ? SC.extractActionSuggestionsFromNarrative(sansLeak)
+            : null;
+        if (global.MainScreen && typeof global.MainScreen.setChatSuggestions === "function") {
+          try {
+            global.MainScreen.setChatSuggestions(actionSuggestions);
+          } catch (_esugg) {}
+        }
+        var sansSuggestionTags =
+          SC && typeof SC.stripActionSuggestionsFromNarrative === "function"
+            ? SC.stripActionSuggestionsFromNarrative(sansLeak)
+            : sansLeak;
         var replyForChat =
           SC && typeof SC.stripNpcStoryHintsFromNarrative === "function"
-            ? SC.stripNpcStoryHintsFromNarrative(sansLeak)
-            : sansLeak;
+            ? SC.stripNpcStoryHintsFromNarrative(sansSuggestionTags)
+            : sansSuggestionTags;
         var trimmed = replyForChat.replace(/^\uFEFF/, "").trim();
         if (trimmed === "") {
           var hadStream = streamNotified;

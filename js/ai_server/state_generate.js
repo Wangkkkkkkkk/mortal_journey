@@ -123,7 +123,34 @@
     var g = G || global.MortalJourneyGame || {};
     var wt = g.worldTimeString != null ? String(g.worldTimeString).trim() : "";
     var loc = g.currentLocation != null ? String(g.currentLocation).trim() : "";
-    return JSON.stringify({ worldTimeString: wt, currentLocation: loc });
+    var maxHp =
+      typeof g.maxHp === "number" && isFinite(g.maxHp)
+        ? Math.max(1, Math.floor(g.maxHp))
+        : g.playerBase && typeof g.playerBase.hp === "number" && isFinite(g.playerBase.hp)
+          ? Math.max(1, Math.floor(g.playerBase.hp))
+          : 1;
+    var maxMp =
+      typeof g.maxMp === "number" && isFinite(g.maxMp)
+        ? Math.max(1, Math.floor(g.maxMp))
+        : g.playerBase && typeof g.playerBase.mp === "number" && isFinite(g.playerBase.mp)
+          ? Math.max(1, Math.floor(g.playerBase.mp))
+          : 1;
+    var curHp =
+      typeof g.currentHp === "number" && isFinite(g.currentHp)
+        ? Math.max(0, Math.min(maxHp, Math.floor(g.currentHp)))
+        : maxHp;
+    var curMp =
+      typeof g.currentMp === "number" && isFinite(g.currentMp)
+        ? Math.max(0, Math.min(maxMp, Math.floor(g.currentMp)))
+        : maxMp;
+    return JSON.stringify({
+      worldTimeString: wt,
+      currentLocation: loc,
+      currentHp: curHp,
+      currentMp: curMp,
+      maxHp: maxHp,
+      maxMp: maxMp,
+    });
   }
 
   function ensureInventoryShape(G) {
@@ -390,6 +417,10 @@
         hobby: n.hobby != null ? String(n.hobby) : "",
         fear: n.fear != null ? String(n.fear) : "",
         personality: n.personality != null ? String(n.personality) : "",
+        maxHp: typeof n.maxHp === "number" && isFinite(n.maxHp) ? Math.max(1, Math.floor(n.maxHp)) : null,
+        maxMp: typeof n.maxMp === "number" && isFinite(n.maxMp) ? Math.max(1, Math.floor(n.maxMp)) : null,
+        currentHp: typeof n.currentHp === "number" && isFinite(n.currentHp) ? Math.max(0, Math.floor(n.currentHp)) : null,
+        currentMp: typeof n.currentMp === "number" && isFinite(n.currentMp) ? Math.max(0, Math.floor(n.currentMp)) : null,
       };
       compact.push(row);
     }
@@ -890,6 +921,25 @@
     if (patch.currentLocation != null && String(patch.currentLocation).trim() !== "") {
       G.currentLocation = String(patch.currentLocation).trim();
       out.appliedLocation = true;
+    }
+
+    var maxHpNow =
+      typeof G.maxHp === "number" && isFinite(G.maxHp)
+        ? Math.max(1, Math.floor(G.maxHp))
+        : G.playerBase && typeof G.playerBase.hp === "number" && isFinite(G.playerBase.hp)
+          ? Math.max(1, Math.floor(G.playerBase.hp))
+          : 1;
+    var maxMpNow =
+      typeof G.maxMp === "number" && isFinite(G.maxMp)
+        ? Math.max(1, Math.floor(G.maxMp))
+        : G.playerBase && typeof G.playerBase.mp === "number" && isFinite(G.playerBase.mp)
+          ? Math.max(1, Math.floor(G.playerBase.mp))
+          : 1;
+    if (patch.currentHp != null && typeof patch.currentHp === "number" && isFinite(patch.currentHp)) {
+      G.currentHp = Math.max(0, Math.min(maxHpNow, Math.floor(patch.currentHp)));
+    }
+    if (patch.currentMp != null && typeof patch.currentMp === "number" && isFinite(patch.currentMp)) {
+      G.currentMp = Math.max(0, Math.min(maxMpNow, Math.floor(patch.currentMp)));
     }
 
     return out;

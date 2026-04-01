@@ -194,6 +194,8 @@
   /** 剧情文末：新出场人物一句话战设简介，供状态 AI 映射到功法/装备表（与 state_generate 解析成对） */
   var NPC_STORY_HINTS_TAG_OPEN = "<mj_npc_story_hints>";
   var NPC_STORY_HINTS_TAG_CLOSE = "</mj_npc_story_hints>";
+  var ACTION_SUGGESTIONS_TAG_OPEN = "<mj_action_suggestions>";
+  var ACTION_SUGGESTIONS_TAG_CLOSE = "</mj_action_suggestions>";
 
   /** system 内各大块之间的分隔（便于模型与人类阅读日志） */
   var SYSTEM_BLOCK_SEPARATOR = "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
@@ -206,6 +208,37 @@
     // 与 NPC_STORY_HINTS_TAG_OPEN/CLOSE 同名；用字面量避免 RegExp 拼接遗漏转义
     var re = /<mj_npc_story_hints\s*>\s*[\s\S]*?<\/mj_npc_story_hints\s*>/gi;
     return raw.replace(re, "").trim();
+  }
+
+  function stripActionSuggestionsFromNarrative(text) {
+    var raw = String(text || "");
+    var re = /<mj_action_suggestions\s*>\s*[\s\S]*?<\/mj_action_suggestions\s*>/gi;
+    return raw.replace(re, "").trim();
+  }
+
+  function extractActionSuggestionsFromNarrative(text) {
+    var raw = String(text || "");
+    var out = {
+      aggressive: "",
+      neutral: "",
+      cautious: "",
+      veryCautious: "",
+    };
+    var m = /<mj_action_suggestions\s*>([\s\S]*?)<\/mj_action_suggestions\s*>/i.exec(raw);
+    if (!m || !m[1]) return out;
+    var body = String(m[1]).trim();
+    if (!body) return out;
+    try {
+      var obj = JSON.parse(body);
+      if (!obj || typeof obj !== "object") return out;
+      if (obj.aggressive != null) out.aggressive = String(obj.aggressive).trim();
+      if (obj.neutral != null) out.neutral = String(obj.neutral).trim();
+      if (obj.cautious != null) out.cautious = String(obj.cautious).trim();
+      if (obj.veryCautious != null) out.veryCautious = String(obj.veryCautious).trim();
+      return out;
+    } catch (_e) {
+      return out;
+    }
   }
 
   /**
@@ -268,6 +301,8 @@
     var ruleVars = {
       NPC_TAG_OPEN: NPC_STORY_HINTS_TAG_OPEN,
       NPC_TAG_CLOSE: NPC_STORY_HINTS_TAG_CLOSE,
+      ACTION_SUGGESTIONS_TAG_OPEN: ACTION_SUGGESTIONS_TAG_OPEN,
+      ACTION_SUGGESTIONS_TAG_CLOSE: ACTION_SUGGESTIONS_TAG_CLOSE,
       LSV: lsv,
     };
     var runtimeRuleBlocks = getActiveRuntimeRuleBlocks(ruleVars);
@@ -301,6 +336,19 @@
       else profile.push("修为：" + xw);
     }
     if (fc && fc.gender) profile.push("性别：" + String(fc.gender));
+    var playerName =
+      fc && fc.playerName != null && String(fc.playerName).trim() !== ""
+        ? String(fc.playerName).trim()
+        : "主角姓名";
+    profile.push("主角姓名：" + playerName);
+    var npRaw =
+      fc && fc.narrationPerson != null && String(fc.narrationPerson).trim() !== ""
+        ? String(fc.narrationPerson).trim()
+        : "second";
+    var narrationLabel = "第二人称（你）";
+    if (npRaw === "first") narrationLabel = "第一人称（我）";
+    else if (npRaw === "third") narrationLabel = "第三人称（" + playerName + "）";
+    profile.push("叙事人称偏好：" + narrationLabel);
     if (G && G.age != null) profile.push("年龄：" + String(G.age));
     if (G && G.shouyuan != null) profile.push("寿元：" + String(G.shouyuan));
     if (fc && fc.birthLocation) profile.push("出生地：" + String(fc.birthLocation));
@@ -471,7 +519,11 @@
     sendTurn: sendTurn,
     NPC_STORY_HINTS_TAG_OPEN: NPC_STORY_HINTS_TAG_OPEN,
     NPC_STORY_HINTS_TAG_CLOSE: NPC_STORY_HINTS_TAG_CLOSE,
+    ACTION_SUGGESTIONS_TAG_OPEN: ACTION_SUGGESTIONS_TAG_OPEN,
+    ACTION_SUGGESTIONS_TAG_CLOSE: ACTION_SUGGESTIONS_TAG_CLOSE,
     stripNpcStoryHintsFromNarrative: stripNpcStoryHintsFromNarrative,
+    stripActionSuggestionsFromNarrative: stripActionSuggestionsFromNarrative,
+    extractActionSuggestionsFromNarrative: extractActionSuggestionsFromNarrative,
     stripStoryAiMetaLeakFromNarrative: stripStoryAiMetaLeakFromNarrative,
   };
 })(typeof window !== "undefined" ? window : globalThis);

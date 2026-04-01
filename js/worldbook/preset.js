@@ -24,7 +24,14 @@
    */
 
   /** 规则类预设（与普通剧情预设同层存放在 presets 内） */
-  var STORY_RULE_PRESET_IDS = ["outputFormat", "bagNarrative", "valueScale", "npcStoryHints", "npc_story_rules"];
+  var STORY_RULE_PRESET_IDS = [
+    "outputFormat",
+    "bagNarrative",
+    "valueScale",
+    "npcStoryHints",
+    "npc_story_rules",
+    "action_suggestions",
+  ];
 
   function getContentRoot() {
     var c = global.MortalJourneyPresetContent;

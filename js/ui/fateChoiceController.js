@@ -23,6 +23,7 @@
     selectedBirth: null,
     customBirth: null,
     selectedGender: null,
+    narrationPerson: "second",
     playerName: "韩立",
     attributes: {},
     selectedTraits: [],
@@ -86,6 +87,7 @@
     state.selectedBirth = null;
     state.customBirth = null;
     state.selectedGender = null;
+    state.narrationPerson = "second";
     state.playerName = "韩立";
     state.attributes = {};
     state.selectedTraits = [];
@@ -534,6 +536,32 @@
       escapeHtml(state.playerName || "韩立") +
       '" style="width:100%;height:48px;border-radius:10px;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.28);color:#f3e8c8;padding:0 14px;font-size:16px;outline:none;" />' +
       "</div>" +
+      '<div class="creation-section-title"><i class="fas fa-pen-fancy"></i> 叙事人称</div>' +
+      '<div class="creation-grid">' +
+      [
+        { key: "first", title: "第一人称", desc: "我" },
+        { key: "second", title: "第二人称", desc: "你" },
+        { key: "third", title: "第三人称", desc: String(state.playerName || "韩立") },
+      ]
+        .map(function (row) {
+          var selected = state.narrationPerson === row.key;
+          return (
+            '<div class="creation-card ' +
+            (selected ? "selected" : "") +
+            '" data-narration-person="' +
+            row.key +
+            '">' +
+            "<h4>" +
+            row.title +
+            "</h4>" +
+            "<p>" +
+            escapeHtml(row.desc) +
+            "</p>" +
+            "</div>"
+          );
+        })
+        .join("") +
+      "</div>" +
       '<div class="creation-section-title"><i class="fas fa-venus-mars"></i> 性别</div>' +
       '<div class="creation-grid">' +
       Object.keys(c.GENDERS || {})
@@ -709,6 +737,14 @@
     contentEl.querySelectorAll("[data-gender]").forEach(function (card) {
       card.addEventListener("click", function () {
         state.selectedGender = card.getAttribute("data-gender");
+        renderPage();
+      });
+    });
+    contentEl.querySelectorAll("[data-narration-person]").forEach(function (card) {
+      card.addEventListener("click", function () {
+        var next = String(card.getAttribute("data-narration-person") || "").trim();
+        if (!next) return;
+        state.narrationPerson = next;
         renderPage();
       });
     });
@@ -897,6 +933,7 @@
       var payload = {
       difficulty: state.selectedDifficulty,
       playerName: String(state.playerName || "").trim() || "韩立",
+      narrationPerson: state.narrationPerson === "first" || state.narrationPerson === "third" ? state.narrationPerson : "second",
       gender: state.selectedGender,
       birth: state.selectedBirth,
       customBirth: state.customBirth,
