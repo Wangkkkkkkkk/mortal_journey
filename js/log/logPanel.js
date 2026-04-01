@@ -7,11 +7,26 @@
   "use strict";
 
   /**
-   * 是否挂载左下角「调试日志」面板（仅改此处即可，无界面开关）。
-   * - false：发布/面向用户；不占屏幕，GameLog 仍会写到浏览器开发者工具控制台。
-   * - true：研发调试；显示面板并可按原逻辑接管 console（mirror 到面板）。
+   * 是否挂载左下角「调试日志」面板（无界面开关）。
+   * - false：不占屏幕，GameLog 仍写入浏览器控制台。
+   * - true：研发调试；显示面板并可接管 console。
+   *
+   * GitHub Pages（hostname 以 .github.io 结尾）会强制视为 false，避免线上仍加载到浏览器缓存里的旧脚本把面板打开。
+   * 若要在线上临时看面板：在页面 URL 后加参数 mjDebugLog=1（例如 .../mortal_journey/?mjDebugLog=1）。
    */
   var MJ_GAME_LOG_PANEL_UI_ENABLED = false;
+
+  (function applyHostRuleForLogPanel() {
+    try {
+      var loc = global.location;
+      if (!loc || !loc.hostname) return;
+      var host = String(loc.hostname);
+      var onGithubPages = /\.github\.io$/i.test(host);
+      if (!onGithubPages) return;
+      var forceDebug = /[?&]mjDebugLog=1(?:&|$)/.test(String(loc.search || ""));
+      MJ_GAME_LOG_PANEL_UI_ENABLED = !!forceDebug;
+    } catch (_eHost) {}
+  })();
 
   var MAX_LINES = 500;
   var PANEL_ID = "mj-log-panel";
