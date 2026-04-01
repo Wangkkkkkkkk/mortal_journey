@@ -123,7 +123,11 @@
 
     console.info("[主界面] 骨架已加载", G);
     if (global.GameLog && typeof global.GameLog.info === "function") {
-      global.GameLog.info("[主界面] 已加载；左下角可展开调试日志面板。");
+      global.GameLog.info(
+        global.GameLog.panelUiEnabled
+          ? "[主界面] 已加载；左下角可展开调试日志面板。"
+          : "[主界面] 已加载。",
+      );
     }
 
     var backBtn = document.getElementById("mj-back-to-splash-btn");

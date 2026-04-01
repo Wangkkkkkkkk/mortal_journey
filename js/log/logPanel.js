@@ -6,6 +6,13 @@
 (function (global) {
   "use strict";
 
+  /**
+   * 是否挂载左下角「调试日志」面板（仅改此处即可，无界面开关）。
+   * - false：发布/面向用户；不占屏幕，GameLog 仍会写到浏览器开发者工具控制台。
+   * - true：研发调试；显示面板并可按原逻辑接管 console（mirror 到面板）。
+   */
+  var MJ_GAME_LOG_PANEL_UI_ENABLED = false;
+
   var MAX_LINES = 500;
   var PANEL_ID = "mj-log-panel";
 
@@ -49,6 +56,7 @@
   }
 
   function ensurePanel() {
+    if (!MJ_GAME_LOG_PANEL_UI_ENABLED) return;
     if (document.getElementById(PANEL_ID)) return;
 
     var panel = document.createElement("div");
@@ -92,7 +100,28 @@
     GameLog._refs = { panel: panel, body: bodyEl, autoScroll: autoScrollEl };
   }
 
+  function emitToNativeConsole(level, message) {
+    var c = global.console;
+    if (!c) return;
+    var L = String(level || "log").toLowerCase();
+    var fn =
+      L === "error" && c.error
+        ? c.error
+        : L === "warn" && c.warn
+          ? c.warn
+          : L === "debug" && c.debug
+            ? c.debug
+            : L === "info" && c.info
+              ? c.info
+              : c.log;
+    if (fn && typeof fn === "function") fn.call(c, message);
+  }
+
   function renderLine(level, message) {
+    if (!MJ_GAME_LOG_PANEL_UI_ENABLED) {
+      emitToNativeConsole(level, message);
+      return;
+    }
     ensurePanel();
     var refs = GameLog._refs;
     if (!refs || !refs.body) return;
@@ -127,6 +156,7 @@
   }
 
   function applyCollapsedUI() {
+    if (!MJ_GAME_LOG_PANEL_UI_ENABLED) return;
     var refs = GameLog._refs;
     if (!refs || !refs.panel) return;
     var panel = refs.panel;
@@ -149,10 +179,14 @@
   var GameLog = {
     _refs: null,
 
+    /** 与 MJ_GAME_LOG_PANEL_UI_ENABLED 一致；供其他脚本判断是否展示过面板提示等 */
+    panelUiEnabled: MJ_GAME_LOG_PANEL_UI_ENABLED,
+
     /** 最大保留条数 */
     maxLines: MAX_LINES,
 
     init: function (options) {
+      if (!MJ_GAME_LOG_PANEL_UI_ENABLED) return this;
       options = options || {};
       ensurePanel();
       if (options.collapsed === true) {
@@ -167,22 +201,26 @@
     },
 
     toggle: function () {
+      if (!MJ_GAME_LOG_PANEL_UI_ENABLED) return;
       _collapsed = !_collapsed;
       applyCollapsedUI();
     },
 
     setCollapsed: function (collapsed) {
+      if (!MJ_GAME_LOG_PANEL_UI_ENABLED) return;
       _collapsed = !!collapsed;
       applyCollapsedUI();
     },
 
     clear: function () {
+      if (!MJ_GAME_LOG_PANEL_UI_ENABLED) return;
       _lines = [];
       var refs = this._refs;
       if (refs && refs.body) refs.body.innerHTML = "";
     },
 
     copyAll: function () {
+      if (!MJ_GAME_LOG_PANEL_UI_ENABLED) return;
       var text = _lines
         .map(function (row) {
           return row.time + " " + row.level.toUpperCase() + " " + row.text;
@@ -214,7 +252,7 @@
     },
 
     installConsoleBridge: function () {
-      if (_bridgeInstalled) return;
+      if (!MJ_GAME_LOG_PANEL_UI_ENABLED || _bridgeInstalled) return;
       var c = console;
       _origConsole.log = c.log ? c.log.bind(c) : function () {};
       _origConsole.info = c.info ? c.info.bind(c) : _origConsole.log;
@@ -273,7 +311,9 @@
 
   function autoStart() {
     function run() {
-      GameLog.init({ captureConsole: true, collapsed: false });
+      if (MJ_GAME_LOG_PANEL_UI_ENABLED) {
+        GameLog.init({ captureConsole: true, collapsed: false });
+      }
     }
     if (document.body) run();
     else document.addEventListener("DOMContentLoaded", run);
