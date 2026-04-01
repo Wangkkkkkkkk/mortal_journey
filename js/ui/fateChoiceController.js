@@ -23,6 +23,7 @@
     selectedBirth: null,
     customBirth: null,
     selectedGender: null,
+    playerName: "韩立",
     attributes: {},
     selectedTraits: [],
     currentTraitOptions: [],
@@ -85,6 +86,7 @@
     state.selectedBirth = null;
     state.customBirth = null;
     state.selectedGender = null;
+    state.playerName = "韩立";
     state.attributes = {};
     state.selectedTraits = [];
     state.currentTraitOptions = [];
@@ -526,6 +528,12 @@
       '<div class="creation-step-subtitle">按顺序完成配置后，直接开始人生</div>' +
       "</div>" +
       "</div>" +
+      '<div class="creation-section-title"><i class="fas fa-user"></i> 姓名</div>' +
+      '<div style="max-width:620px;">' +
+      '<input id="player-name-input" type="text" maxlength="24" placeholder="请输入姓名" value="' +
+      escapeHtml(state.playerName || "韩立") +
+      '" style="width:100%;height:48px;border-radius:10px;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.28);color:#f3e8c8;padding:0 14px;font-size:16px;outline:none;" />' +
+      "</div>" +
       '<div class="creation-section-title"><i class="fas fa-venus-mars"></i> 性别</div>' +
       '<div class="creation-grid">' +
       Object.keys(c.GENDERS || {})
@@ -705,6 +713,19 @@
       });
     });
 
+    var playerNameInput = getEl("player-name-input");
+    if (playerNameInput) {
+      playerNameInput.addEventListener("input", function () {
+        var nm = String(playerNameInput.value || "").trim().replace(/\s+/g, " ");
+        state.playerName = nm || "韩立";
+      });
+      playerNameInput.addEventListener("blur", function () {
+        var nm2 = String(playerNameInput.value || "").trim().replace(/\s+/g, " ");
+        state.playerName = nm2 || "韩立";
+        playerNameInput.value = state.playerName;
+      });
+    }
+
     var randomBtn = getEl("randomize-linggen-btn");
     if (randomBtn) randomBtn.addEventListener("click", handleRandomizeLinggen);
 
@@ -813,12 +834,13 @@
     function askSaveNameAsync() {
       var title = "开始人生";
       var msg = "请输入存档名称（必填）：";
+      var defaultSaveName = String(state.playerName || "").trim() || "韩立";
       if (global.MjUiDialogs && typeof global.MjUiDialogs.prompt === "function") {
         return global.MjUiDialogs.prompt(title, msg, {
           okText: "开始",
           cancelText: "取消",
           placeholder: "例如：第一世",
-          defaultValue: "",
+          defaultValue: defaultSaveName,
           inputType: "text",
           validate: function (raw) {
             var nm = normalizeSaveName(raw);
@@ -837,7 +859,7 @@
           },
         });
       }
-      return Promise.resolve(window.prompt(msg, ""));
+      return Promise.resolve(window.prompt(msg, defaultSaveName));
     }
 
     function continueStartWithSaveName(saveNameRaw) {
@@ -874,6 +896,7 @@
 
       var payload = {
       difficulty: state.selectedDifficulty,
+      playerName: String(state.playerName || "").trim() || "韩立",
       gender: state.selectedGender,
       birth: state.selectedBirth,
       customBirth: state.customBirth,

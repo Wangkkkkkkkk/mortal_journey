@@ -158,6 +158,8 @@
     if (!o.equipType && entry.type != null && String(entry.type).trim() !== "") {
       o.type = String(entry.type).trim();
     }
+    if (entry.subtype != null && String(entry.subtype).trim() !== "") o.subtype = String(entry.subtype).trim();
+    else if (entry.subType != null && String(entry.subType).trim() !== "") o.subType = String(entry.subType).trim();
     if (entry.bonus && typeof entry.bonus === "object" && Object.keys(entry.bonus).length > 0) {
       o.bonus = entry.bonus;
     }
@@ -435,6 +437,8 @@
     var o = { name: name };
     if (cell.desc != null && String(cell.desc).trim() !== "") o.desc = String(cell.desc);
     if (cell.type != null && String(cell.type).trim() !== "") o.type = String(cell.type);
+    if (cell.subtype != null && String(cell.subtype).trim() !== "") o.subtype = String(cell.subtype).trim();
+    else if (cell.subType != null && String(cell.subType).trim() !== "") o.subType = String(cell.subType).trim();
     if (cell.grade != null && String(cell.grade).trim() !== "") o.grade = String(cell.grade);
     return o;
   }

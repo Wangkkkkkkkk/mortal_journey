@@ -169,6 +169,8 @@
       bonus: src.bonus && typeof src.bonus === "object" ? Object.assign({}, src.bonus) : {},
     };
     if (src.type != null && String(src.type).trim() !== "") out.type = String(src.type).trim();
+    if (src.subtype != null && String(src.subtype).trim() !== "") out.subtype = String(src.subtype).trim();
+    else if (src.subType != null && String(src.subType).trim() !== "") out.subType = String(src.subType).trim();
     if (typeof src.value === "number" && isFinite(src.value)) out.value = src.value;
     if (src.grade != null && String(src.grade).trim() !== "") out.grade = String(src.grade).trim();
     var eff = cloneDescribeEffects(src.effects, src);
@@ -375,7 +377,19 @@
         : base.type && String(base.type).trim() !== ""
           ? String(base.type).trim()
           : "";
-    return { desc: desc, bonus: bonus, type: ty };
+    var st =
+      patch.subtype != null && String(patch.subtype).trim() !== ""
+        ? String(patch.subtype).trim()
+        : patch.subType != null && String(patch.subType).trim() !== ""
+          ? String(patch.subType).trim()
+          : base.subtype && String(base.subtype).trim() !== ""
+            ? String(base.subtype).trim()
+            : base.subType && String(base.subType).trim() !== ""
+              ? String(base.subType).trim()
+              : "";
+    var out = { desc: desc, bonus: bonus, type: ty };
+    if (st) out.subType = st;
+    return out;
   }
 
   /** 按出身生成储物袋 12 格；stuff 为字符串数组，或对象 { 物品名: 数量 | 覆盖对象 } */
@@ -492,6 +506,8 @@
         }
         var cell = { name: title, desc: gi.desc || "" };
         if (gi.type) cell.type = gi.type;
+        if (gi.subtype != null && String(gi.subtype).trim() !== "") cell.subType = String(gi.subtype).trim();
+        else if (gi.subType != null && String(gi.subType).trim() !== "") cell.subType = String(gi.subType).trim();
         arr[idx++] = cell;
       }
       return arr;
@@ -503,6 +519,7 @@
         var merged = mergeGongfaMeta(t2, birth.gongfa[t2]);
         var cell2 = { name: t2, desc: merged.desc };
         if (merged.type) cell2.type = merged.type;
+        if (merged.subType) cell2.subType = merged.subType;
         arr[idx++] = cell2;
       }
     }

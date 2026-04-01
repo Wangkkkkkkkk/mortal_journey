@@ -8,7 +8,8 @@
   global.MjDescribeGongfa = {
     眨眼剑法: {
       desc: "眨眼剑法是七玄门的入门剑法",
-      type: "攻击",
+      type: "功法",
+      subType: "攻击",
       grade: "下品",
       value: 20,
       bonus: { 法攻: 5 },
@@ -17,7 +18,8 @@
     },
     青元剑诀: {
       desc: "攻防一体，是优秀的剑术功法",
-      type: "攻击",
+      type: "功法",
+      subType: "攻击",
       grade: "中品",
       value: 100,
       bonus: { 法攻: 5, 法防: 5 },
@@ -26,7 +28,8 @@
     },
     长春功: {
       desc: "长春功是七玄门的入门功法，修炼后可以增加血量",
-      type: "辅助",
+      type: "功法",
+      subType: "辅助",
       grade: "下品",
       value: 20,
       bonus: { 血量: 20 },
@@ -34,7 +37,8 @@
 
     凝元功: {
       desc: "凝元功是黄枫谷的入门功法，辅助性功法，主要作用是巩固修为、凝聚法力",
-      type: "辅助",
+      type: "功法",
+      subType: "辅助",
       grade: "下品",
       value: 20,
       bonus: { 法力: 10 },

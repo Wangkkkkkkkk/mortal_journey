@@ -227,12 +227,7 @@
         el.classList.add("mj-gongfa-slot--filled");
         if (inner) inner.textContent = String(label);
         var cfgGf = R.lookupGongfaConfigDef(String(label));
-        var tyRaw =
-          item && item.type != null && String(item.type).trim() !== ""
-            ? String(item.type).trim()
-            : cfgGf && cfgGf.type != null
-              ? String(cfgGf.type).trim()
-              : "";
+        var tyRaw = resolveGongfaSubtype(item, cfgGf);
         if (typeSpan) {
           typeSpan.textContent = tyRaw;
           typeSpan.className = "mj-gongfa-slot-type";
@@ -324,6 +319,37 @@
     var C = global.MjCreationConfig;
     if (!C || typeof C.getGongfaDescribe !== "function") return null;
     return C.getGongfaDescribe(String(gongfaName).trim());
+  }
+
+  function resolveGongfaSubtype(rawItem, cfgGf) {
+    var it = rawItem && typeof rawItem === "object" ? rawItem : {};
+    var meta = cfgGf && typeof cfgGf === "object" ? cfgGf : null;
+    var st =
+      it.subtype != null && String(it.subtype).trim() !== ""
+        ? String(it.subtype).trim()
+        : it.subType != null && String(it.subType).trim() !== ""
+          ? String(it.subType).trim()
+          : meta && meta.subtype != null && String(meta.subtype).trim() !== ""
+            ? String(meta.subtype).trim()
+            : meta && meta.subType != null && String(meta.subType).trim() !== ""
+              ? String(meta.subType).trim()
+              : "";
+    if (st) return st;
+    var ty =
+      it.type != null && String(it.type).trim() !== ""
+        ? String(it.type).trim()
+        : meta && meta.type != null
+          ? String(meta.type).trim()
+          : "";
+    return ty === "攻击" || ty === "辅助" ? ty : "";
+  }
+
+  function isBagItemGongfaCandidate(it, cfgGf) {
+    if (cfgGf) return true;
+    var ty = it && it.type != null ? String(it.type).trim() : "";
+    if (ty === "功法") return true;
+    var st = resolveGongfaSubtype(it, cfgGf);
+    return st === "攻击" || st === "辅助";
   }
 
   /** 按装备名匹配 equipment 元数据 { desc, type, bonus } */
@@ -490,13 +516,9 @@
           ? String(cfgGf.grade).trim()
           : "";
     if (gr) o.grade = gr;
-    var ty =
-      item.type != null && String(item.type).trim() !== ""
-        ? String(item.type).trim()
-        : cfgGf && cfgGf.type != null
-          ? String(cfgGf.type).trim()
-          : "";
-    if (ty) o.type = ty;
+    o.type = "功法";
+    var ty = resolveGongfaSubtype(item, cfgGf);
+    if (ty) o.subtype = ty;
     if (item.bonus && typeof item.bonus === "object" && Object.keys(item.bonus).length > 0) {
       o.bonus = Object.assign({}, item.bonus);
     } else if (
@@ -518,17 +540,13 @@
   /** 储物袋功法书 → 功法栏对象（合并格子与功法表） */
   function bagItemToGongfaBarObject(it, cfgGf) {
     var nm = String(it.name).trim();
-    var ty =
-      it.type != null && String(it.type).trim() !== ""
-        ? String(it.type).trim()
-        : cfgGf && cfgGf.type != null
-          ? String(cfgGf.type).trim()
-          : "";
     var descStr = "";
     if (it.desc != null && String(it.desc).trim() !== "") descStr = String(it.desc).trim();
     else if (cfgGf && cfgGf.desc != null) descStr = String(cfgGf.desc).trim();
     var gfObj = { name: nm, desc: descStr };
-    if (ty) gfObj.type = ty;
+    gfObj.type = "功法";
+    var ty = resolveGongfaSubtype(it, cfgGf);
+    if (ty) gfObj.subtype = ty;
     var gGr =
       it.grade != null && String(it.grade).trim() !== ""
         ? String(it.grade).trim()
@@ -592,7 +610,7 @@
     if (!it || !it.name) return false;
     var nm = String(it.name).trim();
     var cfgGf = R.lookupGongfaConfigDef(nm);
-    if (!cfgGf) return false;
+    if (!isBagItemGongfaCandidate(it, cfgGf)) return false;
 
     var j = findFirstEmptyGongfaSlot(G);
     if (j < 0) {
@@ -898,12 +916,7 @@
     var descRuntime = item.desc != null ? String(item.desc).trim() : "";
     var descCfg = cfgDef && cfgDef.desc != null ? String(cfgDef.desc).trim() : "";
     var desc = descRuntime || descCfg || "";
-    var tyShow =
-      item.type != null && String(item.type).trim() !== ""
-        ? String(item.type).trim()
-        : cfgDef && cfgDef.type != null
-          ? String(cfgDef.type).trim()
-          : "";
+    var tyShow = resolveGongfaSubtype(item, cfgDef);
     var sections = [];
     if (tyShow) sections.push({ label: "类型", text: tyShow });
     if (desc) sections.push({ label: "简介", text: desc });
@@ -965,24 +978,10 @@
       (eqMeta && eqMeta.desc != null ? String(eqMeta.desc).trim() : "");
     var desc = descRuntime || descCfg || "";
     var sections = [];
-    if (desc) sections.push({ label: "简介", text: desc });
-    else sections.push({ label: "简介", text: "暂无详细描述。" });
-    if (stuffMeta && stuffMeta.grade != null && String(stuffMeta.grade).trim() !== "") {
-      sections.push({ label: "品级", text: String(stuffMeta.grade).trim() });
-    } else if (it.grade != null && String(it.grade).trim() !== "") {
-      sections.push({ label: "品级", text: String(it.grade).trim() });
-    } else if (gfMeta && gfMeta.grade != null && String(gfMeta.grade).trim() !== "") {
-      sections.push({ label: "品级", text: String(gfMeta.grade).trim() });
-    }
-    if (
-      stuffMeta &&
-      stuffMeta.type != null &&
-      String(stuffMeta.type).trim() !== "" &&
-      !eqMeta
-    ) {
-      sections.push({ label: "类型", text: String(stuffMeta.type).trim() });
-    } else if (!eqMeta && it.type != null && String(it.type).trim() !== "") {
-      sections.push({ label: "类型", text: String(it.type).trim() });
+    var isGongfaBagItem = isBagItemGongfaCandidate(it, gfMeta);
+    var gongfaSubtypeText = isGongfaBagItem ? resolveGongfaSubtype(it, gfMeta) : "";
+    if (isGongfaBagItem && gongfaSubtypeText) {
+      sections.push({ label: "类型", text: gongfaSubtypeText });
     }
     var wearSlot = resolveWearableSlotIndexForBagItem(it);
     if (wearSlot != null) {
@@ -993,8 +992,17 @@
           : EQUIP_SLOT_KIND_LABELS[wearSlot] || "装备";
       sections.push({ label: "佩戴部位", text: tyShow });
     }
+    if (desc) sections.push({ label: "简介", text: desc });
+    else sections.push({ label: "简介", text: "暂无详细描述。" });
+    if (stuffMeta && stuffMeta.grade != null && String(stuffMeta.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(stuffMeta.grade).trim() });
+    } else if (it.grade != null && String(it.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(it.grade).trim() });
+    } else if (gfMeta && gfMeta.grade != null && String(gfMeta.grade).trim() !== "") {
+      sections.push({ label: "品级", text: String(gfMeta.grade).trim() });
+    }
     var bonusStuff = stuffMeta && stuffMeta.bonus ? formatStuffBonusForDisplay(stuffMeta.bonus) : "";
-    if (!bonusStuff && wearSlot == null && !eqMeta && it.bonus && typeof it.bonus === "object") {
+    if (!bonusStuff && wearSlot == null && !eqMeta && !isGongfaBagItem && it.bonus && typeof it.bonus === "object") {
       bonusStuff = formatStuffBonusForDisplay(it.bonus);
     }
     var bonusEq = eqMeta && eqMeta.bonus ? formatZhBonusObject(eqMeta.bonus) : "";
@@ -1009,12 +1017,16 @@
     }
     if (pillFx) sections.push({ label: "药效", text: pillFx });
     if (bonusEq) sections.push({ label: "属性加成", text: bonusEq });
-    if (gfMeta) {
-      if (gfMeta.type != null && String(gfMeta.type).trim() !== "") {
-        sections.push({ label: "功法类型", text: String(gfMeta.type).trim() });
-      }
+    if (isGongfaBagItem) {
       var gfBonusLine = gfMeta.bonus ? formatZhBonusObject(gfMeta.bonus) : "";
+      if (!gfBonusLine && it.bonus && typeof it.bonus === "object") {
+        gfBonusLine = formatZhBonusObject(it.bonus);
+      }
       if (gfBonusLine) sections.push({ label: "修炼加成", text: gfBonusLine });
+      var gfMagLine = R.resolveGongfaMagnificationLine(it.name, it, gfMeta);
+      if (gfMagLine) sections.push({ label: "伤害倍率", text: gfMagLine });
+      var gfManaCost = R.resolveGongfaManacostLine(it.name, it, gfMeta);
+      if (gfManaCost) sections.push({ label: "法力消耗", text: gfManaCost });
     }
     var refNum =
       typeof it.value === "number" && isFinite(it.value)
@@ -1022,7 +1034,9 @@
         : R.pickDescribeValueFromMetas(stuffMeta, eqMeta, gfMeta);
     var refBag = R.formatReferenceValueFromNumber(refNum);
     if (refBag) sections.push({ label: "价值", text: refBag });
-    sections.push({ label: "持有数量", text: String(cnt) });
+    if (!isGongfaBagItem && wearSlot == null) {
+      sections.push({ label: "持有数量", text: String(cnt) });
+    }
 
     var spiritStonePerRaw = R.getSpiritStoneRawPerPiece(it.name, G.fateChoice);
     var hasSpiritStoneCult = spiritStonePerRaw > 0;
@@ -1044,7 +1058,7 @@
         },
       });
     }
-    if (gfMeta) {
+    if (isGongfaBagItem) {
       actions.push({
         label: "装入功法栏",
         primary: !hasSpiritStoneCult && wearSlot == null,
@@ -1073,9 +1087,17 @@
         appendSpiritStoneCultivateRow(bodyEl, idx, cntFloor);
       };
     }
+    var kindLabel = "物品";
+    if (isGongfaBagItem) kindLabel = "功法";
+    else if (wearSlot != null) kindLabel = "装备";
+    else if (stuffMeta && stuffMeta.type != null && String(stuffMeta.type).trim() !== "") {
+      kindLabel = String(stuffMeta.type).trim();
+    } else if (it.type != null && String(it.type).trim() !== "") {
+      kindLabel = String(it.type).trim();
+    }
     openItemDetailModal(
       String(it.name),
-      "物品",
+      kindLabel,
       sections,
       actions,
       R.resolveBagItemTraitRarity(it.name, it),
@@ -1141,12 +1163,7 @@
     var descRuntime = item.desc != null ? String(item.desc).trim() : "";
     var descCfg = cfgDef && cfgDef.desc != null ? String(cfgDef.desc).trim() : "";
     var desc = descRuntime || descCfg || "";
-    var tyShow =
-      item.type != null && String(item.type).trim() !== ""
-        ? String(item.type).trim()
-        : cfgDef && cfgDef.type != null
-          ? String(cfgDef.type).trim()
-          : "";
+    var tyShow = resolveGongfaSubtype(item, cfgDef);
     var sections = [];
     if (tyShow) sections.push({ label: "类型", text: tyShow });
     if (desc) sections.push({ label: "简介", text: desc });

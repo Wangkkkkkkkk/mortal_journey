@@ -87,7 +87,18 @@
     var C = global.MjCreationConfig;
     if (!C || typeof C.getGongfaDescribe !== "function" || name == null) return "";
     var g = C.getGongfaDescribe(String(name).trim());
-    if (g && g.type != null && String(g.type).trim() !== "") return String(g.type).trim();
+    if (!g || typeof g !== "object") return "";
+    var st =
+      g.subtype != null && String(g.subtype).trim() !== ""
+        ? String(g.subtype).trim()
+        : g.subType != null && String(g.subType).trim() !== ""
+          ? String(g.subType).trim()
+          : "";
+    if (st) return st;
+    if (g.type != null && String(g.type).trim() !== "") {
+      var ty = String(g.type).trim();
+      if (ty !== "功法") return ty;
+    }
     return "";
   }
 

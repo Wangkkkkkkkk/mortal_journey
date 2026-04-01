@@ -1471,6 +1471,29 @@
     return C.getGongfaDescribe(String(gongfaName).trim());
   }
 
+  function resolveGongfaSubtype(rawItem, gongfaMeta) {
+    var it = rawItem && typeof rawItem === "object" ? rawItem : {};
+    var meta = gongfaMeta && typeof gongfaMeta === "object" ? gongfaMeta : null;
+    var st =
+      it.subtype != null && String(it.subtype).trim() !== ""
+        ? String(it.subtype).trim()
+        : it.subType != null && String(it.subType).trim() !== ""
+          ? String(it.subType).trim()
+          : meta && meta.subtype != null && String(meta.subtype).trim() !== ""
+            ? String(meta.subtype).trim()
+            : meta && meta.subType != null && String(meta.subType).trim() !== ""
+              ? String(meta.subType).trim()
+              : "";
+    if (st) return st;
+    var ty =
+      it.type != null && String(it.type).trim() !== ""
+        ? String(it.type).trim()
+        : meta && meta.type != null
+          ? String(meta.type).trim()
+          : "";
+    return ty === "攻击" || ty === "辅助" ? ty : "";
+  }
+
   /** 按装备名匹配 equipment 元数据 { desc, type, bonus } */
   function lookupEquipmentMetaByItemName(itemName) {
     if (!itemName) return null;
@@ -1989,12 +2012,7 @@
         gSlot.classList.add("mj-gongfa-slot--filled");
         gInner.textContent = glab;
         var cfgGf = lookupGongfaConfigDef(String(glab));
-        var tyRaw =
-          gs && gs.type != null && String(gs.type).trim() !== ""
-            ? String(gs.type).trim()
-            : cfgGf && cfgGf.type != null
-              ? String(cfgGf.type).trim()
-              : "";
+        var tyRaw = resolveGongfaSubtype(gs, cfgGf);
         if (tyRaw) {
           gType.textContent = tyRaw;
           gType.className = "mj-gongfa-slot-type";
@@ -2192,6 +2210,8 @@
     if (!o.equipType && entry.type != null && String(entry.type).trim() !== "") {
       o.type = String(entry.type).trim();
     }
+    if (entry.subtype != null && String(entry.subtype).trim() !== "") o.subtype = String(entry.subtype).trim();
+    else if (entry.subType != null && String(entry.subType).trim() !== "") o.subType = String(entry.subType).trim();
     if (entry.bonus && typeof entry.bonus === "object" && Object.keys(entry.bonus).length > 0) {
       o.bonus = entry.bonus;
     }
