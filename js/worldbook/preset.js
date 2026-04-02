@@ -31,6 +31,7 @@
     "npcStoryHints",
     "npc_story_rules",
     "action_suggestions",
+    "story_snapshot",
   ];
 
   function getContentRoot() {

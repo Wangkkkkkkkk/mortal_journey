@@ -6,6 +6,16 @@
   "use strict";
 
   global.MjDescribeGongfa = {
+    基础剑诀: {
+      desc: "最基础的入门剑诀",
+      type: "功法",
+      subType: "攻击",
+      grade: "下品",
+      value: 10,
+      bonus: { 法攻: 3 },
+      magnification: { 物攻: 0.0, 法攻: 1.02 },
+      manacost: 10,
+    },
     眨眼剑法: {
       desc: "眨眼剑法是七玄门的入门剑法",
       type: "功法",
@@ -14,7 +24,7 @@
       value: 20,
       bonus: { 法攻: 5 },
       magnification: { 物攻: 0.0, 法攻: 1.05 },
-      manacost: 10,
+      manacost: 20,
     },
     青元剑诀: {
       desc: "攻防一体，是优秀的剑术功法",
@@ -22,9 +32,9 @@
       subType: "攻击",
       grade: "中品",
       value: 100,
-      bonus: { 法攻: 5, 法防: 5 },
-      magnification: { 物攻: 0.0, 法攻: 1.1 },
-      manacost: 20,
+      bonus: { 法攻: 10, 法防: 10 },
+      magnification: { 物攻: 0.0, 法攻: 1.2 },
+      manacost: 40,
     },
     长春功: {
       desc: "长春功是七玄门的入门功法，修炼后可以增加血量",

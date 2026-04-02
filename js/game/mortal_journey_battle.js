@@ -1,6 +1,8 @@
 /**
  * 回合制战斗骨架：神识排序出手、功法/武器交替、伤害公式与战败逃跑回写。
  * 全局：MortalJourneyBattle.startBattle(payload)
+ *
+ * 结算后派发 `mj:battle-finished`；主界面 mainScreen_chat 可据此自动请求剧情/状态 AI（见 MJ_AUTO_STORY_AFTER_BATTLE）。
  */
 (function (global) {
   "use strict";
@@ -639,7 +641,6 @@
       return { ok: false, error: "no_enemies" };
     }
     var result = runCombat(payload, G);
-    applyResultToGame(G, result);
     G.lastBattleResult = {
       victor: result.victor,
       rounds: result.rounds,
@@ -647,6 +648,7 @@
       settlement: result.settlement || null,
     };
     G.storyBattleContextConsumed = false;
+    applyResultToGame(G, result);
     return { ok: true, victor: result.victor, rounds: result.rounds };
   }
 

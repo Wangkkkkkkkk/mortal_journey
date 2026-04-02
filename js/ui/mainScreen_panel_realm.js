@@ -848,6 +848,10 @@
         gongfaSlots: JSON.parse(JSON.stringify(G.gongfaSlots || [])),
         equippedSlots: JSON.parse(JSON.stringify(G.equippedSlots || [])),
         chatHistory: JSON.parse(JSON.stringify(Array.isArray(G.chatHistory) ? G.chatHistory : [])),
+        chatPlotSnapshot:
+          G.chatPlotSnapshot != null && String(G.chatPlotSnapshot).trim() !== ""
+            ? String(G.chatPlotSnapshot).trim()
+            : null,
         lateStageBreakSuffix:
           ls && typeof ls === "object"
             ? {
@@ -856,6 +860,16 @@
               }
             : { realmKey: "", failCount: 0 },
         nearbyNpcs: JSON.parse(JSON.stringify(Array.isArray(G.nearbyNpcs) ? G.nearbyNpcs : [])),
+        chatActionSuggestions: (function () {
+          var cas = G.chatActionSuggestions;
+          if (!cas || typeof cas !== "object") return null;
+          var a = cas.aggressive != null ? String(cas.aggressive).trim() : "";
+          var n = cas.neutral != null ? String(cas.neutral).trim() : "";
+          var c = cas.cautious != null ? String(cas.cautious).trim() : "";
+          var v = cas.veryCautious != null ? String(cas.veryCautious).trim() : "";
+          if (!a && !n && !c && !v) return null;
+          return { aggressive: a, neutral: n, cautious: c, veryCautious: v };
+        })(),
       };
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 
@@ -1073,6 +1087,27 @@
         global.MortalJourneyGame.chatHistory = JSON.parse(JSON.stringify(data.chatHistory));
       }
 
+      if (data.chatPlotSnapshot != null && String(data.chatPlotSnapshot).trim() !== "") {
+        global.MortalJourneyGame.chatPlotSnapshot = String(data.chatPlotSnapshot).trim();
+      } else {
+        global.MortalJourneyGame.chatPlotSnapshot = "";
+      }
+
+      if (data.chatActionSuggestions && typeof data.chatActionSuggestions === "object") {
+        var dca = data.chatActionSuggestions.aggressive != null ? String(data.chatActionSuggestions.aggressive).trim() : "";
+        var dcn = data.chatActionSuggestions.neutral != null ? String(data.chatActionSuggestions.neutral).trim() : "";
+        var dcc = data.chatActionSuggestions.cautious != null ? String(data.chatActionSuggestions.cautious).trim() : "";
+        var dcv = data.chatActionSuggestions.veryCautious != null ? String(data.chatActionSuggestions.veryCautious).trim() : "";
+        if (dca || dcn || dcc || dcv) {
+          global.MortalJourneyGame.chatActionSuggestions = {
+            aggressive: dca,
+            neutral: dcn,
+            cautious: dcc,
+            veryCautious: dcv,
+          };
+        }
+      }
+
       return fc;
     } catch (e) {
       console.warn("[主界面] 无法读取开局存档", e);
@@ -1116,6 +1151,7 @@
       G.currentMp = Math.min(G.maxMp, Math.max(0, G.currentMp));
     }
     if (!Array.isArray(G.chatHistory)) G.chatHistory = [];
+    if (G.chatPlotSnapshot == null) G.chatPlotSnapshot = "";
     if (G.currentLocation == null || String(G.currentLocation).trim() === "") {
       var fc0 = G.fateChoice;
       if (fc0 && fc0.birthLocation != null && String(fc0.birthLocation).trim() !== "") {
@@ -1145,7 +1181,7 @@
   }
 
   /**
-   * 周围人物展示顺序：① 本次对话（chatHistory 近期正文）出现过其姓名的；② 可见且非阵亡；③ 不可见且非阵亡；④ 阵亡（固定置底）。
+   * 周围人物展示顺序：① 可见且非阵亡（其中：本次对话出现过其姓名的优先）；② 不可见且非阵亡；③ 阵亡（固定置底）。
    */
   function sortNearbyNpcsForDisplay(G) {
     if (!G || !Array.isArray(G.nearbyNpcs) || G.nearbyNpcs.length < 2) return;
@@ -1173,10 +1209,13 @@
     function tier(n) {
       if (!n) return 9;
       if (n.isDead === true) return 3;
+      // 强制：可见人物永远在不可见人物之上（即使不可见人物在近期对话中被提到）
+      var invisible = n.isVisible === false ? 1 : 0;
       var idk = n.id != null ? String(n.id).trim() : "";
-      if (idk && involved[idk]) return 0;
-      if (n.isVisible === false) return 2;
-      return 1;
+      var mentionedBoost = invisible === 0 && idk && involved[idk] ? 0 : 1;
+      // 分组：0x = 可见；1x = 不可见；3 = 阵亡（置底）
+      // 可见组内：被提到的在前；其余保持原顺序
+      return invisible === 0 ? mentionedBoost : 2;
     }
     base.sort(function (a, b) {
       var ta = tier(a);
@@ -1300,6 +1339,31 @@
     var next = [];
     for (var i = 0; i < G.nearbyNpcs.length; i++) {
       try {
+        var rawCell = G.nearbyNpcs[i];
+        if (rawCell && rawCell.__mjStateSyncHpMpOnly) {
+          delete rawCell.__mjStateSyncHpMpOnly;
+          var wasAwayHp = !!rawCell.isTemporarilyAway;
+          if (!Array.isArray(rawCell.equippedSlots)) rawCell.equippedSlots = [];
+          rawCell.equippedSlots = rawCell.equippedSlots.slice(0, EQUIP_SLOT_COUNT);
+          while (rawCell.equippedSlots.length < EQUIP_SLOT_COUNT) rawCell.equippedSlots.push(null);
+          if (!Array.isArray(rawCell.gongfaSlots)) rawCell.gongfaSlots = [];
+          rawCell.gongfaSlots = rawCell.gongfaSlots.slice(0, GONGFA_SLOT_COUNT);
+          while (rawCell.gongfaSlots.length < GONGFA_SLOT_COUNT) rawCell.gongfaSlots.push(null);
+          if (!Array.isArray(rawCell.inventorySlots)) rawCell.inventorySlots = [];
+          if (rawCell.inventorySlots.length !== INVENTORY_SLOT_COUNT) {
+            var invFix = rawCell.inventorySlots.slice(0, INVENTORY_SLOT_COUNT);
+            while (invFix.length < INVENTORY_SLOT_COUNT) invFix.push(null);
+            rawCell.inventorySlots = invFix;
+          }
+          if (rawCell.isDead === true) {
+            rawCell.currentHp = 0;
+            rawCell.isTemporarilyAway = false;
+          } else {
+            rawCell.isTemporarilyAway = wasAwayHp;
+          }
+          next.push(rawCell);
+          continue;
+        }
         var wasAway = !!(G.nearbyNpcs[i] && G.nearbyNpcs[i].isTemporarilyAway);
         var n = MCS.normalize(G.nearbyNpcs[i]);
         n.isTemporarilyAway = wasAway;

@@ -20,9 +20,9 @@
   var state = {
     /** 难度选择已移除：统一按「简单」处理 */
     selectedDifficulty: "简单",
-    selectedBirth: null,
+    selectedBirth: "凡人",
     customBirth: null,
-    selectedGender: null,
+    selectedGender: "男性",
     narrationPerson: "second",
     playerName: "韩立",
     attributes: {},
@@ -84,9 +84,9 @@
 
   function resetState() {
     state.selectedDifficulty = "简单";
-    state.selectedBirth = null;
+    state.selectedBirth = "凡人";
     state.customBirth = null;
-    state.selectedGender = null;
+    state.selectedGender = "男性";
     state.narrationPerson = "second";
     state.playerName = "韩立";
     state.attributes = {};
@@ -154,6 +154,26 @@
   }
 
   /**
+   * 当前轮盘上展示的全部词条副本（写入存档 / 参与运行时推算）。
+   * 「锁定」只影响逆天改命刷新时是否保留该格；未锁定词条同样视为玩家本局已携带的逆天改命。
+   */
+  function getAllDisplayedTraitsCloned() {
+    var opts = state.currentTraitOptions || [];
+    var out = [];
+    for (var i = 0; i < opts.length; i++) {
+      var t = opts[i];
+      if (!t || !t.name) continue;
+      var row = {};
+      for (var k in t) {
+        if (!Object.prototype.hasOwnProperty.call(t, k) || k === "locked") continue;
+        row[k] = t[k];
+      }
+      out.push(row);
+    }
+    return out;
+  }
+
+  /**
    * 与主界面一致：境界表 + 灵根 + 难度/出身/天赋/出身 stuff + 当前出身对应的功法栏与佩戴栏快照。
    */
   function recomputePlayerBase() {
@@ -177,7 +197,7 @@
     var fakeFc = {
       difficulty: state.selectedDifficulty,
       birth: state.selectedBirth,
-      traits: state.selectedTraits,
+      traits: getAllDisplayedTraitsCloned(),
       linggen: state.selectedLinggen,
       realm: { major: START_REALM_MAJOR, minor: START_REALM_STAGE },
       worldFactors: [],
@@ -937,7 +957,7 @@
       gender: state.selectedGender,
       birth: state.selectedBirth,
       customBirth: state.customBirth,
-      traits: state.selectedTraits,
+      traits: getAllDisplayedTraitsCloned(),
       linggen: state.selectedLinggen,
       worldFactors: [],
       birthLocation: birthLoc,
@@ -1059,6 +1079,19 @@
     }
     bindFateTraitDetailModal();
     resetState();
+    // 默认进入「命运抉择」时先自动刷新一次灵根与逆天改命候选，
+    // 让玩家无需手动点按钮即可获得一套默认开局（仍可继续手动刷新/锁定）。
+    if (!isMortalMode()) {
+      try {
+        if (!state.selectedLinggen) applyRandomLinggenRollToState();
+        if (!Array.isArray(state.currentTraitOptions) || state.currentTraitOptions.length === 0) {
+          state.currentTraitOptions = pickRandomTraits([], 5);
+          state.selectedTraits = [];
+        }
+      } catch (_eAutoRoll) {
+        /* 忽略：仍可手动刷新 */
+      }
+    }
     var screen = getEl("character-creation-screen");
     var splash = getEl("splash-screen");
     if (screen) {

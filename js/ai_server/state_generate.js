@@ -976,43 +976,43 @@
     return "";
   }
 
-  function cloneJsonSafe(v) {
-    try {
-      return JSON.parse(JSON.stringify(v));
-    } catch (_e) {
-      return v;
-    }
-  }
-
-  function hasAnyValidSlot(arr) {
-    if (!Array.isArray(arr) || !arr.length) return false;
-    for (var i = 0; i < arr.length; i++) {
-      var cell = arr[i];
-      if (cell && typeof cell === "object") {
-        var nm = cell.name != null ? String(cell.name).trim() : "";
-        if (nm) return true;
-      }
-    }
-    return false;
-  }
-
   /**
-   * 同一 NPC 二次更新时，仅在新数据未提供有效槽位时，回退继承旧战设。
-   * 这样既避免“每回合重抽”，也允许剧情明确的换装/换功法生效。
+   * 已有 NPC（与快照 id/displayName 匹配）：只采纳状态 AI 的 currentHp / currentMp，其余一律沿用快照，
+   * 避免模型生成与旧卡不一致的装备、功法、境界等。新 NPC 仍走完整 normalize。
    */
-  function inheritStableNpcLoadoutFromPrev(prevNpc, nextNpc) {
-    if (!prevNpc || !nextNpc || typeof prevNpc !== "object" || typeof nextNpc !== "object") return nextNpc;
-    var oldEquip = Array.isArray(prevNpc.equippedSlots) ? prevNpc.equippedSlots : null;
-    var oldGongfa = Array.isArray(prevNpc.gongfaSlots) ? prevNpc.gongfaSlots : null;
-    var nextEquip = Array.isArray(nextNpc.equippedSlots) ? nextNpc.equippedSlots : null;
-    var nextGongfa = Array.isArray(nextNpc.gongfaSlots) ? nextNpc.gongfaSlots : null;
-    if (oldEquip && oldEquip.length && !hasAnyValidSlot(nextEquip)) {
-      nextNpc.equippedSlots = cloneJsonSafe(oldEquip);
+  function applyExistingNpcHpMpOnly(prevNpc, incomingRaw) {
+    var merged;
+    try {
+      merged = JSON.parse(JSON.stringify(prevNpc));
+    } catch (_e0) {
+      merged = Object.assign({}, prevNpc);
     }
-    if (oldGongfa && oldGongfa.length && !hasAnyValidSlot(nextGongfa)) {
-      nextNpc.gongfaSlots = cloneJsonSafe(oldGongfa);
+    merged.__mjStateSyncHpMpOnly = true;
+    if (!incomingRaw || typeof incomingRaw !== "object") return merged;
+
+    var maxH = null;
+    if (typeof merged.maxHp === "number" && isFinite(merged.maxHp)) {
+      maxH = Math.max(1, Math.floor(merged.maxHp));
+    } else if (merged.playerBase && typeof merged.playerBase.hp === "number" && isFinite(merged.playerBase.hp)) {
+      maxH = Math.max(1, Math.floor(merged.playerBase.hp));
     }
-    return nextNpc;
+    var maxM = null;
+    if (typeof merged.maxMp === "number" && isFinite(merged.maxMp)) {
+      maxM = Math.max(1, Math.floor(merged.maxMp));
+    } else if (merged.playerBase && typeof merged.playerBase.mp === "number" && isFinite(merged.playerBase.mp)) {
+      maxM = Math.max(1, Math.floor(merged.playerBase.mp));
+    }
+
+    if (typeof incomingRaw.currentHp === "number" && isFinite(incomingRaw.currentHp)) {
+      var h = Math.max(0, Math.round(incomingRaw.currentHp));
+      merged.currentHp = maxH != null ? Math.min(maxH, h) : h;
+    }
+    if (typeof incomingRaw.currentMp === "number" && isFinite(incomingRaw.currentMp)) {
+      var m = Math.max(0, Math.round(incomingRaw.currentMp));
+      merged.currentMp = maxM != null ? Math.min(maxM, m) : m;
+    }
+    if (merged.isDead === true) merged.currentHp = 0;
+    return merged;
   }
 
   /** AI 可能只填前几格，补齐与主界面一致的长度后再 normalize */
@@ -1060,23 +1060,26 @@
         continue;
       }
       var key = npcPresenceKey(copy);
+      var n;
       if (key && oldMap[key]) {
-        copy = inheritStableNpcLoadoutFromPrev(oldMap[key], copy);
-      }
-      ensureNpcSheetSlotLengths(copy);
-      var n = MCS && typeof MCS.normalize === "function" ? MCS.normalize(copy) : copy;
-      if (PBR && typeof PBR.applyComputedPlayerBaseToCharacterSheet === "function") {
-        try {
-          PBR.applyComputedPlayerBaseToCharacterSheet(n);
-        } catch (ePbr) {
-          console.warn("[状态 AI] applyComputedPlayerBaseToCharacterSheet", ePbr);
+        n = applyExistingNpcHpMpOnly(oldMap[key], copy);
+        ensureNpcSheetSlotLengths(n);
+      } else {
+        ensureNpcSheetSlotLengths(copy);
+        n = MCS && typeof MCS.normalize === "function" ? MCS.normalize(copy) : copy;
+        if (PBR && typeof PBR.applyComputedPlayerBaseToCharacterSheet === "function") {
+          try {
+            PBR.applyComputedPlayerBaseToCharacterSheet(n);
+          } catch (ePbr) {
+            console.warn("[状态 AI] applyComputedPlayerBaseToCharacterSheet", ePbr);
+          }
         }
-      }
-      if (P && typeof P.syncNpcShouyuanFromRealmState === "function") {
-        try {
-          P.syncNpcShouyuanFromRealmState(n);
-        } catch (eSy) {
-          console.warn("[状态 AI] syncNpcShouyuanFromRealmState", eSy);
+        if (P && typeof P.syncNpcShouyuanFromRealmState === "function") {
+          try {
+            P.syncNpcShouyuanFromRealmState(n);
+          } catch (eSy) {
+            console.warn("[状态 AI] syncNpcShouyuanFromRealmState", eSy);
+          }
         }
       }
       list.push(n);

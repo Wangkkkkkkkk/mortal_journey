@@ -11,7 +11,7 @@
   function hasExplicitBattleIntent(text) {
     var s = String(text || "").trim();
     if (!s) return false;
-    return /(战斗|对战|交手|开打|动手|击杀|斩杀|诛杀|袭击|讨伐|杀了|杀死)/.test(s);
+    return /(战斗|对战|交手|开打|动手|击杀|斩杀|诛杀|袭击|讨伐|杀了|杀死|迎战|死战|先下手|除恶|拼了|杀了他|除此)/.test(s);
   }
 
   function triggerCombatFromBattleResult(G, battleResult, source) {
@@ -71,6 +71,37 @@
   var _mjStoryRetryContext = null;
   /** 状态请求失败时重试用（上一段已成功落盘的剧情原文，含标签） */
   var _mjStateRetryStoryRaw = null;
+
+  /**
+   * 战斗结算后是否自动再走一轮「剧情 AI → 状态 AI」（无需玩家手动发话）。
+   * 关闭后保持旧体验：结算只显示在聊天区，须玩家自行输入以接续。
+   */
+  var MJ_AUTO_STORY_AFTER_BATTLE = true;
+
+  /** 自动接续时拼在用户消息尾部（同条消息上方已为程序给出的本场战斗结算全文） */
+  var MJ_POST_BATTLE_USER_PROMPT =
+    "以上为程序给出的本场战斗结算与战时上下文（若有）。请据此直接写下衔接剧情：收束现场、伤势与气氛，勿改写胜负与伤害结论；文末照常输出 NPC 战设标签与四级行动建议。";
+
+  /**
+   * 与 story_generate.buildStoryPromptBattleSection 中 pendingBattle 元信息一致，供战后用户消息内嵌。
+   * @param {object} G MortalJourneyGame
+   * @returns {string} 无元信息时 ""，否则 "【战时上下文】\n" + 各行
+   */
+  function formatPendingBattleMetaLines(G) {
+    var pb = G && G.pendingBattle;
+    if (!pb || typeof pb !== "object") return "";
+    var meta = [];
+    if (pb.triggerKind != null && String(pb.triggerKind).trim() !== "")
+      meta.push("触发类型：" + String(pb.triggerKind).trim());
+    if (pb.triggerReason != null && String(pb.triggerReason).trim() !== "")
+      meta.push("触发说明：" + String(pb.triggerReason).trim());
+    if (pb.worldTimeString != null && String(pb.worldTimeString).trim() !== "")
+      meta.push("战时世界时间：" + String(pb.worldTimeString).trim());
+    if (pb.currentLocation != null && String(pb.currentLocation).trim() !== "")
+      meta.push("战时地点：" + String(pb.currentLocation).trim());
+    if (!meta.length) return "";
+    return "【战时上下文】\n" + meta.join("\n");
+  }
 
   function getChatComposerRefs() {
     return {
@@ -135,6 +166,9 @@
     btn.addEventListener("click", function () {
       if (btn.disabled) return;
       btn.disabled = true;
+      try {
+        if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);
+      } catch (_erm) {}
       var refs = getChatComposerRefs();
       if (retryKind === "state") {
         retryLastStateAi(refs.textarea, refs.sendBtn, btn);
@@ -251,8 +285,14 @@
             }
             if (assistantBody) {
               var vis = full || "";
-              if (SC && typeof SC.stripStoryAiMetaLeakFromNarrative === "function") {
-                vis = SC.stripStoryAiMetaLeakFromNarrative(vis);
+              var openTag = SC && SC.STORY_BODY_TAG_OPEN ? String(SC.STORY_BODY_TAG_OPEN) : "<mj_story_body>";
+              if (vis.indexOf(openTag) >= 0) {
+                if (SC && typeof SC.visibleNarrativeForStreamingChunk === "function") {
+                  vis = SC.visibleNarrativeForStreamingChunk(vis);
+                }
+              } else {
+                // 未出现正文信封前不展示（多为思考模型前置推理）；无信封的旧模型在整段完成后由 then 分支回填
+                vis = "";
               }
               assistantBody.textContent = vis;
             }
@@ -263,23 +303,83 @@
       .then(function (full) {
         clearTimeoutIfAny();
         var replyRaw = full != null ? String(full) : "";
-        var sansLeak =
-          SC && typeof SC.stripStoryAiMetaLeakFromNarrative === "function"
-            ? SC.stripStoryAiMetaLeakFromNarrative(replyRaw)
-            : replyRaw;
+        var resolved =
+          SC && typeof SC.resolveStoryReplyForPipeline === "function"
+            ? SC.resolveStoryReplyForPipeline(replyRaw)
+            : null;
+        var sansLeak = resolved && typeof resolved.sansLeak === "string" ? resolved.sansLeak : replyRaw;
+        if (!resolved) {
+          sansLeak =
+            SC && typeof SC.stripStoryAiMetaLeakFromNarrative === "function"
+              ? SC.stripStoryAiMetaLeakFromNarrative(replyRaw)
+              : replyRaw;
+        }
+        var plotSnap =
+          SC && typeof SC.extractStorySnapshotFromNarrative === "function"
+            ? SC.extractStorySnapshotFromNarrative(sansLeak)
+            : "";
+        if (plotSnap && G) {
+          G.chatPlotSnapshot = plotSnap;
+          try {
+            var PSnap = mjPanel();
+            if (PSnap && typeof PSnap.persistBootstrapSnapshot === "function") PSnap.persistBootstrapSnapshot();
+          } catch (_pSnap) {}
+        }
+        var sansForPipeline =
+          SC && typeof SC.stripStorySnapshotFromNarrative === "function"
+            ? SC.stripStorySnapshotFromNarrative(sansLeak)
+            : sansLeak;
+        if (global.GameLog && typeof global.GameLog.info === "function") {
+          try {
+            global.GameLog.info(
+              "[剧情←AI] 返回成功" +
+                (resolved && resolved.usedBodyEnvelope ? "（命中 mj_story_body 信封）" : "") +
+                "\n\n—— 原始返回（raw） ——\n" +
+                replyRaw.slice(0, 8000) +
+                "\n\n—— 解析后正文（sansLeak） ——\n" +
+                sansLeak.slice(0, 8000),
+            );
+          } catch (_logStoryResp) {}
+        }
         var actionSuggestions =
           SC && typeof SC.extractActionSuggestionsFromNarrative === "function"
-            ? SC.extractActionSuggestionsFromNarrative(sansLeak)
+            ? SC.extractActionSuggestionsFromNarrative(sansForPipeline)
             : null;
+        var hasParsedSugg =
+          actionSuggestions &&
+          typeof actionSuggestions === "object" &&
+          ((actionSuggestions.aggressive && String(actionSuggestions.aggressive).trim()) ||
+            (actionSuggestions.neutral && String(actionSuggestions.neutral).trim()) ||
+            (actionSuggestions.cautious && String(actionSuggestions.cautious).trim()) ||
+            (actionSuggestions.veryCautious && String(actionSuggestions.veryCautious).trim()));
+        if (hasParsedSugg && G) {
+          G.chatActionSuggestions = {
+            aggressive: actionSuggestions.aggressive != null ? String(actionSuggestions.aggressive).trim() : "",
+            neutral: actionSuggestions.neutral != null ? String(actionSuggestions.neutral).trim() : "",
+            cautious: actionSuggestions.cautious != null ? String(actionSuggestions.cautious).trim() : "",
+            veryCautious:
+              actionSuggestions.veryCautious != null ? String(actionSuggestions.veryCautious).trim() : "",
+          };
+          try {
+            var PChat = mjPanel();
+            if (PChat && typeof PChat.persistBootstrapSnapshot === "function") PChat.persistBootstrapSnapshot();
+          } catch (_pChat) {}
+        }
         if (global.MainScreen && typeof global.MainScreen.setChatSuggestions === "function") {
           try {
-            global.MainScreen.setChatSuggestions(actionSuggestions);
+            if (hasParsedSugg) {
+              global.MainScreen.setChatSuggestions(actionSuggestions);
+            } else if (G && G.chatActionSuggestions) {
+              global.MainScreen.setChatSuggestions(G.chatActionSuggestions);
+            } else {
+              global.MainScreen.setChatSuggestions(null);
+            }
           } catch (_esugg) {}
         }
         var sansSuggestionTags =
           SC && typeof SC.stripActionSuggestionsFromNarrative === "function"
-            ? SC.stripActionSuggestionsFromNarrative(sansLeak)
-            : sansLeak;
+            ? SC.stripActionSuggestionsFromNarrative(sansForPipeline)
+            : sansForPipeline;
         var replyForChat =
           SC && typeof SC.stripNpcStoryHintsFromNarrative === "function"
             ? SC.stripNpcStoryHintsFromNarrative(sansSuggestionTags)
@@ -342,13 +442,23 @@
         G.chatHistory.push({ role: "assistant", content: replyForChat });
         if (assistantBody) assistantBody.textContent = replyForChat;
         scrollChatLog();
+        if (!plotSnap && SC && typeof SC.synthesizePlotSnapshotFromVisibleNarrative === "function") {
+          var synSnap = SC.synthesizePlotSnapshotFromVisibleNarrative(replyForChat);
+          if (synSnap) {
+            G.chatPlotSnapshot = synSnap;
+            try {
+              var PSyn = mjPanel();
+              if (PSyn && typeof PSyn.persistBootstrapSnapshot === "function") PSyn.persistBootstrapSnapshot();
+            } catch (_pSyn) {}
+          }
+        }
         try {
           G.storyBattleContextConsumed = true;
         } catch (_consume) {}
         _mjStoryRetryContext = null;
         finishAiReplyFeedback(feedbackGenStory, textarea, "done", undefined, { kind: AI_KIND_STORY_LABEL });
         if (retryBtnEl) retryBtnEl.disabled = false;
-        return runStateInventoryAiTurn(G, textarea, sansLeak);
+        return runStateInventoryAiTurn(G, textarea, sansForPipeline);
       })
       .catch(function (err) {
         clearTimeoutIfAny();
@@ -759,6 +869,9 @@
     var G = global.MortalJourneyGame;
     if (G && Array.isArray(G.chatHistory)) {
       G.chatHistory.push({ role: "battle_settlement", content: text });
+      try {
+        G.storyBattleContextConsumed = true;
+      } catch (_c0) {}
       var P = mjPanel();
       if (P && typeof P.persistBootstrapSnapshot === "function") {
         try {
@@ -813,7 +926,7 @@
         (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
           ? global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
           : "</mj_battle_trigger>") +
-        "，JSON 内 allies/enemies 的 displayName 必须与 user 快照中主角名及周边人物完全一致。若剧情已写主角运转主攻功法待发、只待一击，或妖兽已扑杀前摇/敌意对峙且无法脱战，须 shouldEnterBattle=true（交战回合起点即可，不要求已击中）；不得以「仅对峙」为由漏标。无交战预备则可省略该标签（详见状态 system 第 13 条）。",
+        "，JSON 内 allies/enemies 的 displayName 必须与 user 快照中主角名及周边人物完全一致。**首接敌/对峙延续**：妖兽或敌修冲阵在途、双方**尚未碰招受击**，或正文末**无**合法战备段，或 user **未**明示开战——须 **shouldEnterBattle=false** 或省略第四对，先让玩家从第三对见敌方强弱。**仅当**叙事已写双方**已交手**落实，或（剧情末战备段 +（user 本回合已明确开战**或**叙事已写碰招/受击））等满足状态 system 第 13.1 条时，才 shouldEnterBattle=true。详见第 13 条。",
       game: G,
     });
     if (stateMsgs && global.GameLog && typeof global.GameLog.info === "function") {
@@ -1004,6 +1117,78 @@
     });
   }
 
+  /**
+   * 战斗结束后自动请求剧情：结算全文 + 战时上下文 + 接续说明写入同一条 user 消息并送入剧情 AI（不设蓝色结算气泡）。
+   */
+  function runPostBattleStoryContinuation(detail) {
+    if (!MJ_AUTO_STORY_AFTER_BATTLE) return;
+    if (!detail || !detail.settlement || typeof detail.settlement !== "object") return;
+    if (!getChatLogEl()) return;
+
+    var G = global.MortalJourneyGame;
+    var SC = global.MortalJourneyStoryChat;
+    if (!G || !SC || typeof SC.sendTurn !== "function") return;
+
+    var refs = getChatComposerRefs();
+    var textarea = refs.textarea;
+    var sendBtn = refs.sendBtn;
+    if (sendBtn && sendBtn.disabled) {
+      appendBattleSettlementFromDetail(detail);
+      if (global.GameLog && typeof global.GameLog.info === "function") {
+        global.GameLog.info(
+          "[主界面] 战后自动剧情跳过：仍有请求进行中，已保留战斗结算气泡；请稍后再试或手动发消息接续。",
+        );
+      }
+      return;
+    }
+
+    mjPanel().ensureGameRuntimeDefaults(G);
+
+    var settlementBlock = formatBattleSettlementText(detail.settlement);
+    if (!settlementBlock) return;
+
+    var metaBlock = formatPendingBattleMetaLines(G);
+    try {
+      G.storyBattleContextConsumed = true;
+    } catch (_sbc) {}
+
+    var prior = (G.chatHistory || []).slice();
+    var userText = [settlementBlock, metaBlock].filter(Boolean).join("\n\n");
+    var userHistIndex = Array.isArray(G.chatHistory) ? G.chatHistory.length : 0;
+    G.chatHistory.push({ role: "user", content: userText });
+    try {
+      var P0 = mjPanel();
+      if (P0 && typeof P0.persistBootstrapSnapshot === "function") P0.persistBootstrapSnapshot();
+    } catch (_p0) {}
+
+    var userUi = appendChatBubble("user", userText);
+    var userRoot = userUi ? userUi.root : null;
+    var asstUi = appendChatBubble("assistant", "");
+    var assistantBody = asstUi ? asstUi.body : null;
+    var assistantRoot = asstUi ? asstUi.root : null;
+
+    if (sendBtn) sendBtn.disabled = true;
+    if (textarea) textarea.disabled = true;
+
+    runStoryAiTurn({
+      G: G,
+      SC: SC,
+      textarea: textarea,
+      sendBtn: sendBtn,
+      userText: userText,
+      priorHistory: prior,
+      forceBattleIntent: false,
+      assistantBody: assistantBody,
+      assistantRoot: assistantRoot,
+      userRoot: userRoot,
+      userHistIndex: userHistIndex,
+      isRetry: false,
+      allowRollbackOnTimeout: false,
+      rollbackFn: null,
+      retryButtonEl: null,
+    });
+  }
+
   global.MjMainScreenChat = {
     handleChatSend: handleChatSend,
     /** 读档后把历史剧情渲染回聊天区（不会清除开局总览，只会追加） */
@@ -1028,7 +1213,17 @@
 
   try {
     global.addEventListener("mj:battle-finished", function (ev) {
-      appendBattleSettlementFromDetail(ev && ev.detail);
+      var d = ev && ev.detail;
+      try {
+        if (global.MortalJourneyGame) global.MortalJourneyGame.storyBattleContextConsumed = false;
+      } catch (_sbc0) {}
+      if (MJ_AUTO_STORY_AFTER_BATTLE) {
+        setTimeout(function () {
+          runPostBattleStoryContinuation(d);
+        }, 0);
+      } else {
+        appendBattleSettlementFromDetail(d);
+      }
     });
   } catch (_battleEv) {}
 })(typeof window !== "undefined" ? window : globalThis);

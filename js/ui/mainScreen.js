@@ -119,7 +119,7 @@
         })(suggestionBtns[si]);
       }
     }
-    setChatSuggestions(null);
+    setChatSuggestions(G && G.chatActionSuggestions ? G.chatActionSuggestions : null);
 
     console.info("[主界面] 骨架已加载", G);
     if (global.GameLog && typeof global.GameLog.info === "function") {

@@ -199,6 +199,12 @@
   var ACTION_SUGGESTIONS_TAG_CLOSE = "</mj_action_suggestions>";
   var BATTLE_TRIGGER_TAG_OPEN = "<mj_battle_trigger>";
   var BATTLE_TRIGGER_TAG_CLOSE = "</mj_battle_trigger>";
+  /** 玩家可见叙事信封（与思考过程分离；区分大小写，须原样输出） */
+  var STORY_BODY_TAG_OPEN = "<mj_story_body>";
+  var STORY_BODY_TAG_CLOSE = "</mj_story_body>";
+  /** 剧情回合末：百字内摘要，供下轮 API 替代冗长 assistant 历史（不向玩家展示） */
+  var STORY_SNAPSHOT_TAG_OPEN = "<mj_story_snapshot>";
+  var STORY_SNAPSHOT_TAG_CLOSE = "</mj_story_snapshot>";
 
   /** system 内各大块之间的分隔（便于模型与人类阅读日志） */
   var SYSTEM_BLOCK_SEPARATOR = "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
@@ -223,6 +229,76 @@
     var raw = String(text || "");
     var re = /<mj_battle_trigger\s*>\s*[\s\S]*?<\/mj_battle_trigger\s*>/gi;
     return raw.replace(re, "").trim();
+  }
+
+  function clampPlotSnapshotText(inner) {
+    var t = String(inner || "")
+      .replace(/\r+/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!t) return "";
+    try {
+      var arr = Array.from(t);
+      if (arr.length <= 100) return arr.join("");
+      return arr.slice(0, 100).join("") + "…";
+    } catch (_e) {
+      return t.length <= 100 ? t : t.slice(0, 100) + "…";
+    }
+  }
+
+  /**
+   * 从整段回复中提取 <mj_story_snapshot> 内文本（已截断至约百字）。
+   */
+  function extractStorySnapshotFromNarrative(text) {
+    var raw = String(text || "");
+    var re = /<mj_story_snapshot\s*>([\s\S]*?)<\/mj_story_snapshot\s*>/i;
+    var m = re.exec(raw);
+    if (!m || !m[1]) return "";
+    return clampPlotSnapshotText(m[1]);
+  }
+
+  /**
+   * 移除剧情快照标签（写入聊天 / 交状态回合前调用）。
+   */
+  function stripStorySnapshotFromNarrative(text) {
+    var raw = String(text || "");
+    var re = /<mj_story_snapshot\s*>\s*[\s\S]*?<\/mj_story_snapshot\s*>/gi;
+    return raw.replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  /**
+   * 无快照字段的旧档：用最近一条 assistant 可见正文兜底，避免下轮完全失上下文。
+   */
+  function fallbackPlotSummaryFromPriorAssistants(priorHistory) {
+    if (!priorHistory || !priorHistory.length) return "";
+    for (var i = priorHistory.length - 1; i >= 0; i--) {
+      var msg = priorHistory[i];
+      if (!msg || msg.role !== "assistant" || msg.content == null) continue;
+      var rough = String(msg.content)
+        .replace(/\r+/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!rough) continue;
+      try {
+        var arr = Array.from(rough);
+        if (arr.length <= 240) return arr.join("");
+        return arr.slice(0, 240).join("") + "…";
+      } catch (_e2) {
+        return rough.length <= 240 ? rough : rough.slice(0, 240) + "…";
+      }
+    }
+    return "";
+  }
+
+  function resolvePlotSnapshotForApi(G, priorHistory) {
+    var s = G && G.chatPlotSnapshot != null ? String(G.chatPlotSnapshot).trim() : "";
+    if (s) return s;
+    return fallbackPlotSummaryFromPriorAssistants(priorHistory);
+  }
+
+  /** 模型未输出快照标签时，用已剥离标签的玩家可见叙事压成百字摘要。 */
+  function synthesizePlotSnapshotFromVisibleNarrative(text) {
+    return clampPlotSnapshotText(String(text || "").replace(/\uFEFF/g, ""));
   }
 
   function extractActionSuggestionsFromNarrative(text) {
@@ -330,39 +406,140 @@
   }
 
   /**
-   * 去除部分模型在文末泄露的英文元叙述（Analyzing / I've just… 等），避免污染玩家与状态回合。
+   * 去除部分模型泄露的英文/元叙述（Analyzing、My Current Circumstances、Okay, so here's… 等），避免污染玩家与状态回合。
+   * 若元叙述插在中文正文与 <mj_…> 标签之间，只删中间段，保留标签块（extract 与状态回合仍可用）。
    * 在保留 mj_npc_story_hints 之前调用（该标签内为 JSON，一般不会误触发）。
    */
   function stripStoryAiMetaLeakFromNarrative(text) {
     var s = String(text || "");
-    var markers = [
-      /\n+\*{0,2}\s*Analyzing\b/i,
-      /\n+\*{0,2}\s*Reflection\b/i,
-      /\n+\*{0,2}\s*Planning\b/i,
-      /\n+\*{0,2}\s*Thought\s*process\b/i,
-      /\n+\*{0,2}\s*Final\s+answer\b/i,
-      /\n+<think>\b/i,
-      /\n+\*{0,2}\s*Note\s+to\s+self\b/i,
-      /\n+I've\s+just\s+finished\b/i,
-      /\n+I've\s+been\s+/i,
-      /\n+I\s+need\s+to\b/i,
-      /\n+My\s+focus\s+/i,
-      /\n+The\s+user\s+wants\b/i,
-      /\n+Let\s+me\s+(?:analyze|think|start|begin)\b/i,
-      /\n+Now\s+I\s+will\b/i,
-      /\n+Initially,?\s+I\s+/i,
+    var p = "(?:^|\\n+)\\s*";
+    var markerSources = [
+      p + "\\*{0,2}\\s*Analyzing\\b",
+      p + "\\*{0,2}\\s*Reflection\\b",
+      p + "\\*{0,2}\\s*Planning\\b",
+      p + "\\*{0,2}\\s*Thought\\s*process\\b",
+      p + "\\*{0,2}\\s*Final\\s+answer\\b",
+      p + "<redacted_thinking>\\b",
+      p + "\\*{0,2}\\s*Note\\s+to\\s*self\\b",
+      p + "\\*{0,2}\\s*My\\s+Current\\s+Circumstances\\b",
+      p + "\\*{0,2}\\s*Course\\s+of\\s+Action\\b",
+      p + "\\*{0,2}\\s*Scene\\s*analysis\\b",
+      p + "Okay,?\\s+so\\s+here'?s\\b",
+      p + "Thinking\\s+about\\s+my\\b",
+      p + "This\\s+gives\\s+me\\s+the\\s+following\\b",
+      p + "Given\\s+my\\s+circumstances\\b",
+      p + "I\\s+now\\s+need\\s+to\\b",
+      p + "I\\s+decide\\s+I\\s+need\\s+to\\b",
+      p + "As\\s+I\\s+make\\s+my\\s+way\\b",
+      p + "I've\\s+just\\s+finished\\b",
+      p + "I've\\s+been\\s+",
+      p + "I\\s+need\\s+to\\b",
+      p + "My\\s+focus\\s+",
+      p + "My\\s+goal\\??\\b",
+      p + "The\\s+user\\s+wants\\b",
+      p + "Let\\s+me\\s+(?:analyze|think|start|begin)\\b",
+      p + "Now\\s+I\\s+will\\b",
+      p + "Initially,?\\s+I\\s+",
+      p + "I'?m\\s+Han\\s+Li\\b",
+      p + "I\\s+am\\s+Han\\s+Li\\b",
+      p + "I'?m\\s+\\d+\\s+years\\s+old\\b",
+      p + "\\*\\s+\\*{0,2}\\s*Setting\\s*:",
+      p + "\\*\\s+\\*{0,2}\\s*The\\s+Incident\\s*:",
+      p + "\\*\\s+\\*{0,2}\\s*My\\s+Skills\\s*:",
+      p + "\\*\\s+\\*{0,2}\\s*Interaction\\s*:",
     ];
     var cut = -1;
-    for (var i = 0; i < markers.length; i++) {
-      var re = markers[i];
-      re.lastIndex = 0;
+    for (var mi = 0; mi < markerSources.length; mi++) {
+      var re = new RegExp(markerSources[mi], "im");
       var m = re.exec(s);
       if (m && typeof m.index === "number") {
         if (cut < 0 || m.index < cut) cut = m.index;
       }
     }
-    if (cut >= 0) s = s.slice(0, cut).trim();
-    return s;
+    if (cut < 0) return s;
+    var tagPos = s.indexOf("<mj_", cut);
+    var head = s.slice(0, cut).replace(/\s+$/, "");
+    if (tagPos >= 0) {
+      var tail = s.slice(tagPos).replace(/^\s+/, "");
+      if (tail) return head ? head + "\n\n" + tail : tail;
+    }
+    return head;
+  }
+
+  /**
+   * `</mj_story_body>` 之后往往还有合法机器标签，但模型也会在最后一个 `</mj_action_suggestions>` 后再追加英文思考。
+   * 只抽取已知闭合标签块，按其在原文中的出现顺序拼接，丢弃其余尾部。
+   */
+  function extractPostBodyMachineTagBlocks(rest) {
+    var r = String(rest || "");
+    function one(re) {
+      var m = re.exec(r);
+      if (m && m[0]) return { idx: m.index, text: m[0].replace(/^\s+|\s+$/g, "") };
+      return null;
+    }
+    var candidates = [
+      one(/<mj_npc_story_hints\s*>[\s\S]*?<\/mj_npc_story_hints\s*>/i),
+      one(/<mj_action_suggestions\s*>[\s\S]*?<\/mj_action_suggestions\s*>/i),
+      one(/<mj_battle_trigger\s*>[\s\S]*?<\/mj_battle_trigger\s*>/i),
+      one(/<mj_story_snapshot\s*>[\s\S]*?<\/mj_story_snapshot\s*>/i),
+    ];
+    var blocks = [];
+    for (var i = 0; i < candidates.length; i++) {
+      if (candidates[i]) blocks.push(candidates[i]);
+    }
+    blocks.sort(function (a, b) {
+      return a.idx - b.idx;
+    });
+    var parts = [];
+    for (var j = 0; j < blocks.length; j++) {
+      if (blocks[j].text) parts.push(blocks[j].text);
+    }
+    return parts.join("\n\n");
+  }
+
+  /**
+   * 若存在 STORY_BODY 信封：仅标签内为玩家叙事（可含战备段）；标签外前后文本（含思考、英文提纲）一律忽略。
+   * 返回的 sansLeak = 标签内正文 + 其后的机器标签（hints / action 等），供 extract 与状态回合使用。
+   * 无闭合信封时回退为整段 stripStoryAiMetaLeakFromNarrative（兼容旧模型）。
+   * @returns {{ sansLeak: string, usedBodyEnvelope: boolean }}
+   */
+  function resolveStoryReplyForPipeline(text) {
+    var raw = String(text || "");
+    var i0 = raw.indexOf(STORY_BODY_TAG_OPEN);
+    var i1 = i0 >= 0 ? raw.indexOf(STORY_BODY_TAG_CLOSE, i0 + STORY_BODY_TAG_OPEN.length) : -1;
+    if (i0 >= 0 && i1 > i0 + STORY_BODY_TAG_OPEN.length) {
+      var inner = raw.slice(i0 + STORY_BODY_TAG_OPEN.length, i1).trim();
+      inner = stripStoryAiMetaLeakFromNarrative(inner);
+      var afterClose = raw.slice(i1 + STORY_BODY_TAG_CLOSE.length).replace(/^\s+/, "");
+      var machineTail = extractPostBodyMachineTagBlocks(afterClose);
+      var sansLeak = machineTail ? inner + "\n\n" + machineTail : inner;
+      return { sansLeak: sansLeak, usedBodyEnvelope: true };
+    }
+    return {
+      sansLeak: stripStoryAiMetaLeakFromNarrative(raw),
+      usedBodyEnvelope: false,
+    };
+  }
+
+  /**
+   * 流式输出预览：已出现正文信封起始标签则只展示标签内未完成片段，避免把前置思考流式显示到聊天气泡。
+   * 未出现信封前返回空串；若直到结束都无信封则回退为 stripStoryAiMetaLeakFromNarrative(全文)（旧模型）。
+   */
+  function visibleNarrativeForStreamingChunk(full) {
+    var s = String(full || "");
+    var i0 = s.indexOf(STORY_BODY_TAG_OPEN);
+    if (i0 < 0) return "";
+    var start = i0 + STORY_BODY_TAG_OPEN.length;
+    var i1 = s.indexOf(STORY_BODY_TAG_CLOSE, start);
+    var chunk = i1 >= 0 ? s.slice(start, i1) : s.slice(start);
+    return stripStoryAiMetaLeakFromNarrative(chunk);
+  }
+
+  /**
+   * 流式结束时若从未出现信封，用全文回退显示（与 resolveStoryReplyForPipeline 的无信封分支一致）。
+   */
+  function visibleNarrativeStreamFallback(full) {
+    return stripStoryAiMetaLeakFromNarrative(String(full || ""));
   }
 
   /**
@@ -403,7 +580,8 @@
   }
 
   /**
-   * 上一场程序结算的战斗摘要，注入剧情 system，供下一段叙事承接；剧情成功出文后由主界面置 storyBattleContextConsumed。
+   * 上一场程序结算的战斗摘要：在结算未能写入聊天区（或兼容旧档）时注入剧情 system；
+   * 正常流程下 appendBattleSettlementFromDetail 已把结算写入对话并置 storyBattleContextConsumed，此处为空。
    */
   function buildStoryPromptBattleSection(G) {
     if (!G || G.storyBattleContextConsumed) return "";
@@ -536,10 +714,16 @@
       for (var i = 0; i < priorHistory.length; i++) {
         var m = priorHistory[i];
         if (!m || m.content == null) continue;
-        if (m.role === "battle_settlement") continue;
+        if (m.role === "assistant") continue;
+        if (m.role === "battle_settlement") {
+          parts.push(String(m.content));
+          continue;
+        }
         parts.push(String(m.content));
       }
     }
+    var snapScan = resolvePlotSnapshotForApi(global.MortalJourneyGame || {}, priorHistory);
+    if (snapScan) parts.push("【剧情快照】\n" + snapScan);
     parts.push(String(userText || ""));
     return parts.join("\n");
   }
@@ -592,9 +776,17 @@
     for (var h = 0; h < priorHistory.length; h++) {
       var msg = priorHistory[h];
       if (!msg || !msg.role || msg.content == null) continue;
-      if (msg.role === "battle_settlement") continue;
-      var role = msg.role === "assistant" ? "assistant" : "user";
-      messages.push({ role: role, content: String(msg.content) });
+      if (msg.role === "assistant") continue;
+      if (msg.role === "battle_settlement") {
+        messages.push({ role: "user", content: String(msg.content) });
+        continue;
+      }
+      messages.push({ role: "user", content: String(msg.content) });
+    }
+
+    var snapApi = resolvePlotSnapshotForApi(G, priorHistory);
+    if (snapApi) {
+      messages.push({ role: "assistant", content: "【剧情快照】\n" + snapApi });
     }
 
     var prefix = P && typeof P.getUserPrefix === "function" ? P.getUserPrefix() : "";
@@ -663,6 +855,16 @@
     ACTION_SUGGESTIONS_TAG_CLOSE: ACTION_SUGGESTIONS_TAG_CLOSE,
     BATTLE_TRIGGER_TAG_OPEN: BATTLE_TRIGGER_TAG_OPEN,
     BATTLE_TRIGGER_TAG_CLOSE: BATTLE_TRIGGER_TAG_CLOSE,
+    STORY_BODY_TAG_OPEN: STORY_BODY_TAG_OPEN,
+    STORY_BODY_TAG_CLOSE: STORY_BODY_TAG_CLOSE,
+    STORY_SNAPSHOT_TAG_OPEN: STORY_SNAPSHOT_TAG_OPEN,
+    STORY_SNAPSHOT_TAG_CLOSE: STORY_SNAPSHOT_TAG_CLOSE,
+    extractStorySnapshotFromNarrative: extractStorySnapshotFromNarrative,
+    stripStorySnapshotFromNarrative: stripStorySnapshotFromNarrative,
+    synthesizePlotSnapshotFromVisibleNarrative: synthesizePlotSnapshotFromVisibleNarrative,
+    resolveStoryReplyForPipeline: resolveStoryReplyForPipeline,
+    visibleNarrativeForStreamingChunk: visibleNarrativeForStreamingChunk,
+    visibleNarrativeStreamFallback: visibleNarrativeStreamFallback,
     stripNpcStoryHintsFromNarrative: stripNpcStoryHintsFromNarrative,
     stripActionSuggestionsFromNarrative: stripActionSuggestionsFromNarrative,
     stripBattleTriggerFromNarrative: stripBattleTriggerFromNarrative,
