@@ -429,7 +429,20 @@
         if (assistantRoot) assistantRoot.classList.remove("mj-chat-msg--assistant-empty");
         if (isRetry && Array.isArray(G.chatHistory)) {
           while (G.chatHistory.length > userHistIndex + 1) {
-            G.chatHistory.pop();
+            var rm = G.chatHistory.pop();
+            if (
+              rm &&
+              rm.role === "assistant" &&
+              Array.isArray(G.chatPlotSnapshotLog) &&
+              G.chatPlotSnapshotLog.length
+            ) {
+              G.chatPlotSnapshotLog.pop();
+            }
+          }
+          if (Array.isArray(G.chatPlotSnapshotLog) && G.chatPlotSnapshotLog.length) {
+            G.chatPlotSnapshot = G.chatPlotSnapshotLog[G.chatPlotSnapshotLog.length - 1];
+          } else {
+            G.chatPlotSnapshot = "";
           }
         }
         G.chatHistory.push({ role: "assistant", content: replyForChat });
@@ -444,6 +457,17 @@
         }
         if (snapFinal && G) {
           G.chatPlotSnapshot = snapFinal;
+          if (!Array.isArray(G.chatPlotSnapshotLog)) G.chatPlotSnapshotLog = [];
+          var snapOne = String(snapFinal).trim();
+          if (
+            snapOne &&
+            (!G.chatPlotSnapshotLog.length || G.chatPlotSnapshotLog[G.chatPlotSnapshotLog.length - 1] !== snapOne)
+          ) {
+            G.chatPlotSnapshotLog.push(snapOne);
+            while (G.chatPlotSnapshotLog.length > 24) {
+              G.chatPlotSnapshotLog.shift();
+            }
+          }
           try {
             var PFin = mjPanel();
             if (PFin && typeof PFin.persistBootstrapSnapshot === "function") PFin.persistBootstrapSnapshot();

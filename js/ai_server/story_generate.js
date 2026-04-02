@@ -303,7 +303,38 @@
     return "";
   }
 
+  /**
+   * 将多回合快照沿革拼成一段文本供 API（由旧到新，换行分隔；超长时从**最旧**开始丢弃）。
+   */
+  function joinPlotSnapshotLogForApi(log, maxChars) {
+    var maxC = typeof maxChars === "number" && maxChars > 0 ? maxChars : 2000;
+    if (!log || !log.length) return "";
+    var parts = [];
+    for (var i = 0; i < log.length; i++) {
+      var t = String(log[i] || "").trim();
+      if (!t) continue;
+      if (parts.length && parts[parts.length - 1] === t) continue;
+      parts.push(t);
+    }
+    if (!parts.length) return "";
+    var out = parts.join("\n");
+    while (out.length > maxC && parts.length > 1) {
+      parts.shift();
+      out = parts.join("\n");
+    }
+    if (out.length <= maxC) return out;
+    return out.slice(-maxC);
+  }
+
   function resolvePlotSnapshotForApi(G, priorHistory) {
+    var log = G && Array.isArray(G.chatPlotSnapshotLog) ? G.chatPlotSnapshotLog : null;
+    var joined = joinPlotSnapshotLogForApi(log, 2000);
+    if (joined) {
+      if (joined.indexOf("\n") >= 0) {
+        return "（以下为各回合剧情快照沿革，由旧到新）\n" + joined;
+      }
+      return joined;
+    }
     var s = G && G.chatPlotSnapshot != null ? String(G.chatPlotSnapshot).trim() : "";
     if (s) return s;
     return fallbackPlotSummaryFromPriorAssistants(priorHistory);

@@ -852,6 +852,9 @@
           G.chatPlotSnapshot != null && String(G.chatPlotSnapshot).trim() !== ""
             ? String(G.chatPlotSnapshot).trim()
             : null,
+        chatPlotSnapshotLog: Array.isArray(G.chatPlotSnapshotLog)
+          ? JSON.parse(JSON.stringify(G.chatPlotSnapshotLog))
+          : null,
         lateStageBreakSuffix:
           ls && typeof ls === "object"
             ? {
@@ -1093,6 +1096,23 @@
         global.MortalJourneyGame.chatPlotSnapshot = "";
       }
 
+      if (Array.isArray(data.chatPlotSnapshotLog) && data.chatPlotSnapshotLog.length) {
+        global.MortalJourneyGame.chatPlotSnapshotLog = data.chatPlotSnapshotLog
+          .map(function (x) {
+            return x != null ? String(x).trim() : "";
+          })
+          .filter(function (s) {
+            return s !== "";
+          });
+      } else if (
+        global.MortalJourneyGame.chatPlotSnapshot != null &&
+        String(global.MortalJourneyGame.chatPlotSnapshot).trim() !== ""
+      ) {
+        global.MortalJourneyGame.chatPlotSnapshotLog = [String(global.MortalJourneyGame.chatPlotSnapshot).trim()];
+      } else {
+        global.MortalJourneyGame.chatPlotSnapshotLog = [];
+      }
+
       if (data.chatActionSuggestions && typeof data.chatActionSuggestions === "object") {
         var dca = data.chatActionSuggestions.aggressive != null ? String(data.chatActionSuggestions.aggressive).trim() : "";
         var dcn = data.chatActionSuggestions.neutral != null ? String(data.chatActionSuggestions.neutral).trim() : "";
@@ -1152,6 +1172,13 @@
     }
     if (!Array.isArray(G.chatHistory)) G.chatHistory = [];
     if (G.chatPlotSnapshot == null) G.chatPlotSnapshot = "";
+    if (!Array.isArray(G.chatPlotSnapshotLog)) {
+      if (G.chatPlotSnapshot != null && String(G.chatPlotSnapshot).trim() !== "") {
+        G.chatPlotSnapshotLog = [String(G.chatPlotSnapshot).trim()];
+      } else {
+        G.chatPlotSnapshotLog = [];
+      }
+    }
     if (G.currentLocation == null || String(G.currentLocation).trim() === "") {
       var fc0 = G.fateChoice;
       if (fc0 && fc0.birthLocation != null && String(fc0.birthLocation).trim() !== "") {
