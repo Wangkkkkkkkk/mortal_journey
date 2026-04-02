@@ -1318,6 +1318,7 @@
         awayCopy = oldNpc;
       }
       awayCopy.isTemporarilyAway = true;
+      awayCopy.isVisible = false;
       merged.push(awayCopy);
     }
     return merged;

@@ -95,10 +95,6 @@
       meta.push("触发类型：" + String(pb.triggerKind).trim());
     if (pb.triggerReason != null && String(pb.triggerReason).trim() !== "")
       meta.push("触发说明：" + String(pb.triggerReason).trim());
-    if (pb.worldTimeString != null && String(pb.worldTimeString).trim() !== "")
-      meta.push("战时世界时间：" + String(pb.worldTimeString).trim());
-    if (pb.currentLocation != null && String(pb.currentLocation).trim() !== "")
-      meta.push("战时地点：" + String(pb.currentLocation).trim());
     if (!meta.length) return "";
     return "【战时上下文】\n" + meta.join("\n");
   }
@@ -314,17 +310,14 @@
               ? SC.stripStoryAiMetaLeakFromNarrative(replyRaw)
               : replyRaw;
         }
-        var plotSnap =
+        var plotSnapFromSans =
           SC && typeof SC.extractStorySnapshotFromNarrative === "function"
             ? SC.extractStorySnapshotFromNarrative(sansLeak)
             : "";
-        if (plotSnap && G) {
-          G.chatPlotSnapshot = plotSnap;
-          try {
-            var PSnap = mjPanel();
-            if (PSnap && typeof PSnap.persistBootstrapSnapshot === "function") PSnap.persistBootstrapSnapshot();
-          } catch (_pSnap) {}
-        }
+        var plotSnapFromRaw =
+          SC && typeof SC.extractStorySnapshotFromNarrative === "function"
+            ? SC.extractStorySnapshotFromNarrative(replyRaw)
+            : "";
         var sansForPipeline =
           SC && typeof SC.stripStorySnapshotFromNarrative === "function"
             ? SC.stripStorySnapshotFromNarrative(sansLeak)
@@ -442,15 +435,19 @@
         G.chatHistory.push({ role: "assistant", content: replyForChat });
         if (assistantBody) assistantBody.textContent = replyForChat;
         scrollChatLog();
-        if (!plotSnap && SC && typeof SC.synthesizePlotSnapshotFromVisibleNarrative === "function") {
-          var synSnap = SC.synthesizePlotSnapshotFromVisibleNarrative(replyForChat);
-          if (synSnap) {
-            G.chatPlotSnapshot = synSnap;
-            try {
-              var PSyn = mjPanel();
-              if (PSyn && typeof PSyn.persistBootstrapSnapshot === "function") PSyn.persistBootstrapSnapshot();
-            } catch (_pSyn) {}
-          }
+        var snapFinal =
+          (plotSnapFromSans && String(plotSnapFromSans).trim()) ||
+          (plotSnapFromRaw && String(plotSnapFromRaw).trim()) ||
+          "";
+        if (!snapFinal && SC && typeof SC.synthesizePlotSnapshotFromVisibleNarrative === "function") {
+          snapFinal = SC.synthesizePlotSnapshotFromVisibleNarrative(replyForChat) || "";
+        }
+        if (snapFinal && G) {
+          G.chatPlotSnapshot = snapFinal;
+          try {
+            var PFin = mjPanel();
+            if (PFin && typeof PFin.persistBootstrapSnapshot === "function") PFin.persistBootstrapSnapshot();
+          } catch (_pFin) {}
         }
         try {
           G.storyBattleContextConsumed = true;
@@ -1008,7 +1005,11 @@
           if (Npc) {
             if (Npc.skipped) parts.push("周围人物：未提交标签，保持快照");
             else if (Npc.parseError) parts.push("周围人物解析：" + Npc.parseError);
-            else if (Npc.applied) parts.push("周围人物已更新（" + Npc.count + " 人）");
+            else if (Npc.applied) {
+              if (Npc.parseVia === "absent_empty_merge") {
+                parts.push("周围人物：无标签，未列出者已不可见（快照 " + Npc.count + " 人）");
+              } else parts.push("周围人物已更新（" + Npc.count + " 人）");
+            }
           }
           global.GameLog.info(parts.join("；") + "\n" + raw.slice(0, 2000));
         }

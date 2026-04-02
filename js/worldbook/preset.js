@@ -28,6 +28,7 @@
     "outputFormat",
     "bagNarrative",
     "valueScale",
+    "major_realm_breakthrough",
     "npcStoryHints",
     "npc_story_rules",
     "action_suggestions",

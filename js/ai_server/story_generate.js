@@ -266,6 +266,14 @@
     return raw.replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
   }
 
+  function isAssistantMessageUnusableForPlotFallback(content) {
+    var s = String(content || "").trim();
+    if (!s) return true;
+    if (/^【剧情\s*AI\s*回复为空】/.test(s)) return true;
+    if (/^【剧情(?:\s*AI)?\s*[（(]?无内容[)）]?】/.test(s)) return true;
+    return false;
+  }
+
   /**
    * 无快照字段的旧档：用最近一条 assistant 可见正文兜底，避免下轮完全失上下文。
    */
@@ -274,6 +282,11 @@
     for (var i = priorHistory.length - 1; i >= 0; i--) {
       var msg = priorHistory[i];
       if (!msg || msg.role !== "assistant" || msg.content == null) continue;
+      if (isAssistantMessageUnusableForPlotFallback(msg.content)) continue;
+      var snapFromTags = extractStorySnapshotFromNarrative(String(msg.content || ""));
+      if (snapFromTags && String(snapFromTags).trim()) return String(snapFromTags).trim();
+      var synthesized = synthesizePlotSnapshotFromVisibleNarrative(String(msg.content || ""));
+      if (synthesized && String(synthesized).trim()) return String(synthesized).trim();
       var rough = String(msg.content)
         .replace(/\r+/g, "")
         .replace(/\s+/g, " ")
@@ -296,9 +309,22 @@
     return fallbackPlotSummaryFromPriorAssistants(priorHistory);
   }
 
-  /** 模型未输出快照标签时，用已剥离标签的玩家可见叙事压成百字摘要。 */
+  /**
+   * 模型未输出 <mj_story_snapshot> 时：从正文信封内取玩家可见叙事再压成百字摘要。
+   * （旧实现直接截断整段 raw，易吃到信封外的思考英文或 <mj_story_body> 标签名，导致快照失真或看似「未更新」。）
+   */
   function synthesizePlotSnapshotFromVisibleNarrative(text) {
-    return clampPlotSnapshotText(String(text || "").replace(/\uFEFF/g, ""));
+    var raw = String(text || "").replace(/\uFEFF/g, "");
+    var resolved = resolveStoryReplyForPipeline(raw);
+    var base =
+      resolved && resolved.sansLeak && String(resolved.sansLeak).trim()
+        ? String(resolved.sansLeak)
+        : stripStoryAiMetaLeakFromNarrative(raw);
+    var noMachine = stripNpcStoryHintsFromNarrative(base);
+    noMachine = stripActionSuggestionsFromNarrative(noMachine);
+    noMachine = stripBattleTriggerFromNarrative(noMachine);
+    noMachine = stripStorySnapshotFromNarrative(noMachine);
+    return clampPlotSnapshotText(String(noMachine || "").trim());
   }
 
   function extractActionSuggestionsFromNarrative(text) {

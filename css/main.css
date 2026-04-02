@@ -1850,8 +1850,12 @@ body.mj-main-body {
   cursor: not-allowed;
 }
 
-/* 右栏 · 周围人物 */
-.mj-npc-panel-body {
+/* 右栏 · 周围人物：正文区占满顶栏与「返回主界面」之间的空间，列表在区内滚动 */
+.mj-pane-body.mj-npc-panel-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
   padding-top: 8px;
 }
 
@@ -1859,7 +1863,8 @@ body.mj-main-body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: min(70vh, 520px);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
 }

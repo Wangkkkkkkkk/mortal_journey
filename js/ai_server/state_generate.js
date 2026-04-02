@@ -1185,7 +1185,12 @@
       parseVia: null,
     };
     if (nr.absent) {
-      npc.skipped = true;
+      var naAbsent = applyNearbyNpcsArrayToGame(G, []);
+      npc.skipped = false;
+      npc.applied = naAbsent.applied;
+      npc.count = naAbsent.count;
+      npc.parseVia = "absent_empty_merge";
+      if (naAbsent.error) npc.parseError = naAbsent.error;
     } else if (nr.ok && nr.list) {
       var na = applyNearbyNpcsArrayToGame(G, nr.list);
       npc.applied = na.applied;
