@@ -41,11 +41,13 @@
     var itemRoot = document.getElementById("mj-item-detail-root");
     var npcRoot = document.getElementById("mj-npc-detail-root");
     var majorRoot = document.getElementById("mj-major-breakthrough-root");
+    var bagSellRoot = document.getElementById("mj-bag-sell-root");
     if (
       (!traitRoot || traitRoot.classList.contains("hidden")) &&
       (!itemRoot || itemRoot.classList.contains("hidden")) &&
       (!npcRoot || npcRoot.classList.contains("hidden")) &&
-      (!majorRoot || majorRoot.classList.contains("hidden"))
+      (!majorRoot || majorRoot.classList.contains("hidden")) &&
+      (!bagSellRoot || bagSellRoot.classList.contains("hidden"))
     ) {
       document.body.style.overflow = "";
     }
@@ -1383,8 +1385,12 @@
             while (invFix.length < INVENTORY_SLOT_COUNT) invFix.push(null);
             rawCell.inventorySlots = invFix;
           }
-          if (rawCell.isDead === true) {
+          if (
+            rawCell.isDead === true ||
+            (typeof rawCell.currentHp === "number" && isFinite(rawCell.currentHp) && rawCell.currentHp <= 0)
+          ) {
             rawCell.currentHp = 0;
+            rawCell.isDead = true;
             rawCell.isTemporarilyAway = false;
           } else {
             rawCell.isTemporarilyAway = wasAwayHp;
@@ -1403,6 +1409,11 @@
         }
         syncNpcShouyuanFromRealmState(n);
         if (n.isDead === true) n.currentHp = 0;
+        else if (typeof n.currentHp === "number" && isFinite(n.currentHp) && n.currentHp <= 0) {
+          n.isDead = true;
+          n.currentHp = 0;
+          n.isTemporarilyAway = false;
+        }
         next.push(n);
       } catch (err) {
         console.warn("[主界面] 周围人物条目已跳过", err);
@@ -1762,7 +1773,23 @@
     if (patkMag == null) patkMag = toFiniteNumberOrNull(m1 && m1.物攻);
     var matkMag = toFiniteNumberOrNull(m0 && m0.法攻);
     if (matkMag == null) matkMag = toFiniteNumberOrNull(m1 && m1.法攻);
-    if (patkMag == null && matkMag == null) return "";
+    /** 与 equippedItemToBagPayload / 战斗默认一致：表外或残缺格子的武器/法器仍给出可读的默认倍率（仅展示与文案；入袋时仍应由 tryPlace 写入 magnification） */
+    if (patkMag == null && matkMag == null) {
+      var tyInf =
+        (item && item.equipType != null && String(item.equipType).trim() !== ""
+          ? String(item.equipType).trim()
+          : "") ||
+        (meta && meta.type != null && String(meta.type).trim() !== "" ? String(meta.type).trim() : "");
+      if (tyInf === "武器" || tyInf === "主武器") {
+        patkMag = 1;
+        matkMag = 0;
+      } else if (tyInf === "法器" || tyInf === "副武器") {
+        patkMag = 0;
+        matkMag = 1;
+      } else {
+        return "";
+      }
+    }
     if (patkMag == null) patkMag = 0;
     if (matkMag == null) matkMag = 0;
     return (
@@ -1775,13 +1802,24 @@
 
   function resolveGongfaMagnificationLine(gongfaName, item, gongfaMeta) {
     var meta = gongfaMeta || lookupGongfaConfigDef(gongfaName);
+    /** 辅助类功法不参与攻伐倍率展示；loot 上若误带 magnification 也不出「伤害倍率」行 */
+    if (resolveGongfaSubtype(item, meta) === "辅助") return "";
     var m0 = item && item.magnification && typeof item.magnification === "object" ? item.magnification : null;
     var m1 = meta && meta.magnification && typeof meta.magnification === "object" ? meta.magnification : null;
     var patkMag = toFiniteNumberOrNull(m0 && m0.物攻);
     if (patkMag == null) patkMag = toFiniteNumberOrNull(m1 && m1.物攻);
     var matkMag = toFiniteNumberOrNull(m0 && m0.法攻);
     if (matkMag == null) matkMag = toFiniteNumberOrNull(m1 && m1.法攻);
-    if (patkMag == null && matkMag == null) return "";
+    /** 表外攻击功法可能无 magnification；给展示默认(1,0)。辅助类在表内可无倍率且战斗用 0,0 跳过输出，此处不臆造倍率以免与结算口径矛盾 */
+    if (patkMag == null && matkMag == null) {
+      var st = resolveGongfaSubtype(item, meta);
+      if (st === "攻击") {
+        patkMag = 1;
+        matkMag = 0;
+      } else {
+        return "";
+      }
+    }
     if (patkMag == null) patkMag = 0;
     if (matkMag == null) matkMag = 0;
     return (
@@ -2448,11 +2486,13 @@
   function normalizeBagItem(entry) {
     if (entry == null) return null;
     var name =
-      entry.name != null
+      entry.name != null && String(entry.name).trim() !== ""
         ? String(entry.name).trim()
-        : entry.label != null
+        : entry.label != null && String(entry.label).trim() !== ""
           ? String(entry.label).trim()
-          : "";
+          : entry.title != null && String(entry.title).trim() !== ""
+            ? String(entry.title).trim()
+            : "";
     if (!name) return null;
     var c = entry.count;
     var cnt =
@@ -2466,7 +2506,11 @@
     if (typeof entry.value === "number" && isFinite(entry.value)) {
       o.value = Math.max(0, Math.floor(entry.value));
     }
-    if (!o.equipType && entry.type != null && String(entry.type).trim() !== "") {
+    /** 储物袋功法书必须保留 type=功法 且不得带 equipType，否则会被判成装备、无法打开功法详情与装入功法栏 */
+    if (entry.type != null && String(entry.type).trim() === "功法") {
+      o.type = "功法";
+      delete o.equipType;
+    } else if (!o.equipType && entry.type != null && String(entry.type).trim() !== "") {
       o.type = String(entry.type).trim();
     }
     if (entry.subtype != null && String(entry.subtype).trim() !== "") o.subtype = String(entry.subtype).trim();
@@ -2476,6 +2520,13 @@
     }
     if (entry.effects && typeof entry.effects === "object" && Object.keys(entry.effects).length > 0) {
       o.effects = entry.effects;
+    }
+    if (typeof entry.manacost === "number" && isFinite(entry.manacost)) {
+      o.manacost = Math.max(0, Math.round(entry.manacost));
+    }
+    if (entry.magnification && typeof entry.magnification === "object") {
+      var mk = Object.keys(entry.magnification);
+      if (mk.length > 0) o.magnification = Object.assign({}, entry.magnification);
     }
     return o;
   }
@@ -2491,6 +2542,8 @@
     if (it.type != null) o.type = it.type;
     if (it.bonus && typeof it.bonus === "object") o.bonus = it.bonus;
     if (it.effects && typeof it.effects === "object") o.effects = it.effects;
+    if (typeof it.manacost === "number" && isFinite(it.manacost)) o.manacost = it.manacost;
+    if (it.magnification && typeof it.magnification === "object") o.magnification = Object.assign({}, it.magnification);
     return o;
   }
 

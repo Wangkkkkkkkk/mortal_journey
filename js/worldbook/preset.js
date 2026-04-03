@@ -27,6 +27,7 @@
   var STORY_RULE_PRESET_IDS = [
     "outputFormat",
     "bagNarrative",
+    "stuff_rules",
     "valueScale",
     "major_realm_breakthrough",
     "npcStoryHints",

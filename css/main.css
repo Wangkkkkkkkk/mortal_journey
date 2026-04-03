@@ -634,6 +634,11 @@ body.mj-main-body {
   outline-offset: 1px;
 }
 
+/* 储物袋售卖确认：叠在物品详情之上 */
+#mj-bag-sell-root.mj-trait-modal-root {
+  z-index: 9100;
+}
+
 .mj-trait-modal-root {
   position: fixed;
   inset: 0;
@@ -1625,6 +1630,18 @@ body.mj-main-body {
 
 .mj-chat-msg--battle-settlement .mj-chat-role-label {
   color: rgba(200, 185, 235, 0.92);
+}
+
+/** 战斗胜利后入袋的装备 / 功法摘要（介于结算与剧情之间） */
+.mj-chat-msg--battle-loot {
+  margin-right: 8%;
+  background: rgba(38, 62, 48, 0.48);
+  border: 1px solid rgba(120, 175, 130, 0.45);
+  color: #e4f0e6;
+}
+
+.mj-chat-msg--battle-loot .mj-chat-role-label {
+  color: rgba(165, 210, 175, 0.95);
 }
 
 .mj-chat-role-label {

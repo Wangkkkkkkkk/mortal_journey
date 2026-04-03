@@ -172,14 +172,24 @@
     }
   }
 
+  /**
+   * 须与 mainScreen_panel_realm.normalizeBagItem 一致，否则会吞掉战利品/配置里的 magnification、manacost、功法 type。
+   * 优先委托 MjMainScreenPanelRealm（脚本加载顺序晚于本文件时用回退实现）。
+   */
   function normalizeBagItem(entry) {
+    var R0 = global.MjMainScreenPanelRealm;
+    if (R0 && typeof R0.normalizeBagItem === "function") {
+      return R0.normalizeBagItem(entry);
+    }
     if (entry == null) return null;
     var name =
-      entry.name != null
+      entry.name != null && String(entry.name).trim() !== ""
         ? String(entry.name).trim()
-        : entry.label != null
+        : entry.label != null && String(entry.label).trim() !== ""
           ? String(entry.label).trim()
-          : "";
+          : entry.title != null && String(entry.title).trim() !== ""
+            ? String(entry.title).trim()
+            : "";
     if (!name) return null;
     var c = entry.count;
     var cnt = typeof c === "number" && isFinite(c) ? Math.max(0, Math.floor(c)) : 1;
@@ -192,7 +202,10 @@
     if (typeof entry.value === "number" && isFinite(entry.value)) {
       o.value = Math.max(0, Math.floor(entry.value));
     }
-    if (!o.equipType && entry.type != null && String(entry.type).trim() !== "") {
+    if (entry.type != null && String(entry.type).trim() === "功法") {
+      o.type = "功法";
+      delete o.equipType;
+    } else if (!o.equipType && entry.type != null && String(entry.type).trim() !== "") {
       o.type = String(entry.type).trim();
     }
     if (entry.subtype != null && String(entry.subtype).trim() !== "") o.subtype = String(entry.subtype).trim();
@@ -202,6 +215,13 @@
     }
     if (entry.effects && typeof entry.effects === "object" && Object.keys(entry.effects).length > 0) {
       o.effects = entry.effects;
+    }
+    if (typeof entry.manacost === "number" && isFinite(entry.manacost)) {
+      o.manacost = Math.max(0, Math.round(entry.manacost));
+    }
+    if (entry.magnification && typeof entry.magnification === "object") {
+      var mkeys = Object.keys(entry.magnification);
+      if (mkeys.length > 0) o.magnification = Object.assign({}, entry.magnification);
     }
     return o;
   }
@@ -215,10 +235,14 @@
   }
 
   /**
-   * 与 mainScreen.tryPlaceItemInBag 一致：同名堆叠，否则占空位。
+   * 与主界面 MjMainScreenPanel.tryPlaceItemInBag 一致（同名堆叠会 mergeLootPayloadIntoBagCell，避免状态 AI add 冲掉战利品倍率/功法 type）。
    * @returns {boolean}
    */
   function tryPlaceItemInBag(G, payload) {
+    var PP = global.MjMainScreenPanel;
+    if (PP && typeof PP.tryPlaceItemInBag === "function") {
+      return PP.tryPlaceItemInBag(G, payload);
+    }
     if (!G || !payload || !payload.name) return false;
     ensureInventoryShape(G);
     var name = String(payload.name).trim();
@@ -243,8 +267,12 @@
       grade: payload.grade,
       value: payload.value,
       type: payload.type,
+      subtype: payload.subtype,
+      subType: payload.subType,
       bonus: payload.bonus,
       effects: payload.effects,
+      manacost: payload.manacost,
+      magnification: payload.magnification,
     });
     return true;
   }
@@ -257,8 +285,14 @@
     if (c.grade != null) o.grade = c.grade;
     if (typeof c.value === "number" && isFinite(c.value)) o.value = c.value;
     if (c.type != null) o.type = c.type;
+    if (c.subtype != null) o.subtype = c.subtype;
+    if (c.subType != null) o.subType = c.subType;
     if (c.bonus && typeof c.bonus === "object") o.bonus = c.bonus;
     if (c.effects && typeof c.effects === "object") o.effects = c.effects;
+    if (typeof c.manacost === "number" && isFinite(c.manacost)) o.manacost = c.manacost;
+    if (c.magnification && typeof c.magnification === "object") {
+      o.magnification = Object.assign({}, c.magnification);
+    }
     return o;
   }
 
@@ -553,6 +587,7 @@
     var C = global.MjCreationConfig;
     var st = C && typeof C.getStuffDescribe === "function" ? C.getStuffDescribe(name) : null;
     var eq = C && typeof C.getEquipmentDescribe === "function" ? C.getEquipmentDescribe(name) : null;
+    var gfd = C && typeof C.getGongfaDescribe === "function" ? C.getGongfaDescribe(name) : null;
     var base = st || eq || null;
 
     var count =
@@ -632,6 +667,26 @@
         if (bagType) pay.type = bagType;
         if (bonusOut) pay.bonus = bonusOut;
         if (effectsOut) pay.effects = effectsOut;
+        if (typeof op.manacost === "number" && isFinite(op.manacost)) {
+          pay.manacost = Math.max(0, Math.round(op.manacost));
+        } else if (gfd && typeof gfd.manacost === "number" && isFinite(gfd.manacost)) {
+          pay.manacost = Math.max(0, Math.round(gfd.manacost));
+        }
+        var magPayOp =
+          op.magnification && typeof op.magnification === "object" && Object.keys(op.magnification).length > 0
+            ? op.magnification
+            : null;
+        var magPayEq =
+          eq && eq.magnification && typeof eq.magnification === "object" && Object.keys(eq.magnification).length > 0
+            ? eq.magnification
+            : null;
+        var magPayGf =
+          gfd && gfd.magnification && typeof gfd.magnification === "object" && Object.keys(gfd.magnification).length > 0
+            ? gfd.magnification
+            : null;
+        if (magPayOp) pay.magnification = Object.assign({}, magPayOp);
+        else if (magPayEq) pay.magnification = Object.assign({}, magPayEq);
+        else if (magPayGf) pay.magnification = Object.assign({}, magPayGf);
         return pay;
       }
     }
@@ -647,6 +702,26 @@
     if (bagType) out.type = bagType;
     if (bonusOut) out.bonus = bonusOut;
     if (effectsOut) out.effects = effectsOut;
+    if (typeof op.manacost === "number" && isFinite(op.manacost)) {
+      out.manacost = Math.max(0, Math.round(op.manacost));
+    } else if (gfd && typeof gfd.manacost === "number" && isFinite(gfd.manacost)) {
+      out.manacost = Math.max(0, Math.round(gfd.manacost));
+    }
+    var magOutOp =
+      op.magnification && typeof op.magnification === "object" && Object.keys(op.magnification).length > 0
+        ? op.magnification
+        : null;
+    var magOutEq =
+      eq && eq.magnification && typeof eq.magnification === "object" && Object.keys(eq.magnification).length > 0
+        ? eq.magnification
+        : null;
+    var magOutGf =
+      gfd && gfd.magnification && typeof gfd.magnification === "object" && Object.keys(gfd.magnification).length > 0
+        ? gfd.magnification
+        : null;
+    if (magOutOp) out.magnification = Object.assign({}, magOutOp);
+    else if (magOutEq) out.magnification = Object.assign({}, magOutEq);
+    else if (magOutGf) out.magnification = Object.assign({}, magOutGf);
     return out;
   }
 
@@ -1012,6 +1087,10 @@
       merged.currentMp = maxM != null ? Math.min(maxM, m) : m;
     }
     if (merged.isDead === true) merged.currentHp = 0;
+    else if (typeof merged.currentHp === "number" && isFinite(merged.currentHp) && merged.currentHp <= 0) {
+      merged.currentHp = 0;
+      merged.isDead = true;
+    }
     return merged;
   }
 

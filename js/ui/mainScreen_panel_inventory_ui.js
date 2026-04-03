@@ -153,23 +153,24 @@
       var labelEl = el.querySelector(".mj-inventory-slot-label");
       var qtyEl = el.querySelector(".mj-inventory-slot-qty");
       var item = G.inventorySlots[i];
-      if (item && item.name) {
+      var bagName = item ? bagItemPrimaryName(item) : "";
+      if (item && bagName) {
         el.classList.add("mj-inventory-slot--filled");
         el.classList.remove("mj-inventory-slot--empty");
-        if (labelEl) labelEl.textContent = item.name;
+        if (labelEl) labelEl.textContent = bagName;
         var cnt = typeof item.count === "number" ? item.count : 1;
         if (qtyEl) {
           qtyEl.textContent = String(cnt);
           qtyEl.classList.remove("hidden");
         }
-        var tip = item.name;
+        var tip = bagName;
         if (item.desc) tip += "\n" + item.desc;
         tip += "\n数量：" + cnt + "（点击查看详情）";
         el.setAttribute("title", tip);
-        el.setAttribute("aria-label", item.name + "，数量 " + cnt);
+        el.setAttribute("aria-label", bagName + "，数量 " + cnt);
         el.setAttribute("role", "button");
         el.setAttribute("tabindex", "0");
-        R.setSlotRarityDataAttr(el, R.resolveBagItemTraitRarity(item.name, item));
+        R.setSlotRarityDataAttr(el, R.resolveBagItemTraitRarity(bagName, item));
       } else {
         el.classList.add("mj-inventory-slot--empty");
         el.classList.remove("mj-inventory-slot--filled");
@@ -346,10 +347,31 @@
 
   function isBagItemGongfaCandidate(it, cfgGf) {
     if (cfgGf) return true;
-    var ty = it && it.type != null ? String(it.type).trim() : "";
-    if (ty === "功法") return true;
+    if (!it) return false;
+    var nmG = bagItemPrimaryName(it);
+    if (nmG) {
+      var metaG = R.lookupGongfaConfigDef(nmG);
+      var metaE = R.lookupEquipmentMetaByItemName(nmG);
+      /** 名称仅命中功法表时视为功法书（状态回写入袋可能丢失 type:功法，仅靠原名仍会误判） */
+      if (metaG && !metaE) return true;
+    }
+    var ty = it.type != null ? String(it.type).trim() : "";
+    if (ty === "功法" || ty === "功法书") return true;
     var st = resolveGongfaSubtype(it, cfgGf);
-    return st === "攻击" || st === "辅助";
+    if (st === "攻击" || st === "辅助") return true;
+    if (nmG && R.lookupStuffMetaByItemName(nmG)) return false;
+    var hasMag =
+      it.magnification &&
+      typeof it.magnification === "object" &&
+      (typeof it.magnification.物攻 === "number" ||
+        typeof it.magnification.法攻 === "number");
+    if (
+      (typeof it.manacost === "number" && isFinite(it.manacost)) ||
+      hasMag
+    ) {
+      if (resolveWearableSlotIndexForBagItem(it) == null) return true;
+    }
+    return false;
   }
 
   /** 按装备名匹配 equipment 元数据 { desc, type, bonus } */
@@ -441,6 +463,83 @@
     return -1;
   }
 
+  /** 储物袋格显示名 / 点击校验（NPC·状态 AI 可能只写 title；仅 label 时 normalize 前也会与 name   不一致） */
+  function bagItemPrimaryName(it) {
+    if (!it || typeof it !== "object") return "";
+    if (it.name != null && String(it.name).trim() !== "") return String(it.name).trim();
+    if (it.label != null && String(it.label).trim() !== "") return String(it.label).trim();
+    if (it.title != null && String(it.title).trim() !== "") return String(it.title).trim();
+    return "";
+  }
+
+  /** 同名堆叠时把 payload 上几类字段补进已有格子（避免先入了残缺 AI 物再loot无法补足） */
+  function mergeLootPayloadIntoBagCell(cell, payload) {
+    if (!cell || !payload || String(cell.name).trim() !== String(payload.name).trim()) return;
+    var pIsGf = payload.type != null && String(payload.type).trim() === "功法";
+    if (pIsGf) {
+      cell.type = "功法";
+      delete cell.equipType;
+    }
+    if ((!cell.desc || String(cell.desc).trim() === "") && payload.desc != null && String(payload.desc).trim() !== "") {
+      cell.desc = String(payload.desc).trim();
+    }
+    if (
+      !cell.equipType &&
+      !pIsGf &&
+      payload.equipType != null &&
+      String(payload.equipType).trim() !== ""
+    ) {
+      cell.equipType = String(payload.equipType).trim();
+    }
+    if (!cell.type && payload.type != null && String(payload.type).trim() !== "") {
+      cell.type = String(payload.type).trim();
+    }
+    if (cell.type === "功法") delete cell.equipType;
+    if (!cell.subtype && payload.subtype != null && String(payload.subtype).trim() !== "") {
+      cell.subtype = String(payload.subtype).trim();
+    }
+    if (!cell.subType && payload.subType != null && String(payload.subType).trim() !== "") {
+      cell.subType = String(payload.subType).trim();
+    }
+    if ((!cell.grade || String(cell.grade).trim() === "") && payload.grade != null && String(payload.grade).trim() !== "") {
+      cell.grade = String(payload.grade).trim();
+    }
+    if ((typeof cell.value !== "number" || !isFinite(cell.value)) && typeof payload.value === "number" && isFinite(payload.value)) {
+      cell.value = Math.max(0, Math.floor(payload.value));
+    }
+    if (
+      (!cell.bonus || typeof cell.bonus !== "object" || Object.keys(cell.bonus).length === 0) &&
+      payload.bonus &&
+      typeof payload.bonus === "object" &&
+      Object.keys(payload.bonus).length > 0
+    ) {
+      cell.bonus = Object.assign({}, payload.bonus);
+    }
+    if (
+      (cell.manacost == null || typeof cell.manacost !== "number" || !isFinite(cell.manacost)) &&
+      typeof payload.manacost === "number" &&
+      isFinite(payload.manacost)
+    ) {
+      cell.manacost = Math.max(0, Math.round(payload.manacost));
+    }
+    if (
+      (!cell.magnification || typeof cell.magnification !== "object" || Object.keys(cell.magnification).length === 0) &&
+      payload.magnification &&
+      typeof payload.magnification === "object" &&
+      Object.keys(payload.magnification).length > 0
+    ) {
+      cell.magnification = Object.assign({}, payload.magnification);
+    }
+    if (
+      (!cell.effects || typeof cell.effects !== "object" || Object.keys(cell.effects).length === 0) &&
+      payload.effects &&
+      typeof payload.effects === "object" &&
+      Object.keys(payload.effects).length > 0
+    ) {
+      cell.effects = Object.assign({}, payload.effects);
+    }
+  }
+
   /**
    * 将一件物品放入储物袋（0～11）：优先与同名堆叠，否则找空位。
    * @returns {boolean}
@@ -456,6 +555,7 @@
       var c = G.inventorySlots[i];
       if (c && c.name === name) {
         c.count = (typeof c.count === "number" && isFinite(c.count) ? c.count : 1) + cnt;
+        mergeLootPayloadIntoBagCell(c, payload);
         return true;
       }
     }
@@ -469,8 +569,12 @@
       grade: payload.grade,
       value: payload.value,
       type: payload.type,
+      subtype: payload.subtype,
+      subType: payload.subType,
       bonus: payload.bonus,
       effects: payload.effects,
+      manacost: payload.manacost,
+      magnification: payload.magnification,
     });
     return true;
   }
@@ -495,11 +599,13 @@
   function gongfaSlotItemToBagPayload(item) {
     if (!item) return null;
     var nm =
-      item.name != null
+      item.name != null && String(item.name).trim() !== ""
         ? String(item.name).trim()
-        : item.label != null
+        : item.label != null && String(item.label).trim() !== ""
           ? String(item.label).trim()
-          : "";
+          : item.title != null && String(item.title).trim() !== ""
+            ? String(item.title).trim()
+            : "";
     if (!nm) return null;
     var cfgGf = R.lookupGongfaConfigDef(nm);
     var descStr =
@@ -534,12 +640,51 @@
     } else if (cfgGf && typeof cfgGf.value === "number" && isFinite(cfgGf.value)) {
       o.value = Math.floor(cfgGf.value);
     }
+    if (typeof item.manacost === "number" && isFinite(item.manacost)) {
+      o.manacost = Math.max(0, Math.round(item.manacost));
+    } else if (cfgGf && typeof cfgGf.manacost === "number" && isFinite(cfgGf.manacost)) {
+      o.manacost = Math.max(0, Math.round(cfgGf.manacost));
+    }
+    var magSrc = item.magnification && typeof item.magnification === "object" ? item.magnification : null;
+    var magCfg = cfgGf && cfgGf.magnification && typeof cfgGf.magnification === "object" ? cfgGf.magnification : null;
+    var magUse = magSrc;
+    if (
+      (!magUse || Object.keys(magUse).length === 0) &&
+      magCfg &&
+      Object.keys(magCfg).length > 0
+    ) {
+      magUse = magCfg;
+    }
+    if (magUse && typeof magUse === "object" && Object.keys(magUse).length > 0) {
+      o.magnification = Object.assign({}, magUse);
+    }
+    /** 有表且为攻击类却未配置 magnification 时补默认，与战斗 merge 缺省及 UI 展示一致（辅助类表内可 deliberately 无倍率，不补） */
+    if (
+      cfgGf &&
+      (!o.magnification || Object.keys(o.magnification).length === 0) &&
+      resolveGongfaSubtype(item, cfgGf) === "攻击"
+    ) {
+      o.magnification = { 物攻: 1, 法攻: 0 };
+    }
+    if (!cfgGf) {
+      if (!o.subtype || String(o.subtype).trim() === "") {
+        o.subtype = "攻击";
+      }
+      if (!o.magnification || Object.keys(o.magnification).length === 0) {
+        if (String(o.subtype).trim() === "辅助") {
+          o.magnification = { 物攻: 0, 法攻: 1 };
+        } else {
+          o.magnification = { 物攻: 1, 法攻: 0 };
+        }
+      }
+    }
+    delete o.equipType;
     return o;
   }
 
   /** 储物袋功法书 → 功法栏对象（合并格子与功法表） */
   function bagItemToGongfaBarObject(it, cfgGf) {
-    var nm = String(it.name).trim();
+    var nm = bagItemPrimaryName(it);
     var descStr = "";
     if (it.desc != null && String(it.desc).trim() !== "") descStr = String(it.desc).trim();
     else if (cfgGf && cfgGf.desc != null) descStr = String(cfgGf.desc).trim();
@@ -568,6 +713,32 @@
       gfObj.value = Math.max(0, Math.floor(it.value));
     } else if (cfgGf && typeof cfgGf.value === "number" && isFinite(cfgGf.value)) {
       gfObj.value = Math.floor(cfgGf.value);
+    }
+    if (typeof it.manacost === "number" && isFinite(it.manacost)) {
+      gfObj.manacost = Math.max(0, Math.round(it.manacost));
+    } else if (cfgGf && typeof cfgGf.manacost === "number" && isFinite(cfgGf.manacost)) {
+      gfObj.manacost = Math.max(0, Math.round(cfgGf.manacost));
+    }
+    var magIt = it.magnification && typeof it.magnification === "object" ? it.magnification : null;
+    var magCf = cfgGf && cfgGf.magnification && typeof cfgGf.magnification === "object" ? cfgGf.magnification : null;
+    var magOut = magIt && Object.keys(magIt).length ? magIt : magCf && Object.keys(magCf).length ? magCf : null;
+    if (magOut) gfObj.magnification = Object.assign({}, magOut);
+    if (
+      cfgGf &&
+      (!gfObj.magnification || Object.keys(gfObj.magnification).length === 0) &&
+      resolveGongfaSubtype(it, cfgGf) === "攻击"
+    ) {
+      gfObj.magnification = { 物攻: 1, 法攻: 0 };
+    }
+    if (!cfgGf && (!gfObj.magnification || Object.keys(gfObj.magnification).length === 0)) {
+      if (!gfObj.subtype || String(gfObj.subtype).trim() === "") {
+        gfObj.subtype = "攻击";
+      }
+      if (String(gfObj.subtype).trim() === "辅助") {
+        gfObj.magnification = { 物攻: 0, 法攻: 1 };
+      } else {
+        gfObj.magnification = { 物攻: 1, 法攻: 0 };
+      }
     }
     return gfObj;
   }
@@ -607,8 +778,8 @@
     var bi = Number(bagIdx);
     if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
     var it = G.inventorySlots[bi];
-    if (!it || !it.name) return false;
-    var nm = String(it.name).trim();
+    var nm = bagItemPrimaryName(it);
+    if (!it || !nm) return false;
     var cfgGf = R.lookupGongfaConfigDef(nm);
     if (!isBagItemGongfaCandidate(it, cfgGf)) return false;
 
@@ -625,7 +796,7 @@
 
     if (cnt > 1) {
       G.inventorySlots[bi] = R.normalizeBagItem(
-        Object.assign({ name: it.name, count: cnt - 1 }, R.continuityFieldsFromBagItem(it)),
+        Object.assign({ name: nm, count: cnt - 1 }, R.continuityFieldsFromBagItem(it)),
       );
     } else {
       G.inventorySlots[bi] = null;
@@ -639,10 +810,17 @@
 
   /** 背包格物品是否可穿戴：有佩戴部位（格子上 equipType 或配置 equipment.type）则返回栏位索引 0～2 */
   function resolveWearableSlotIndexForBagItem(it) {
-    if (!it || !it.name) return null;
+    var nmW = bagItemPrimaryName(it);
+    if (!it || !nmW) return null;
+    /** 功法书必须与装备分流；否则同名装备表条目会误判为可穿戴，「装入功法栏」被边缘化或点到错误逻辑 */
+    if (it.type != null && String(it.type).trim() === "功法") return null;
+    var gfMetaW = nmW ? R.lookupGongfaConfigDef(nmW) : null;
+    var eqMetaW = nmW ? R.lookupEquipmentMetaByItemName(nmW) : null;
+    /** 只有功法表有条目、装备表无同名物 → 必然是功法书（即使格子上丢了 type） */
+    if (gfMetaW && !eqMetaW) return null;
     var ty = it.equipType != null ? String(it.equipType).trim() : "";
     if (!ty) {
-      var em = R.lookupEquipmentMetaByItemName(String(it.name).trim());
+      var em = R.lookupEquipmentMetaByItemName(nmW);
       if (!em || em.type == null || String(em.type).trim() === "") return null;
       ty = String(em.type).trim();
     }
@@ -658,23 +836,78 @@
     else window.alert(msg);
   }
 
-  /** 佩戴栏对象 → 入袋 payload（保留 AI/表外 grade、bonus、value） */
-  function equippedItemToBagPayload(item) {
+  /** 与战斗 resolveWeaponMagnification / mergeMagnification 一致：合并格子与装备表；便于入袋后 UI「伤害倍率」与战斗轮一致 */
+  function mergeEquipmentMagnificationForLootPayload(item, equipMeta) {
+    var m0 = item && item.magnification && typeof item.magnification === "object" ? item.magnification : null;
+    var m1 = equipMeta && equipMeta.magnification && typeof equipMeta.magnification === "object" ? equipMeta.magnification : null;
+    var wu = null;
+    var fa = null;
+    if (m0 && typeof m0.物攻 === "number" && isFinite(m0.物攻)) wu = m0.物攻;
+    if (m0 && typeof m0.法攻 === "number" && isFinite(m0.法攻)) fa = m0.法攻;
+    if (wu == null && m1 && typeof m1.物攻 === "number" && isFinite(m1.物攻)) wu = m1.物攻;
+    if (fa == null && m1 && typeof m1.法攻 === "number" && isFinite(m1.法攻)) fa = m1.法攻;
+    return { 物攻: wu != null ? wu : 0, 法攻: fa != null ? fa : 0 };
+  }
+
+  /** 佩戴栏对象 → 入袋 payload（保留 AI/表外 grade、bonus、value；equipSlotIndex 0～3 用于表外装备推断部位） */
+  function equippedItemToBagPayload(item, equipSlotIndex) {
     if (!item) return null;
-    var nm = item.name != null ? String(item.name).trim() : "";
+    var nm =
+      item.name != null && String(item.name).trim() !== ""
+        ? String(item.name).trim()
+        : item.label != null
+          ? String(item.label).trim()
+          : "";
     if (!nm) return null;
+    var em = R.lookupEquipmentMetaByItemName(nm);
+    var si = typeof equipSlotIndex === "number" && isFinite(equipSlotIndex) ? Math.floor(equipSlotIndex) : -1;
+    var fromSlot = si >= 0 && si < EQUIP_SLOT_COUNT ? EQUIP_SLOT_KIND_LABELS[si] || "" : "";
+    var eqTyRaw = item.equipType != null ? String(item.equipType).trim() : "";
+    var eqTyMerge =
+      eqTyRaw ||
+      (em && em.type != null ? String(em.type).trim() : "") ||
+      (fromSlot ? fromSlot : "");
+    var descRun = item.desc != null ? String(item.desc).trim() : "";
+    var descMerged = descRun || (em && em.desc != null ? String(em.desc).trim() : "") || "";
     var o = {
       name: nm,
       count: 1,
-      desc: item.desc != null ? String(item.desc) : "",
-      equipType: item.equipType,
+      desc: descMerged,
     };
+    if (eqTyMerge) o.equipType = eqTyMerge;
     if (item.grade != null && String(item.grade).trim() !== "") o.grade = String(item.grade).trim();
+    else if (em && em.grade != null && String(em.grade).trim() !== "") o.grade = String(em.grade).trim();
     if (item.bonus && typeof item.bonus === "object" && Object.keys(item.bonus).length > 0) {
       o.bonus = Object.assign({}, item.bonus);
+    } else if (em && em.bonus && typeof em.bonus === "object" && Object.keys(em.bonus).length > 0) {
+      o.bonus = Object.assign({}, em.bonus);
     }
     if (typeof item.value === "number" && isFinite(item.value)) {
       o.value = Math.max(0, Math.floor(item.value));
+    } else if (em && typeof em.value === "number" && isFinite(em.value)) {
+      o.value = Math.floor(em.value);
+    }
+    var mag = mergeEquipmentMagnificationForLootPayload(item, em);
+    var emTy = em && em.type != null ? String(em.type).trim() : "";
+    var isWeaponSlot =
+      si === 0 ||
+      eqTyMerge === "武器" ||
+      eqTyMerge === "主武器" ||
+      emTy === "武器" ||
+      emTy === "主武器";
+    var isFaqiSlot =
+      si === 1 ||
+      eqTyMerge === "法器" ||
+      eqTyMerge === "副武器" ||
+      emTy === "法器" ||
+      emTy === "副武器";
+    if (isWeaponSlot && mag.物攻 <= 0 && mag.法攻 <= 0) {
+      mag = { 物攻: 1, 法攻: 0 };
+    } else if (isFaqiSlot && mag.物攻 <= 0 && mag.法攻 <= 0) {
+      mag = { 物攻: 0, 法攻: 1 };
+    }
+    if (mag.物攻 > 0 || mag.法攻 > 0) {
+      o.magnification = mag;
     }
     return o;
   }
@@ -716,6 +949,10 @@
     } else if (eqMeta && typeof eqMeta.value === "number" && isFinite(eqMeta.value)) {
       equipObj.value = Math.floor(eqMeta.value);
     }
+    var magCell = it.magnification && typeof it.magnification === "object" ? it.magnification : null;
+    var magMeta = eqMeta && eqMeta.magnification && typeof eqMeta.magnification === "object" ? eqMeta.magnification : null;
+    var magPick = magCell && Object.keys(magCell).length ? magCell : magMeta && Object.keys(magMeta).length ? magMeta : null;
+    if (magPick) equipObj.magnification = Object.assign({}, magPick);
     return equipObj;
   }
 
@@ -732,7 +969,7 @@
     if (!isFinite(ei) || ei < 0 || ei >= EQUIP_SLOT_COUNT) return false;
     var item = G.equippedSlots[ei];
     if (!item) return false;
-    var payload = equippedItemToBagPayload(item);
+    var payload = equippedItemToBagPayload(item, ei);
     if (!payload) return false;
     if (!tryPlaceItemInBag(G, payload)) {
       notifyBagFull();
@@ -762,7 +999,7 @@
 
     var prev = G.equippedSlots[slotIdx];
     if (prev && prev.name) {
-      var prevPayload = equippedItemToBagPayload(prev);
+      var prevPayload = equippedItemToBagPayload(prev, slotIdx);
       if (!prevPayload || !tryPlaceItemInBag(G, prevPayload)) {
         notifyBagFull();
         return false;
@@ -803,6 +1040,386 @@
       );
     }
     return true;
+  }
+
+  function cloneInventorySlotsForSim(slots) {
+    if (!Array.isArray(slots)) return null;
+    try {
+      return JSON.parse(JSON.stringify(slots));
+    } catch (_e) {
+      return slots.slice();
+    }
+  }
+
+  /** 储物袋堆叠是否为灵石货币（不可售卖） */
+  function isSpiritStoneStackName(itemName) {
+    var nm = String(itemName || "").trim();
+    if (!nm || nm === "灵石") return true;
+    var SS = global.MjDescribeSpiritStones;
+    return !!(SS && typeof SS === "object" && Object.prototype.hasOwnProperty.call(SS, nm));
+  }
+
+  /** 单件物品的灵石等价刻度（与详情「价值」一致） */
+  function getBagItemUnitReferenceValue(it) {
+    if (!it || !it.name) return 0;
+    var refNum =
+      typeof it.value === "number" && isFinite(it.value)
+        ? it.value
+        : pickDescribeValueFromMetas(
+            lookupStuffMetaByItemName(it.name),
+            lookupEquipmentMetaByItemName(it.name),
+            lookupGongfaConfigDef(String(it.name).trim()),
+          );
+    if (typeof refNum !== "number" || !isFinite(refNum)) return 0;
+    return Math.max(0, Math.floor(refNum));
+  }
+
+  /** 与 spirit_stone.js 一致：大额面值优先拆成五种灵石堆叠 */
+  function breakdownValueToSpiritStones(totalRaw) {
+    var SS = global.MjDescribeSpiritStones;
+    var order = ["仙品灵石", "极品灵石", "上品灵石", "中品灵石", "下品灵石"];
+    var denoms = [];
+    var i;
+    var lsv = 10;
+    for (i = 0; i < order.length; i++) {
+      var nm = order[i];
+      var row = SS && SS[nm];
+      var v = row && typeof row.value === "number" && isFinite(row.value) ? Math.floor(row.value) : null;
+      if (v != null && v > 0) {
+        denoms.push({ name: nm, value: v });
+        if (nm === "下品灵石") lsv = v;
+      }
+    }
+    if (!denoms.length) {
+      denoms.push({ name: "下品灵石", value: 10 });
+      lsv = 10;
+    }
+    denoms.sort(function (a, b) {
+      return b.value - a.value;
+    });
+    var scaled = Math.max(0, Math.floor(Number(totalRaw) || 0));
+    var floorScaled = Math.floor(scaled / lsv) * lsv;
+    var remaining = floorScaled;
+    var payouts = [];
+    for (i = 0; i < denoms.length; i++) {
+      var d = denoms[i];
+      var n = Math.floor(remaining / d.value);
+      if (n > 0) {
+        payouts.push({ name: d.name, count: n });
+        remaining -= n * d.value;
+      }
+    }
+    return { payouts: payouts, payoutTotal: floorScaled, lostTail: scaled - floorScaled };
+  }
+
+  function formatSpiritPayoutsChinese(payouts) {
+    if (!payouts || !payouts.length) return "（无）";
+    return payouts.map(function (p) {
+      return p.name + "×" + p.count;
+    }).join("，");
+  }
+
+  function removeNFromBagSlot(G, bagIdx, nRemove) {
+    if (!G || !Array.isArray(G.inventorySlots)) return false;
+    var bi = Number(bagIdx);
+    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    var it = G.inventorySlots[bi];
+    if (!it || !it.name) return false;
+    var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
+    var take = Math.min(cnt, Math.max(1, Math.floor(Number(nRemove) || 0)));
+    if (take < 1) return false;
+    var left = cnt - take;
+    if (left <= 0) G.inventorySlots[bi] = null;
+    else {
+      G.inventorySlots[bi] = R.normalizeBagItem(
+        Object.assign({ name: it.name, count: left }, R.continuityFieldsFromBagItem(it)),
+      );
+    }
+    return true;
+  }
+
+   /**
+   * 在当前格快照上模拟：是否装得下折算后的各档灵石堆叠。
+   * @returns {boolean}
+   */
+  function tryPlacePayoutsAfterRemoveSimulate(slotsAfterRemove, payouts) {
+    if (!slotsAfterRemove || !Array.isArray(payouts)) return false;
+    var mockSlots = cloneInventorySlotsForSim(slotsAfterRemove);
+    if (!mockSlots) return false;
+    var mockG = { inventorySlots: mockSlots };
+    R.ensureInventorySlots(mockG);
+    for (var i = 0; i < payouts.length; i++) {
+      var p = payouts[i];
+      if (!p || !p.name || !p.count) continue;
+      if (!tryPlaceItemInBag(mockG, { name: p.name, count: p.count })) return false;
+    }
+    return true;
+  }
+
+  function canSellBagItemForSpiritStones(it) {
+    if (!it || !it.name) return false;
+    if (isSpiritStoneStackName(it.name)) return false;
+    return getBagItemUnitReferenceValue(it) > 0;
+  }
+
+  /**
+   * 将储物袋中若干件物品按价值刻度折算为灵石（下品刻度整除；余数舍弃）。
+   * @returns {boolean}
+   */
+  function performSellBagItemForSpiritStones(bagIdx, sellCount) {
+    var G = global.MortalJourneyGame;
+    if (!G || !Array.isArray(G.inventorySlots)) return false;
+    R.ensureGameRuntimeDefaults(G);
+    var bi = Number(bagIdx);
+    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    var it = G.inventorySlots[bi];
+    if (!it || !it.name) return false;
+    if (isSpiritStoneStackName(it.name)) return false;
+    var unit = getBagItemUnitReferenceValue(it);
+    if (unit <= 0) return false;
+    var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
+    var sellN = Math.min(cnt, Math.max(1, Math.floor(Number(sellCount) || 0)));
+    if (sellN < 1) return false;
+    var totalRaw = unit * sellN;
+    var bd = breakdownValueToSpiritStones(totalRaw);
+    if (!bd.payouts.length) {
+      if (global.GameLog && typeof global.GameLog.warn === "function") {
+        global.GameLog.warn("该物品折算刻度过低，无法兑换灵石。");
+      }
+      return false;
+    }
+    var slotsClone = cloneInventorySlotsForSim(G.inventorySlots);
+    if (!slotsClone) return false;
+    var mockItem = slotsClone[bi];
+    if (!mockItem || !mockItem.name) return false;
+    var mockCnt = typeof mockItem.count === "number" && isFinite(mockItem.count) ? Math.max(1, Math.floor(mockItem.count)) : 1;
+    var mockLeft = mockCnt - sellN;
+    if (mockLeft <= 0) slotsClone[bi] = null;
+    else {
+      slotsClone[bi] = R.normalizeBagItem(
+        Object.assign({ name: mockItem.name, count: mockLeft }, R.continuityFieldsFromBagItem(mockItem)),
+      );
+    }
+    var afterRemove = slotsClone;
+    R.ensureInventorySlots({ inventorySlots: afterRemove });
+    if (!tryPlacePayoutsAfterRemoveSimulate(afterRemove, bd.payouts)) {
+      if (global.GameLog && typeof global.GameLog.warn === "function") {
+        global.GameLog.warn("储物袋空间不足，无法装入折算灵石。请先整理背包。");
+      }
+      return false;
+    }
+    var soldName = String(it.name);
+    if (!removeNFromBagSlot(G, bi, sellN)) return false;
+    for (var i = 0; i < bd.payouts.length; i++) {
+      var p = bd.payouts[i];
+      if (!tryPlaceItemInBag(G, { name: p.name, count: p.count })) {
+        if (global.GameLog && typeof global.GameLog.error === "function") {
+          global.GameLog.error("售出后装入灵石失败，请重载存档或联系开发者。");
+        }
+        return false;
+      }
+    }
+    R.persistBootstrapSnapshot();
+    renderLeftPanel(G.fateChoice, G);
+    var logMsg =
+      "出售「" +
+      soldName +
+      "」×" +
+      sellN +
+      "（刻度 " +
+      bd.payoutTotal +
+      "），获得 " +
+      formatSpiritPayoutsChinese(bd.payouts) +
+      (bd.lostTail > 0 ? "（尾数刻度 " + bd.lostTail + " 未满一整颗下品灵石，已舍去）" : "") +
+      "。";
+    if (global.GameLog && typeof global.GameLog.info === "function") global.GameLog.info(logMsg);
+    else if (global.console && console.info) console.info(logMsg);
+    return true;
+  }
+
+  var _bagSellModalBound = false;
+
+  function closeBagSellModal() {
+    var root = document.getElementById("mj-bag-sell-root");
+    if (!root) return;
+    root.classList.add("hidden");
+    root.setAttribute("aria-hidden", "true");
+    root._mjBagSellIdx = null;
+    R.mjClearBodyOverflowIfNoModal();
+  }
+
+  function ensureBagSellModal() {
+    var existing = document.getElementById("mj-bag-sell-root");
+    if (existing) return existing;
+    var root = document.createElement("div");
+    root.id = "mj-bag-sell-root";
+    root.className = "mj-trait-modal-root hidden";
+    root.setAttribute("aria-hidden", "true");
+    var backdrop = document.createElement("div");
+    backdrop.className = "mj-trait-modal-backdrop";
+    backdrop.setAttribute("data-mj-bag-sell-close", "1");
+    backdrop.tabIndex = -1;
+    var panel = document.createElement("div");
+    panel.className = "mj-trait-modal mj-item-detail-panel";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.setAttribute("aria-labelledby", "mj-bag-sell-title");
+    var closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "mj-trait-modal-close";
+    closeBtn.setAttribute("data-mj-bag-sell-close", "1");
+    closeBtn.setAttribute("aria-label", "关闭");
+    closeBtn.textContent = "×";
+    var title = document.createElement("h4");
+    title.id = "mj-bag-sell-title";
+    title.className = "mj-trait-modal-title";
+    title.textContent = "出售换取灵石";
+    var sub = document.createElement("div");
+    sub.className = "mj-trait-modal-rarity";
+    sub.id = "mj-bag-sell-subtitle";
+    var body = document.createElement("div");
+    body.className = "mj-trait-modal-body";
+    var preview = document.createElement("div");
+    preview.id = "mj-bag-sell-preview";
+    preview.className = "mj-trait-modal-v";
+    preview.style.marginBottom = "12px";
+    preview.style.whiteSpace = "pre-wrap";
+    var row = document.createElement("div");
+    row.className = "mj-item-detail-cultivate-row";
+    var field = document.createElement("div");
+    field.className = "mj-item-detail-cultivate-field";
+    var lab = document.createElement("span");
+    lab.className = "mj-item-detail-cultivate-label";
+    lab.textContent = "出售数量";
+    var inp = document.createElement("input");
+    inp.type = "number";
+    inp.id = "mj-bag-sell-qty";
+    inp.className = "mj-item-detail-cultivate-input";
+    inp.min = "1";
+    inp.step = "1";
+    inp.value = "1";
+    inp.setAttribute("inputmode", "numeric");
+    field.appendChild(lab);
+    field.appendChild(inp);
+    row.appendChild(field);
+    var actions = document.createElement("div");
+    actions.className = "mj-item-detail-actions";
+    actions.style.marginTop = "14px";
+    var btnCancel = document.createElement("button");
+    btnCancel.type = "button";
+    btnCancel.className = "mj-item-detail-action-btn";
+    btnCancel.setAttribute("data-mj-bag-sell-close", "1");
+    btnCancel.textContent = "取消";
+    var btnOk = document.createElement("button");
+    btnOk.type = "button";
+    btnOk.className = "mj-item-detail-action-btn mj-item-detail-action-btn--primary";
+    btnOk.id = "mj-bag-sell-confirm";
+    btnOk.textContent = "确定出售";
+    actions.appendChild(btnCancel);
+    actions.appendChild(btnOk);
+    body.appendChild(preview);
+    body.appendChild(row);
+    body.appendChild(actions);
+    panel.appendChild(closeBtn);
+    panel.appendChild(title);
+    panel.appendChild(sub);
+    panel.appendChild(body);
+    root.appendChild(backdrop);
+    root.appendChild(panel);
+    document.body.appendChild(root);
+
+    function syncPreview() {
+      var G = global.MortalJourneyGame;
+      var idx = root._mjBagSellIdx;
+      var prevEl = document.getElementById("mj-bag-sell-preview");
+      var subEl = document.getElementById("mj-bag-sell-subtitle");
+      var qtyInp = document.getElementById("mj-bag-sell-qty");
+      if (!G || !G.inventorySlots || idx == null || !prevEl || !qtyInp) return;
+      var it = G.inventorySlots[idx];
+      if (!it || !it.name) {
+        prevEl.textContent = "物品已不存在。";
+        return;
+      }
+      var unit = getBagItemUnitReferenceValue(it);
+      var maxCnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
+      var q = Math.max(1, Math.min(maxCnt, Math.floor(Number(qtyInp.value) || 0) || 1));
+      qtyInp.max = String(maxCnt);
+      if (subEl) subEl.textContent = "单价刻度 " + unit;
+      var bd = breakdownValueToSpiritStones(unit * q);
+      var lines =
+        "将出售：" +
+        String(it.name) +
+        " × " +
+        q +
+        "\n合计刻度：" +
+        unit * q +
+        "\n折算灵石：" +
+        formatSpiritPayoutsChinese(bd.payouts);
+      prevEl.textContent = lines;
+    }
+
+    root._mjSyncSellPreview = syncPreview;
+
+    if (!_bagSellModalBound) {
+      _bagSellModalBound = true;
+      root.addEventListener("click", function (e) {
+        if (e.target && e.target.getAttribute && e.target.getAttribute("data-mj-bag-sell-close")) {
+          closeBagSellModal();
+        }
+      });
+      inp.addEventListener("input", syncPreview);
+      inp.addEventListener("change", syncPreview);
+      btnOk.addEventListener("click", function () {
+        var G = global.MortalJourneyGame;
+        var idx = root._mjBagSellIdx;
+        var qtyInp = document.getElementById("mj-bag-sell-qty");
+        if (!G || idx == null || !qtyInp) return;
+        var it = G.inventorySlots[idx];
+        if (!it || !canSellBagItemForSpiritStones(it)) {
+          closeBagSellModal();
+          return;
+        }
+        var maxCnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
+        var q = Math.max(1, Math.min(maxCnt, Math.floor(Number(qtyInp.value) || 0) || 1));
+        if (performSellBagItemForSpiritStones(idx, q)) {
+          closeBagSellModal();
+          closeItemDetailModal();
+        }
+      });
+      document.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Escape") return;
+        var r = document.getElementById("mj-bag-sell-root");
+        if (r && !r.classList.contains("hidden")) {
+          closeBagSellModal();
+          ev.preventDefault();
+        }
+      });
+    }
+
+    return root;
+  }
+
+  function openBagSellConfirmModal(bagIdx) {
+    var G = global.MortalJourneyGame;
+    if (!G || !G.inventorySlots) return;
+    var bi = Number(bagIdx);
+    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return;
+    var it = G.inventorySlots[bi];
+    if (!it || !canSellBagItemForSpiritStones(it)) return;
+    var root = ensureBagSellModal();
+    root._mjBagSellIdx = bi;
+    var inp = document.getElementById("mj-bag-sell-qty");
+    var maxCnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
+    if (inp) {
+      inp.min = "1";
+      inp.max = String(maxCnt);
+      inp.value = "1";
+    }
+    if (typeof root._mjSyncSellPreview === "function") root._mjSyncSellPreview();
+    root.classList.remove("hidden");
+    root.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    if (inp) inp.focus();
   }
 
   function resolveRecoverFromEffects(effects) {
@@ -1047,20 +1664,25 @@
     var grid = document.getElementById("mj-inventory-grid");
     if (!slotEl || !grid || !grid.contains(slotEl)) return;
     var idx = parseInt(slotEl.getAttribute("data-slot"), 10);
-    if (isNaN(idx)) return;
+    if (isNaN(idx) || idx < 0 || idx >= INVENTORY_SLOT_COUNT) {
+      idx = Array.prototype.indexOf.call(grid.children, slotEl);
+    }
+    if (idx < 0 || idx >= INVENTORY_SLOT_COUNT) return;
     var G = global.MortalJourneyGame;
     if (!G || !G.inventorySlots) return;
     if (!slotEl.classList.contains("mj-inventory-slot--filled")) return;
     var it = G.inventorySlots[idx];
-    if (!it || !it.name) return;
+    var primary = bagItemPrimaryName(it);
+    if (!it || !primary) return;
     var cnt = typeof it.count === "number" ? it.count : 1;
-    var stuffMeta = R.lookupStuffMetaByItemName(it.name);
-    var eqMeta = R.lookupEquipmentMetaByItemName(it.name);
-    var gfMeta = R.lookupGongfaConfigDef(String(it.name).trim());
+    var stuffMeta = R.lookupStuffMetaByItemName(primary);
+    var eqMeta = R.lookupEquipmentMetaByItemName(primary);
+    var gfMeta = R.lookupGongfaConfigDef(primary);
     var descRuntime = it.desc != null ? String(it.desc).trim() : "";
     var descCfg =
       (stuffMeta && stuffMeta.desc != null ? String(stuffMeta.desc).trim() : "") ||
-      (eqMeta && eqMeta.desc != null ? String(eqMeta.desc).trim() : "");
+      (eqMeta && eqMeta.desc != null ? String(eqMeta.desc).trim() : "") ||
+      (gfMeta && gfMeta.desc != null ? String(gfMeta.desc).trim() : "");
     var desc = descRuntime || descCfg || "";
     var sections = [];
     var isGongfaBagItem = isBagItemGongfaCandidate(it, gfMeta);
@@ -1102,15 +1724,19 @@
     }
     if (pillFx) sections.push({ label: "药效", text: pillFx });
     if (bonusEq) sections.push({ label: "属性加成", text: bonusEq });
+    if (wearSlot != null && !isGongfaBagItem) {
+      var eqMagLineBag = R.resolveEquipmentMagnificationLine(primary, it, eqMeta);
+      if (eqMagLineBag) sections.push({ label: "伤害倍率", text: eqMagLineBag });
+    }
     if (isGongfaBagItem) {
-      var gfBonusLine = gfMeta.bonus ? formatZhBonusObject(gfMeta.bonus) : "";
+      var gfBonusLine = gfMeta && gfMeta.bonus ? formatZhBonusObject(gfMeta.bonus) : "";
       if (!gfBonusLine && it.bonus && typeof it.bonus === "object") {
         gfBonusLine = formatZhBonusObject(it.bonus);
       }
       if (gfBonusLine) sections.push({ label: "修炼加成", text: gfBonusLine });
-      var gfMagLine = R.resolveGongfaMagnificationLine(it.name, it, gfMeta);
+      var gfMagLine = R.resolveGongfaMagnificationLine(primary, it, gfMeta);
       if (gfMagLine) sections.push({ label: "伤害倍率", text: gfMagLine });
-      var gfManaCost = R.resolveGongfaManacostLine(it.name, it, gfMeta);
+      var gfManaCost = R.resolveGongfaManacostLine(primary, it, gfMeta);
       if (gfManaCost) sections.push({ label: "法力消耗", text: gfManaCost });
     }
     var refNum =
@@ -1123,7 +1749,7 @@
       sections.push({ label: "持有数量", text: String(cnt) });
     }
 
-    var spiritStonePerRaw = R.getSpiritStoneRawPerPiece(it.name, G.fateChoice);
+    var spiritStonePerRaw = R.getSpiritStoneRawPerPiece(primary, G.fateChoice);
     var hasSpiritStoneCult = spiritStonePerRaw > 0;
     if (hasSpiritStoneCult) {
       sections.push({
@@ -1178,6 +1804,14 @@
         },
       });
     }
+    if (canSellBagItemForSpiritStones(it)) {
+      actions.push({
+        label: "售卖",
+        onClick: function () {
+          openBagSellConfirmModal(idx);
+        },
+      });
+    }
     var appendExtra = null;
     if (hasSpiritStoneCult) {
       var cntFloor = Math.max(1, Math.floor(typeof cnt === "number" && isFinite(cnt) ? cnt : 1));
@@ -1194,11 +1828,11 @@
       kindLabel = String(it.type).trim();
     }
     openItemDetailModal(
-      String(it.name),
+      primary,
       kindLabel,
       sections,
       actions,
-      R.resolveBagItemTraitRarity(it.name, it),
+      R.resolveBagItemTraitRarity(primary, it),
       appendExtra,
     );
   }
@@ -1521,11 +2155,38 @@
     var bag = document.getElementById("mj-inventory-grid");
     if (bag) {
       bag.addEventListener("click", function (e) {
-        tryOpenBagSlotFromEl(e.target.closest(".mj-inventory-slot"));
+        /** 只处理本网格「直接子」格子，避免 closest 误命中嵌套结构里无 data-slot 的 .mj-inventory-slot 导致 idx NaN 静默返回 */
+        var el = e.target;
+        var slotEl = null;
+        while (el && el !== bag) {
+          if (
+            el.classList &&
+            el.classList.contains("mj-inventory-slot") &&
+            el.parentElement === bag
+          ) {
+            slotEl = el;
+            break;
+          }
+          el = el.parentElement;
+        }
+        if (!slotEl) return;
+        tryOpenBagSlotFromEl(slotEl);
       });
       bag.addEventListener("keydown", function (e) {
         if (e.key !== "Enter" && e.key !== " ") return;
-        var slot = e.target.closest(".mj-inventory-slot");
+        var t = e.target;
+        var slot = null;
+        while (t && t !== bag) {
+          if (
+            t.classList &&
+            t.classList.contains("mj-inventory-slot") &&
+            t.parentElement === bag
+          ) {
+            slot = t;
+            break;
+          }
+          t = t.parentElement;
+        }
         if (!slot || !bag.contains(slot)) return;
         if (slot.classList.contains("mj-inventory-slot--empty")) return;
         if (e.key === " ") e.preventDefault();
@@ -1896,5 +2557,8 @@
     performEquipFromBag: performEquipFromBag,
     performUnequipToBag: performUnequipToBag,
     findFirstEmptyBagSlot: findFirstEmptyBagSlot,
+    tryPlaceItemInBag: tryPlaceItemInBag,
+    equippedItemToBagPayload: equippedItemToBagPayload,
+    gongfaSlotItemToBagPayload: gongfaSlotItemToBagPayload,
   });
 })(typeof window !== "undefined" ? window : globalThis);

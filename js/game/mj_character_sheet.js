@@ -100,6 +100,11 @@
     if (src && src.isDead === true) {
       out.isDead = true;
     }
+    /** 血量归零视为阵亡（状态 AI 改 HP 时未必写 isDead；与战斗结算口径一致） */
+    if (out.isDead === true || out.currentHp === 0) {
+      out.isDead = true;
+      out.currentHp = 0;
+    }
     if (typeof src.favorability === "number" && isFinite(src.favorability)) {
       out.favorability = clampFavorability(src.favorability);
     }
@@ -136,9 +141,6 @@
     if (Array.isArray(src.equippedSlots)) out.equippedSlots = JSON.parse(JSON.stringify(src.equippedSlots));
     if (typeof src.xiuwei === "number" && isFinite(src.xiuwei)) {
       out.xiuwei = Math.max(0, Math.floor(src.xiuwei));
-    }
-    if (out.isDead === true) {
-      out.currentHp = 0;
     }
     return out;
   }

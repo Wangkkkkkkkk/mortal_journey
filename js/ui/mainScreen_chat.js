@@ -861,6 +861,103 @@
     return lines.join("\n").trim();
   }
 
+  function formatEquipTypeLabelForLoot(ty) {
+    var raw = ty != null ? String(ty).trim() : "";
+    if (!raw) return "";
+    var P = mjPanel();
+    if (P && typeof P.formatEquipTypeLabel === "function") return String(P.formatEquipTypeLabel(raw)).trim() || raw;
+    return raw === "副武器" ? "法器" : raw;
+  }
+
+  /**
+   * @param {{ equipment?: Array<{ name: string, equipType?: string }>, gongfa?: Array<{ name: string }> }} battleLoot
+   */
+  function formatBattleLootText(battleLoot) {
+    if (!battleLoot || typeof battleLoot !== "object") return "";
+    var eqRaw = Array.isArray(battleLoot.equipment) ? battleLoot.equipment : [];
+    var gfRaw = Array.isArray(battleLoot.gongfa) ? battleLoot.gongfa : [];
+    if (!eqRaw.length && !gfRaw.length) return "";
+    var eqAgg = {};
+    var i;
+    for (i = 0; i < eqRaw.length; i++) {
+      var e = eqRaw[i];
+      if (!e || !e.name) continue;
+      var enm = String(e.name).trim();
+      if (!enm) continue;
+      var ety = e.equipType != null ? String(e.equipType).trim() : "";
+      var k = enm + "\0" + ety;
+      eqAgg[k] = (eqAgg[k] || 0) + 1;
+    }
+    var gfAgg = {};
+    for (i = 0; i < gfRaw.length; i++) {
+      var g = gfRaw[i];
+      if (!g || !g.name) continue;
+      var gn = String(g.name).trim();
+      if (!gn) continue;
+      gfAgg[gn] = (gfAgg[gn] || 0) + 1;
+    }
+    var lines = [];
+    lines.push("【战利品】已入储物袋");
+    lines.push("");
+    var ek = Object.keys(eqAgg);
+    if (ek.length) {
+      lines.push("— 装备（武器 / 法器 / 防具 / 载具）—");
+      ek.sort();
+      for (i = 0; i < ek.length; i++) {
+        var parts = ek[i].split("\0");
+        var nm = parts[0];
+        var et = parts[1] || "";
+        var cnt = eqAgg[ek[i]];
+        var slotLab = formatEquipTypeLabelForLoot(et);
+        var line = "· " + nm + (slotLab ? "（" + slotLab + "）" : "");
+        if (cnt > 1) line += " ×" + cnt;
+        lines.push(line);
+      }
+      lines.push("");
+    }
+    var gk = Object.keys(gfAgg);
+    if (gk.length) {
+      lines.push("— 功法 —");
+      gk.sort();
+      for (i = 0; i < gk.length; i++) {
+        var gnm = gk[i];
+        var gc = gfAgg[gnm];
+        lines.push("· " + gnm + (gc > 1 ? " ×" + gc : ""));
+      }
+    }
+    return lines.join("\n").trim();
+  }
+
+  function persistChatHistoryAfterBattleChunk() {
+    var G = global.MortalJourneyGame;
+    var P = mjPanel();
+    if (G && P && typeof P.persistBootstrapSnapshot === "function") {
+      try {
+        P.persistBootstrapSnapshot();
+      } catch (_eP) {}
+    }
+  }
+
+  /** 仅渲染战利品 DOM（读档回放与战后事件共用） */
+  function appendBattleLootDom(text) {
+    var t = text != null ? String(text).trim() : "";
+    if (!t) return;
+    var log = getChatLogEl();
+    if (!log) return;
+    clearChatPlaceholders();
+    var wrap = document.createElement("div");
+    wrap.className = "mj-chat-msg--role mj-chat-msg--battle-loot";
+    var label = document.createElement("span");
+    label.className = "mj-chat-role-label";
+    label.textContent = "战利品";
+    var body = document.createElement("div");
+    body.textContent = t;
+    wrap.appendChild(label);
+    wrap.appendChild(body);
+    log.appendChild(wrap);
+    scrollChatLog();
+  }
+
   /** 仅渲染战斗结算 DOM（不写 chatHistory；读档回放与战后事件共用） */
   function appendBattleSettlementDom(text) {
     var t = text != null ? String(text).trim() : "";
@@ -893,14 +990,17 @@
       try {
         G.storyBattleContextConsumed = true;
       } catch (_c0) {}
-      var P = mjPanel();
-      if (P && typeof P.persistBootstrapSnapshot === "function") {
-        try {
-          P.persistBootstrapSnapshot();
-        } catch (_ePersist) {}
-      }
+      persistChatHistoryAfterBattleChunk();
     }
     appendBattleSettlementDom(text);
+    if (detail && detail.victor === "ally") {
+      var lootText = formatBattleLootText(detail.battleLoot);
+      if (lootText && G && Array.isArray(G.chatHistory)) {
+        G.chatHistory.push({ role: "battle_loot", content: lootText });
+        persistChatHistoryAfterBattleChunk();
+      }
+      if (lootText) appendBattleLootDom(lootText);
+    }
   }
 
   /**
@@ -1181,13 +1281,16 @@
     var userText = [settlementBlock, metaBlock].filter(Boolean).join("\n\n");
     var userHistIndex = Array.isArray(G.chatHistory) ? G.chatHistory.length : 0;
     G.chatHistory.push({ role: "user", content: userText });
-    try {
-      var P0 = mjPanel();
-      if (P0 && typeof P0.persistBootstrapSnapshot === "function") P0.persistBootstrapSnapshot();
-    } catch (_p0) {}
+    var lootTextAuto =
+      detail.victor === "ally" ? formatBattleLootText(detail.battleLoot) : "";
+    if (lootTextAuto) {
+      G.chatHistory.push({ role: "battle_loot", content: lootTextAuto });
+    }
+    persistChatHistoryAfterBattleChunk();
 
     var userUi = appendChatBubble("user", userText);
     var userRoot = userUi ? userUi.root : null;
+    if (lootTextAuto) appendBattleLootDom(lootTextAuto);
     var asstUi = appendChatBubble("assistant", "");
     var assistantBody = asstUi ? asstUi.body : null;
     var assistantRoot = asstUi ? asstUi.root : null;
@@ -1228,12 +1331,17 @@
           appendBattleSettlementDom(it.content != null ? String(it.content) : "");
           continue;
         }
+        if (role === "battle_loot") {
+          appendBattleLootDom(it.content != null ? String(it.content) : "");
+          continue;
+        }
         if (role !== "user" && role !== "assistant" && role !== "error") continue;
         appendChatBubble(role, it.content != null ? String(it.content) : "");
       }
     },
     appendBattleSettlementFromDetail: appendBattleSettlementFromDetail,
     formatBattleSettlementText: formatBattleSettlementText,
+    formatBattleLootText: formatBattleLootText,
   };
 
   try {

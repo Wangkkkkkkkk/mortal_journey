@@ -326,18 +326,44 @@
     return out.slice(-maxC);
   }
 
-  function resolvePlotSnapshotForApi(G, priorHistory) {
-    var log = G && Array.isArray(G.chatPlotSnapshotLog) ? G.chatPlotSnapshotLog : null;
-    var joined = joinPlotSnapshotLogForApi(log, 2000);
-    if (joined) {
-      if (joined.indexOf("\n") >= 0) {
-        return "（以下为各回合剧情快照沿革，由旧到新）\n" + joined;
-      }
-      return joined;
+  /**
+   * 取 priorHistory 中**最后一条**可用剧情 assistant 全文（存入聊天气泡的内容，供下一轮 API 作「上一轮完整剧情」）。
+   */
+  function findLastPriorAssistantContent(priorHistory) {
+    if (!priorHistory || !priorHistory.length) return "";
+    for (var i = priorHistory.length - 1; i >= 0; i--) {
+      var msg = priorHistory[i];
+      if (!msg || msg.role !== "assistant" || msg.content == null) continue;
+      if (isAssistantMessageUnusableForPlotFallback(msg.content)) continue;
+      return String(msg.content);
     }
-    var s = G && G.chatPlotSnapshot != null ? String(G.chatPlotSnapshot).trim() : "";
-    if (s) return s;
-    return fallbackPlotSummaryFromPriorAssistants(priorHistory);
+    return "";
+  }
+
+  /** 沿革快照：chatPlotSnapshotLog 去掉**最后一条**（该条对应上一轮，由「完整剧情」assistant 承载，避免重复）。 */
+  function joinPlotSnapshotLogExcludingLastForApi(G, maxChars) {
+    var G0 = G || {};
+    var log = Array.isArray(G0.chatPlotSnapshotLog) ? G0.chatPlotSnapshotLog : [];
+    if (log.length <= 1) return "";
+    var parts = [];
+    for (var j = 0; j < log.length - 1; j++) {
+      var t = String(log[j] || "").trim();
+      if (!t) continue;
+      if (parts.length && parts[parts.length - 1] === t) continue;
+      parts.push(t);
+    }
+    if (!parts.length) return "";
+    return joinPlotSnapshotLogForApi(parts, maxChars != null ? maxChars : 2000);
+  }
+
+  /** 仅沿革快照正文（不含「最后一条」）；无则空串。不用 chatPlotSnapshot 兜底，以免与「上一轮完整剧情」重复。 */
+  function formatPlotSnapshotExcludingLastInner(G) {
+    var joined = joinPlotSnapshotLogExcludingLastForApi(G, 2000);
+    if (!joined) return "";
+    if (joined.indexOf("\n") >= 0) {
+      return "（以下为各回合剧情快照沿革，由旧到新）\n" + joined;
+    }
+    return joined;
   }
 
   /**
@@ -764,25 +790,19 @@
     return "【当前存档摘要】\n\n" + sections.join("\n\n");
   }
 
-  function buildScanText(userText, priorHistory, stateBlock) {
+  /** 世界书检索文本与发给模型的剧情上下文对齐：存档摘要 + 沿革快照（不含最后一条）+ 上一轮 assistant 全文 + 本轮 user。 */
+  function buildScanText(userText, priorHistory, stateBlock, G) {
     var parts = [];
     if (stateBlock) parts.push(stateBlock);
-    if (priorHistory && priorHistory.length) {
-      for (var i = 0; i < priorHistory.length; i++) {
-        var m = priorHistory[i];
-        if (!m || m.content == null) continue;
-        if (m.role === "assistant") continue;
-        if (m.role === "battle_settlement") {
-          parts.push(String(m.content));
-          continue;
-        }
-        parts.push(String(m.content));
-      }
+    var G0 = G || global.MortalJourneyGame || {};
+    var snapInner = formatPlotSnapshotExcludingLastInner(G0);
+    if (snapInner) parts.push("【剧情快照】\n" + snapInner);
+    var lastNarr = findLastPriorAssistantContent(priorHistory);
+    if (lastNarr && String(lastNarr).trim()) {
+      parts.push("【上一轮剧情全文】\n" + String(lastNarr).trim());
     }
-    var snapScan = resolvePlotSnapshotForApi(global.MortalJourneyGame || {}, priorHistory);
-    if (snapScan) parts.push("【剧情快照】\n" + snapScan);
     parts.push(String(userText || ""));
-    return parts.join("\n");
+    return parts.join("\n\n");
   }
 
   /**
@@ -816,7 +836,7 @@
       stateBlock = buildRuntimeStateBlock(G, fc);
     }
 
-    var scanText = buildScanText(userText, priorHistory, stateBlock);
+    var scanText = buildScanText(userText, priorHistory, stateBlock, G);
     if (WB && typeof WB.selectEntries === "function" && typeof WB.formatForSystem === "function") {
       var entries = WB.selectEntries(scanText, { maxEntries: 10 });
       var wbBlock = WB.formatForSystem(entries);
@@ -830,20 +850,13 @@
     var messages = [];
     if (systemContent) messages.push({ role: "system", content: systemContent });
 
-    for (var h = 0; h < priorHistory.length; h++) {
-      var msg = priorHistory[h];
-      if (!msg || !msg.role || msg.content == null) continue;
-      if (msg.role === "assistant") continue;
-      if (msg.role === "battle_settlement") {
-        messages.push({ role: "user", content: String(msg.content) });
-        continue;
-      }
-      messages.push({ role: "user", content: String(msg.content) });
+    var snapInner = formatPlotSnapshotExcludingLastInner(G);
+    if (snapInner) {
+      messages.push({ role: "assistant", content: "【剧情快照】\n" + snapInner });
     }
-
-    var snapApi = resolvePlotSnapshotForApi(G, priorHistory);
-    if (snapApi) {
-      messages.push({ role: "assistant", content: "【剧情快照】\n" + snapApi });
+    var lastStory = findLastPriorAssistantContent(priorHistory);
+    if (lastStory && String(lastStory).trim()) {
+      messages.push({ role: "assistant", content: String(lastStory).trim() });
     }
 
     var prefix = P && typeof P.getUserPrefix === "function" ? P.getUserPrefix() : "";

@@ -561,6 +561,69 @@
     return { victor: outcome, rounds: roundIdx, allies: allies, enemies: enemies, settlement: settlement };
   }
 
+  /**
+   * 胜利后对已阵亡敌人搜刮：装备栏 + 功法栏逐件入储物袋（与 UI 卸下入袋同源）；成功则从 NPC 上清空该格。
+   * 入袋对象的倍率 / 功法类型 / type=功法 等由 MjMainScreenPanel.equippedItemToBagPayload、gongfaSlotItemToBagPayload 保证（与战斗 mergeMagnification 口径一致）。
+   */
+  function lootDefeatedEnemyIntoBag(G, npcRef, combatant, enemyDisplayName) {
+    var got = { equipment: [], gongfa: [] };
+    var P = global.MjMainScreenPanel;
+    if (!P) return got;
+    var tryPlace = P.tryPlaceItemInBag;
+    var toEq = P.equippedItemToBagPayload;
+    var toGf = P.gongfaSlotItemToBagPayload;
+    if (typeof tryPlace !== "function" || typeof toEq !== "function" || typeof toGf !== "function") {
+      logBattle("战利品：界面未提供入袋接口，跳过搜刮。");
+      return got;
+    }
+    /** 勿在此调用 ensureGameRuntimeDefaults：会 normalize 并替换 G.nearbyNpcs 条目，导致 en.nearbyNpcRef 指向脱链旧对象，结算血量写到旧对象而 UI 仍显示新对象上的旧 HP。 */
+    var nameHint = normName(enemyDisplayName) || "敌人";
+    var eqArr =
+      npcRef && Array.isArray(npcRef.equippedSlots)
+        ? npcRef.equippedSlots
+        : combatant && Array.isArray(combatant.equippedSlots)
+          ? combatant.equippedSlots
+          : [];
+    var gfArr =
+      npcRef && Array.isArray(npcRef.gongfaSlots)
+        ? npcRef.gongfaSlots
+        : combatant && Array.isArray(combatant.gongfaSlots)
+          ? combatant.gongfaSlots
+          : [];
+    var ei;
+    for (ei = 0; ei < eqArr.length; ei++) {
+      var cell = eqArr[ei];
+      if (!cell) continue;
+      var payload = toEq(cell, ei);
+      if (!payload) continue;
+      if (tryPlace(G, payload)) {
+        got.equipment.push({
+          name: String(payload.name).trim(),
+          equipType: payload.equipType != null ? String(payload.equipType).trim() : "",
+        });
+        logBattle("战利品：自 " + nameHint + " 夺得装备「" + payload.name + "」已入储物袋。");
+        if (npcRef && Array.isArray(npcRef.equippedSlots) && npcRef.equippedSlots === eqArr) npcRef.equippedSlots[ei] = null;
+      } else {
+        logBattle("储物袋已满，未能装入装备「" + payload.name + "」（" + nameHint + "）。");
+      }
+    }
+    var gi;
+    for (gi = 0; gi < gfArr.length; gi++) {
+      var gc = gfArr[gi];
+      if (!gc) continue;
+      var gp = toGf(gc);
+      if (!gp) continue;
+      if (tryPlace(G, gp)) {
+        got.gongfa.push({ name: String(gp.name).trim() });
+        logBattle("战利品：自 " + nameHint + " 夺得功法「" + gp.name + "」已入储物袋。");
+        if (npcRef && Array.isArray(npcRef.gongfaSlots) && npcRef.gongfaSlots === gfArr) npcRef.gongfaSlots[gi] = null;
+      } else {
+        logBattle("储物袋已满，未能装入功法「" + gp.name + "」（" + nameHint + "）。");
+      }
+    }
+    return got;
+  }
+
   function applyResultToGame(G, result) {
     if (!G || !result) return;
     var allies = result.allies || [];
@@ -592,20 +655,30 @@
       }
     }
 
+    var battleLoot = { equipment: [], gongfa: [] };
     for (var k = 0; k < enemies.length; k++) {
       var en = enemies[k];
       if (!en) continue;
       var npcE = en.nearbyNpcRef || findNearbyNpc(G, en.displayName);
+      var maxHE = npcE && typeof npcE.maxHp === "number" ? npcE.maxHp : en.maxHp;
+      var finHp = Math.min(maxHE, Math.max(0, en.hp));
       if (npcE) {
-        var maxHE = typeof npcE.maxHp === "number" ? npcE.maxHp : en.maxHp;
         var maxME = typeof npcE.maxMp === "number" ? npcE.maxMp : en.maxMp;
-        var finHp = Math.min(maxHE, Math.max(0, en.hp));
         npcE.currentHp = finHp;
         npcE.currentMp = Math.min(maxME, Math.max(0, en.mp));
         if (finHp <= 0) {
           npcE.isDead = true;
           npcE.currentHp = 0;
           npcE.isTemporarilyAway = false;
+        }
+      }
+      if (result.victor === "ally" && finHp <= 0) {
+        var chunk = lootDefeatedEnemyIntoBag(G, npcE && typeof npcE === "object" ? npcE : null, en, en.displayName);
+        if (chunk && chunk.equipment && chunk.equipment.length) {
+          battleLoot.equipment = battleLoot.equipment.concat(chunk.equipment);
+        }
+        if (chunk && chunk.gongfa && chunk.gongfa.length) {
+          battleLoot.gongfa = battleLoot.gongfa.concat(chunk.gongfa);
         }
       }
     }
@@ -624,6 +697,7 @@
             rounds: result.rounds,
             payload: G.pendingBattle || null,
             settlement: result.settlement || null,
+            battleLoot: result.victor === "ally" ? battleLoot : { equipment: [], gongfa: [] },
           },
         }),
       );

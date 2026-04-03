@@ -34,7 +34,7 @@
       value: 100,
       bonus: { 法攻: 10, 法防: 10 },
       magnification: { 物攻: 0.0, 法攻: 1.2 },
-      manacost: 40,
+      manacost: 20,
     },
     长春功: {
       desc: "长春功是七玄门的入门功法，修炼后可以增加血量",
