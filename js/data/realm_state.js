@@ -96,10 +96,10 @@
    * @property {number} chance 成功概率
    */
   var MAJOR_BREAKTHROUGH_TABLE = Object.freeze([
-    { from: "练气", to: "筑基", chance: 0.3 },
-    { from: "筑基", to: "结丹", chance: 0.2 },
-    { from: "结丹", to: "元婴", chance: 0.1 },
-    { from: "元婴", to: "化神", chance: 0.05 },
+    { from: "练气", to: "筑基", chance: 0.75 },
+    { from: "筑基", to: "结丹", chance: 0.5 },
+    { from: "结丹", to: "元婴", chance: 0.3 },
+    { from: "元婴", to: "化神", chance: 0.1 },
   ]);
 
   /**
