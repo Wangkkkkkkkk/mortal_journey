@@ -364,8 +364,9 @@
     unequipGongfaToBag: function (gongfaSlotIndex) {
       return P.performUnequipGongfaToBag(gongfaSlotIndex);
     },
-    /** 储物袋格数（12 格均为物品） */
+    /** 储物袋最少 12 格，可扩行；每行 INVENTORY_GRID_COLS 格 */
     INVENTORY_SLOT_COUNT: P.INVENTORY_SLOT_COUNT,
+    INVENTORY_GRID_COLS: P.INVENTORY_GRID_COLS,
     /**
      * 将背包内所有「下品灵石」「灵石」堆叠清空后，在首个空位放入指定数量下品灵石（与 LINGSHI_STACK_ITEM_NAME 一致）。
      * @returns {boolean}
@@ -378,7 +379,8 @@
       var C = global.MjCreationConfig;
       var stoneName =
         C && C.LINGSHI_STACK_ITEM_NAME ? String(C.LINGSHI_STACK_ITEM_NAME) : "下品灵石";
-      for (var r = 0; r < P.INVENTORY_SLOT_COUNT; r++) {
+      P.ensureInventorySlots(G);
+      for (var r = 0; r < G.inventorySlots.length; r++) {
         var it = G.inventorySlots[r];
         if (it && (it.name === stoneName || it.name === "灵石")) G.inventorySlots[r] = null;
       }
@@ -403,7 +405,7 @@
       var stoneName =
         C && C.LINGSHI_STACK_ITEM_NAME ? String(C.LINGSHI_STACK_ITEM_NAME) : "下品灵石";
       var sum = 0;
-      for (var i = 0; i < P.INVENTORY_SLOT_COUNT; i++) {
+      for (var i = 0; i < G.inventorySlots.length; i++) {
         var it = G.inventorySlots[i];
         if (!it || !it.name) continue;
         if (it.name === stoneName || it.name === "灵石") {
@@ -413,7 +415,7 @@
       return sum;
     },
     /**
-     * 储物袋物品格：index 0～11，item 为 { name, count?, desc? } 或 null
+     * 储物袋物品格：index 从 0 起，不足时会自动扩行；item 为 { name, count?, desc? } 或 null
      * @returns {boolean}
      */
     setBagSlot: function (index, item) {
@@ -421,7 +423,13 @@
       if (!G) return false;
       P.ensureGameRuntimeDefaults(G);
       var i = Number(index);
-      if (!isFinite(i) || i < 0 || i >= P.INVENTORY_SLOT_COUNT) return false;
+      if (!isFinite(i) || i < 0) return false;
+      var cols = P.INVENTORY_GRID_COLS || 4;
+      while (G.inventorySlots.length <= i) {
+        for (var z = 0; z < cols; z++) {
+          G.inventorySlots.push(null);
+        }
+      }
       G.inventorySlots[i] = item == null ? null : P.normalizeBagItem(item);
       P.persistBootstrapSnapshot();
       P.renderBagSlots(G);
@@ -472,7 +480,7 @@
     },
     /**
      * 消耗背包一格灵石类物品增加修为：总修为 = round(表列 value × 灵根系数 × 件数)，非「round(单件)×件数」
-     * @param {number} bagIndex 0～11
+     * @param {number} bagIndex 储物袋格索引
      * @param {boolean} [consumeAll] 与 pieceCount 二选一：true 为整堆
      * @param {number} [pieceCount] 指定件数：四舍五入，超过堆叠则按堆叠上限；≤0 不执行
      * @returns {boolean}
@@ -485,7 +493,7 @@
       }
       return P.performAbsorbSpiritStonesFromBag(G, bagIndex, !!consumeAll);
     },
-    /** @returns {Array} 12 格：{ name, count, desc? } 或 null */
+    /** @returns {Array} 储物袋全部格：{ name, count, desc? } 或 null（至少 12） */
     getBagSlots: function () {
       var G = global.MortalJourneyGame;
       if (!G) {
@@ -505,7 +513,7 @@
         return o;
       });
     },
-    /** 从储物袋格（0～11）穿戴；满袋无法换下当前装备时返回 false */
+    /** 从储物袋指定格穿戴；满袋无法换下当前装备时返回 false */
     equipFromBagSlot: function (bagIndex) {
       return P.performEquipFromBag(bagIndex);
     },

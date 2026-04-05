@@ -10,6 +10,7 @@
     return;
   }
   var INVENTORY_SLOT_COUNT = R.INVENTORY_SLOT_COUNT;
+  var INVENTORY_GRID_COLS = R.INVENTORY_GRID_COLS || 4;
   var GONGFA_SLOT_COUNT = R.GONGFA_SLOT_COUNT;
   var EQUIP_SLOT_COUNT = R.EQUIP_SLOT_COUNT;
   var EQUIP_SLOT_EMPTY_TITLE = R.EQUIP_SLOT_EMPTY_TITLE;
@@ -142,12 +143,37 @@
     }
   }
 
+  function ensureBagGridDomSlotCount(needCount) {
+    var grid = document.getElementById("mj-inventory-grid");
+    if (!grid) return;
+    while (grid.children.length < needCount) {
+      var i = grid.children.length;
+      var slot = document.createElement("div");
+      slot.className = "mj-inventory-slot mj-inventory-slot--empty";
+      slot.setAttribute("data-slot", String(i));
+      var lab = document.createElement("span");
+      lab.className = "mj-inventory-slot-label";
+      var qty = document.createElement("span");
+      qty.className = "mj-inventory-slot-qty";
+      qty.setAttribute("aria-label", "数量");
+      slot.appendChild(lab);
+      slot.appendChild(qty);
+      grid.appendChild(slot);
+    }
+    while (grid.children.length > needCount) {
+      var last = grid.lastElementChild;
+      if (last) grid.removeChild(last);
+    }
+  }
+
   function renderBagSlots(G) {
     R.ensureInventorySlots(G);
     R.enrichInventoryGradesFromDescribe(G);
     var grid = document.getElementById("mj-inventory-grid");
     if (!grid || !G || !G.inventorySlots) return;
-    for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
+    var len = G.inventorySlots.length;
+    ensureBagGridDomSlotCount(len);
+    for (var i = 0; i < len; i++) {
       var el = grid.querySelector('[data-slot="' + i + '"]');
       if (!el) continue;
       var labelEl = el.querySelector(".mj-inventory-slot-label");
@@ -457,10 +483,14 @@
 
   function findFirstEmptyBagSlot(G) {
     R.ensureInventorySlots(G);
-    for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
-      if (!G.inventorySlots[i]) return i;
+    var slots = G.inventorySlots;
+    for (var i = 0; i < slots.length; i++) {
+      if (!slots[i]) return i;
     }
-    return -1;
+    for (var k = 0; k < INVENTORY_GRID_COLS; k++) {
+      slots.push(null);
+    }
+    return slots.length - INVENTORY_GRID_COLS;
   }
 
   /** 储物袋格显示名 / 点击校验（NPC·状态 AI 可能只写 title；仅 label 时 normalize 前也会与 name   不一致） */
@@ -551,7 +581,40 @@
     if (!name) return false;
     var cnt = typeof payload.count === "number" && isFinite(payload.count) ? Math.max(1, Math.floor(payload.count)) : 1;
     var desc = payload.desc != null ? String(payload.desc) : "";
-    for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
+    if (R.bagItemSkipsSameNameStack && R.bagItemSkipsSameNameStack(name)) {
+      while (true) {
+        var emptyU = 0;
+        for (var eu = 0; eu < G.inventorySlots.length; eu++) {
+          if (!G.inventorySlots[eu]) emptyU++;
+        }
+        if (emptyU >= cnt) break;
+        for (var ru = 0; ru < INVENTORY_GRID_COLS; ru++) {
+          G.inventorySlots.push(null);
+        }
+      }
+      ensureBagGridDomSlotCount(G.inventorySlots.length);
+      for (var k = 0; k < cnt; k++) {
+        var jk = findFirstEmptyBagSlot(G);
+        if (jk < 0) return false;
+        G.inventorySlots[jk] = R.normalizeBagItem({
+          name: name,
+          count: 1,
+          desc: desc || undefined,
+          equipType: payload.equipType,
+          grade: payload.grade,
+          value: payload.value,
+          type: payload.type,
+          subtype: payload.subtype,
+          subType: payload.subType,
+          bonus: payload.bonus,
+          effects: payload.effects,
+          manacost: payload.manacost,
+          magnification: payload.magnification,
+        });
+      }
+      return true;
+    }
+    for (var i = 0; i < G.inventorySlots.length; i++) {
       var c = G.inventorySlots[i];
       if (c && c.name === name) {
         c.count = (typeof c.count === "number" && isFinite(c.count) ? c.count : 1) + cnt;
@@ -768,7 +831,7 @@
 
   /**
    * 从储物袋装入功法栏首个空位（与装备类似，每次消耗 1 本）。
-   * @param {number} bagIdx 0～11
+   * @param {number} bagIdx 储物袋格索引
    * @returns {boolean}
    */
   function performEquipGongfaFromBag(bagIdx) {
@@ -776,7 +839,7 @@
     if (!G) return false;
     R.ensureGameRuntimeDefaults(G);
     var bi = Number(bagIdx);
-    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    if (!isFinite(bi) || bi < 0 || bi >= G.inventorySlots.length) return false;
     var it = G.inventorySlots[bi];
     var nm = bagItemPrimaryName(it);
     if (!it || !nm) return false;
@@ -836,7 +899,7 @@
     else window.alert(msg);
   }
 
-  /** 与战斗 resolveWeaponMagnification / mergeMagnification 一致：合并格子与装备表；便于入袋后 UI「伤害倍率」与战斗轮一致 */
+  /** 与战斗 resolveWeaponMagnification / mergeMagnification 一致：合并格子与装备表；武器入袋可用。法器不写 magnification。 */
   function mergeEquipmentMagnificationForLootPayload(item, equipMeta) {
     var m0 = item && item.magnification && typeof item.magnification === "object" ? item.magnification : null;
     var m1 = equipMeta && equipMeta.magnification && typeof equipMeta.magnification === "object" ? equipMeta.magnification : null;
@@ -895,18 +958,13 @@
       eqTyMerge === "主武器" ||
       emTy === "武器" ||
       emTy === "主武器";
-    var isFaqiSlot =
-      si === 1 ||
-      eqTyMerge === "法器" ||
-      eqTyMerge === "副武器" ||
-      emTy === "法器" ||
-      emTy === "副武器";
     if (isWeaponSlot && mag.物攻 <= 0 && mag.法攻 <= 0) {
       mag = { 物攻: 1, 法攻: 0 };
-    } else if (isFaqiSlot && mag.物攻 <= 0 && mag.法攻 <= 0) {
-      mag = { 物攻: 0, 法攻: 1 };
     }
-    if (mag.物攻 > 0 || mag.法攻 > 0) {
+    if (
+      !R.equipmentIsFaqiForMagnificationRule(item, em) &&
+      (mag.物攻 > 0 || mag.法攻 > 0)
+    ) {
       o.magnification = mag;
     }
     return o;
@@ -952,7 +1010,9 @@
     var magCell = it.magnification && typeof it.magnification === "object" ? it.magnification : null;
     var magMeta = eqMeta && eqMeta.magnification && typeof eqMeta.magnification === "object" ? eqMeta.magnification : null;
     var magPick = magCell && Object.keys(magCell).length ? magCell : magMeta && Object.keys(magMeta).length ? magMeta : null;
-    if (magPick) equipObj.magnification = Object.assign({}, magPick);
+    if (magPick && !R.equipmentIsFaqiForMagnificationRule(it, eqMeta)) {
+      equipObj.magnification = Object.assign({}, magPick);
+    }
     return equipObj;
   }
 
@@ -983,7 +1043,7 @@
 
   /**
    * 从储物袋穿戴到对应部位；若该部位已有装备则先放入储物袋再穿戴。
-   * @param {number} bagIdx 0～11
+   * @param {number} bagIdx 储物袋格索引
    * @returns {boolean}
    */
   function performEquipFromBag(bagIdx) {
@@ -991,7 +1051,7 @@
     if (!G) return false;
     R.ensureGameRuntimeDefaults(G);
     var bi = Number(bagIdx);
-    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    if (!isFinite(bi) || bi < 0 || bi >= G.inventorySlots.length) return false;
     var it = G.inventorySlots[bi];
     if (!it || !it.name) return false;
     var slotIdx = resolveWearableSlotIndexForBagItem(it);
@@ -1028,8 +1088,9 @@
 
   function consumeOneBagItem(G, bagIdx) {
     if (!G || !Array.isArray(G.inventorySlots)) return false;
+    R.ensureInventorySlots(G);
     var bi = Number(bagIdx);
-    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    if (!isFinite(bi) || bi < 0 || bi >= G.inventorySlots.length) return false;
     var it = G.inventorySlots[bi];
     if (!it || !it.name) return false;
     var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(0, Math.floor(it.count)) : 1;
@@ -1121,8 +1182,9 @@
 
   function removeNFromBagSlot(G, bagIdx, nRemove) {
     if (!G || !Array.isArray(G.inventorySlots)) return false;
+    R.ensureInventorySlots(G);
     var bi = Number(bagIdx);
-    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    if (!isFinite(bi) || bi < 0 || bi >= G.inventorySlots.length) return false;
     var it = G.inventorySlots[bi];
     if (!it || !it.name) return false;
     var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
@@ -1171,7 +1233,7 @@
     if (!G || !Array.isArray(G.inventorySlots)) return false;
     R.ensureGameRuntimeDefaults(G);
     var bi = Number(bagIdx);
-    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    if (!isFinite(bi) || bi < 0 || bi >= G.inventorySlots.length) return false;
     var it = G.inventorySlots[bi];
     if (!it || !it.name) return false;
     if (isSpiritStoneStackName(it.name)) return false;
@@ -1402,8 +1464,9 @@
   function openBagSellConfirmModal(bagIdx) {
     var G = global.MortalJourneyGame;
     if (!G || !G.inventorySlots) return;
+    R.ensureInventorySlots(G);
     var bi = Number(bagIdx);
-    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return;
+    if (!isFinite(bi) || bi < 0 || bi >= G.inventorySlots.length) return;
     var it = G.inventorySlots[bi];
     if (!it || !canSellBagItemForSpiritStones(it)) return;
     var root = ensureBagSellModal();
@@ -1449,7 +1512,7 @@
     if (!G || !Array.isArray(G.inventorySlots)) return false;
     R.ensureGameRuntimeDefaults(G);
     var bi = Number(bagIdx);
-    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    if (!isFinite(bi) || bi < 0 || bi >= G.inventorySlots.length) return false;
     var it = G.inventorySlots[bi];
     if (!it || !it.name) return false;
     var meta = R.lookupStuffMetaByItemName(it.name);
@@ -1663,13 +1726,15 @@
   function tryOpenBagSlotFromEl(slotEl) {
     var grid = document.getElementById("mj-inventory-grid");
     if (!slotEl || !grid || !grid.contains(slotEl)) return;
-    var idx = parseInt(slotEl.getAttribute("data-slot"), 10);
-    if (isNaN(idx) || idx < 0 || idx >= INVENTORY_SLOT_COUNT) {
-      idx = Array.prototype.indexOf.call(grid.children, slotEl);
-    }
-    if (idx < 0 || idx >= INVENTORY_SLOT_COUNT) return;
     var G = global.MortalJourneyGame;
     if (!G || !G.inventorySlots) return;
+    R.ensureInventorySlots(G);
+    var lim = G.inventorySlots.length;
+    var idx = parseInt(slotEl.getAttribute("data-slot"), 10);
+    if (isNaN(idx) || idx < 0 || idx >= lim) {
+      idx = Array.prototype.indexOf.call(grid.children, slotEl);
+    }
+    if (idx < 0 || idx >= lim) return;
     if (!slotEl.classList.contains("mj-inventory-slot--filled")) return;
     var it = G.inventorySlots[idx];
     var primary = bagItemPrimaryName(it);

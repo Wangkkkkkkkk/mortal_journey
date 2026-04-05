@@ -13,6 +13,10 @@
   --primary-color: var(--mj-border);
   --text-primary: var(--mj-text);
   --input-bg: rgba(0, 0, 0, 0.35);
+  /* 自定义出身等深色表单控件（下拉选项区） */
+  --mj-form-control-bg: rgba(8, 12, 10, 0.92);
+  --mj-form-control-border: rgba(100, 92, 72, 0.5);
+  --mj-form-control-text: #c4bcaa;
   --input-border: rgba(140, 120, 83, 0.35);
 
   --rarity-mundane: #808080;
@@ -536,6 +540,120 @@
 
 .muted {
   color: var(--mj-muted);
+}
+
+/* —— 自定义出身弹窗（#mj-custom-birth-root，壳层复用 main.css · .mj-trait-modal-root） —— */
+.mj-custom-birth-dialog {
+  max-width: 420px;
+}
+
+.mj-custom-birth-body {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.mj-custom-birth-label {
+  display: block;
+  color: #c9b88a;
+  font-size: 13px;
+  margin: 10px 0 4px;
+}
+
+.mj-custom-birth-label:first-of-type {
+  margin-top: 0;
+}
+
+.mj-custom-birth-label-hint {
+  opacity: 0.7;
+  font-weight: normal;
+}
+
+.mj-custom-birth-input,
+.mj-custom-birth-select,
+.mj-custom-birth-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid var(--mj-form-control-border);
+  background: var(--mj-form-control-bg);
+  color: var(--mj-form-control-text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.mj-custom-birth-input {
+  height: 40px;
+  padding: 0 12px;
+}
+
+.mj-custom-birth-select {
+  height: 40px;
+  padding: 0 10px;
+  flex: 1;
+  min-width: 100px;
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+.mj-custom-birth-select option,
+.mj-custom-birth-select optgroup {
+  background: #141a16;
+  color: var(--mj-form-control-text);
+}
+
+.mj-custom-birth-select--minor {
+  min-width: 0;
+}
+
+.mj-custom-birth-realm-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.mj-custom-birth-realm-minor-wrap {
+  flex: 1;
+  min-width: 100px;
+}
+
+.mj-custom-birth-realm-minor-wrap.mj-custom-birth-realm-minor-wrap--hidden {
+  display: none;
+}
+
+.mj-custom-birth-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: rgba(201, 184, 138, 0.75);
+  line-height: 1.4;
+}
+
+.mj-custom-birth-textarea {
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.mj-custom-birth-label[for="mj-custom-birth-background"] {
+  margin-top: 14px;
+}
+
+.mj-custom-birth-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.mj-custom-birth-actions .major-action-button {
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 100px;
+}
+
+.mj-custom-birth-btn-cancel {
+  opacity: 0.9;
 }
 
 @media (max-width: 640px) {

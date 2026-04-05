@@ -6,6 +6,7 @@
   "use strict";
 
   var INVENTORY_SLOT_COUNT = 12;
+  var INVENTORY_GRID_COLS = 4;
   /** 与 mainScreen 一致：佩戴 4 格、功法 8 格 */
   var EQUIP_SLOT_COUNT = 4;
   var GONGFA_SLOT_COUNT = 8;
@@ -165,10 +166,11 @@
 
   function ensureInventoryShape(G) {
     if (!G) return;
-    if (!Array.isArray(G.inventorySlots) || G.inventorySlots.length !== INVENTORY_SLOT_COUNT) {
-      var a = [];
-      for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) a.push(null);
-      G.inventorySlots = a;
+    if (!Array.isArray(G.inventorySlots)) {
+      G.inventorySlots = [];
+    }
+    while (G.inventorySlots.length < INVENTORY_SLOT_COUNT) {
+      G.inventorySlots.push(null);
     }
   }
 
@@ -228,14 +230,18 @@
 
   function findFirstEmptyBagSlot(G) {
     ensureInventoryShape(G);
-    for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
-      if (!G.inventorySlots[i]) return i;
+    var slots = G.inventorySlots;
+    for (var i = 0; i < slots.length; i++) {
+      if (!slots[i]) return i;
     }
-    return -1;
+    for (var k = 0; k < INVENTORY_GRID_COLS; k++) {
+      slots.push(null);
+    }
+    return slots.length - INVENTORY_GRID_COLS;
   }
 
   /**
-   * 与主界面 MjMainScreenPanel.tryPlaceItemInBag 一致（同名堆叠会 mergeLootPayloadIntoBagCell，避免状态 AI add 冲掉战利品倍率/功法 type）。
+   * 与主界面 MjMainScreenPanel.tryPlaceItemInBag 一致（同名堆叠会 mergeLootPayloadIntoBagCell；妖兽内丹等见 MjMainScreenPanelRealm.bagItemSkipsSameNameStack，不合并、按件占格）。
    * @returns {boolean}
    */
   function tryPlaceItemInBag(G, payload) {
@@ -250,7 +256,40 @@
     var cnt =
       typeof payload.count === "number" && isFinite(payload.count) ? Math.max(1, Math.floor(payload.count)) : 1;
     var desc = payload.desc != null ? String(payload.desc) : "";
-    for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
+    var RSkip = global.MjMainScreenPanelRealm;
+    if (RSkip && typeof RSkip.bagItemSkipsSameNameStack === "function" && RSkip.bagItemSkipsSameNameStack(name)) {
+      while (true) {
+        var empty0 = 0;
+        for (var e0 = 0; e0 < G.inventorySlots.length; e0++) {
+          if (!G.inventorySlots[e0]) empty0++;
+        }
+        if (empty0 >= cnt) break;
+        for (var r0 = 0; r0 < INVENTORY_GRID_COLS; r0++) {
+          G.inventorySlots.push(null);
+        }
+      }
+      for (var k0 = 0; k0 < cnt; k0++) {
+        var j0 = findFirstEmptyBagSlot(G);
+        if (j0 < 0) return false;
+        G.inventorySlots[j0] = normalizeBagItem({
+          name: name,
+          count: 1,
+          desc: desc || undefined,
+          equipType: payload.equipType,
+          grade: payload.grade,
+          value: payload.value,
+          type: payload.type,
+          subtype: payload.subtype,
+          subType: payload.subType,
+          bonus: payload.bonus,
+          effects: payload.effects,
+          manacost: payload.manacost,
+          magnification: payload.magnification,
+        });
+      }
+      return true;
+    }
+    for (var i = 0; i < G.inventorySlots.length; i++) {
       var c = G.inventorySlots[i];
       if (c && c.name === name) {
         c.count = (typeof c.count === "number" && isFinite(c.count) ? c.count : 1) + cnt;
@@ -297,8 +336,9 @@
   }
 
   /**
-   * 从储物袋扣减同名堆叠（先校验总量，再修改格子；多格同名会按槽位顺序扣）。
-   * @returns {{ ok: boolean, reason?: string }}
+   * 从储物袋扣减同名堆叠（先统计总量，再按槽位顺序扣；多格同名会合并扣除）。
+   * 若请求 count 大于袋内现存总量，则扣尽该名堆叠（扣到 0），仍视为成功。
+   * @returns {{ ok: boolean, reason?: string, actualRemoved?: number }}
    */
   function removeStackedItemsFromBag(G, name, count) {
     ensureInventoryShape(G);
@@ -306,16 +346,16 @@
     if (!nm) return { ok: false, reason: "缺少有效 name" };
     var n = typeof count === "number" && isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
     var total = 0;
-    for (var t = 0; t < INVENTORY_SLOT_COUNT; t++) {
+    for (var t = 0; t < G.inventorySlots.length; t++) {
       var ct = G.inventorySlots[t];
       if (ct && String(ct.name).trim() === nm) {
         var cc = typeof ct.count === "number" && isFinite(ct.count) ? Math.max(1, Math.floor(ct.count)) : 1;
         total += cc;
       }
     }
-    if (total < n) return { ok: false, reason: "数量不足（仅有 " + total + "）" };
-    var remaining = n;
-    for (var i = 0; i < INVENTORY_SLOT_COUNT && remaining > 0; i++) {
+    var toRemove = total > 0 ? Math.min(n, total) : 0;
+    var remaining = toRemove;
+    for (var i = 0; i < G.inventorySlots.length && remaining > 0; i++) {
       var c = G.inventorySlots[i];
       if (!c || String(c.name).trim() !== nm) continue;
       var cur = typeof c.count === "number" && isFinite(c.count) ? Math.max(1, Math.floor(c.count)) : 1;
@@ -329,7 +369,7 @@
         );
       }
     }
-    return { ok: true };
+    return { ok: true, actualRemoved: toRemove };
   }
 
   function sampleDescribeFields(src) {
@@ -476,13 +516,13 @@
   }
 
   /**
-   * 当前储物袋 12 格快照（与运行时一致：name、count，及可选 desc、grade、value、equipType、type、bonus、effects）
+   * 当前储物袋快照（与运行时一致：name、count，及可选 desc、grade、value、equipType、type、bonus、effects）；格数可多于 12
    */
   function buildInventorySnapshot(G) {
     var g = G || global.MortalJourneyGame || {};
     ensureInventoryShape(g);
     var slots = [];
-    for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
+    for (var i = 0; i < g.inventorySlots.length; i++) {
       var cell = g.inventorySlots[i];
       slots.push(cell ? normalizeBagItem(cell) : null);
     }
@@ -766,7 +806,7 @@
     parts.push(buildEquippedSnapshot(G));
     parts.push("### 主角功法栏（12 格，null 为空位；已学已装载的功法不要当背包物品重复 add）");
     parts.push(buildGongfaSnapshot(G));
-    parts.push("### 储物袋快照（12 格，null 为空位）");
+    parts.push("### 储物袋快照（JSON 数组，每项为 null 或物品对象；长度 ≥12，可超过 12，与游戏内可扩行储物袋一致）");
     parts.push(buildInventorySnapshot(G));
     parts.push("### 周围人物快照（仅 id/显示名/境界等摘要；若输出 " + NPC_NEARBY_TAG_OPEN + " 则须给出**完整**当期列表以替换）");
     parts.push(buildNearbyNpcsSnapshot(G));
@@ -1231,6 +1271,14 @@
       removed = r.removed;
       failed = r.failed;
       parseVia = pr.parseVia != null ? pr.parseVia : "tag";
+      var PRn = global.MjMainScreenPanelRealm;
+      if (PRn && typeof PRn.ensureInventorySlots === "function") {
+        try {
+          PRn.ensureInventorySlots(G);
+        } catch (_eN) {
+          /* 与主界面脚本同页时归一化储物袋长度并修剪末尾空行 */
+        }
+      }
     } else {
       parseError = pr.error || null;
     }
@@ -1321,8 +1369,13 @@
           continue;
         }
         var rm = removeStackedItemsFromBag(G, rnm, rcnt);
-        if (rm.ok) removed.push({ name: rnm, count: rcnt });
-        else failed.push({ op: raw, reason: rm.reason || "扣除失败" });
+        if (rm.ok) {
+          var act =
+            typeof rm.actualRemoved === "number" && isFinite(rm.actualRemoved)
+              ? Math.max(0, Math.floor(rm.actualRemoved))
+              : rcnt;
+          removed.push({ name: rnm, count: act, requestedCount: rcnt });
+        } else failed.push({ op: raw, reason: rm.reason || "扣除失败" });
         continue;
       }
       if (opn !== "add") {
@@ -1384,6 +1437,7 @@
 
   global.MortalJourneyStateGenerate = {
     INVENTORY_SLOT_COUNT: INVENTORY_SLOT_COUNT,
+    INVENTORY_GRID_COLS: INVENTORY_GRID_COLS,
     EQUIP_SLOT_COUNT: EQUIP_SLOT_COUNT,
     GONGFA_SLOT_COUNT: GONGFA_SLOT_COUNT,
     OPS_TAG_OPEN: OPS_TAG_OPEN,

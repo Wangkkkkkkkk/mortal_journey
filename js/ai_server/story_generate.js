@@ -581,8 +581,9 @@
   }
 
   /**
-   * 若存在 STORY_BODY 信封：仅标签内为玩家叙事（可含战备段）；标签外前后文本（含思考、英文提纲）一律忽略。
-   * 返回的 sansLeak = 标签内正文 + 其后的机器标签（hints / action 等），供 extract 与状态回合使用。
+   * 若存在 STORY_BODY 信封：默认仅标签内为玩家叙事（可含战备段）；标签外**前导**文本在本实现中仅在「标签对内为空」时回退采用（模型误把正文写在信封前、对内留空时不丢文）。
+   * 标签外**尾部**文本（闭合标签之后）仍忽略，仅保留其后已知机器标签块。
+   * 返回的 sansLeak = 标签内正文（或前述回退）+ 其后的机器标签（hints / action 等），供 extract 与状态回合使用。
    * 无闭合信封时回退为整段 stripStoryAiMetaLeakFromNarrative（兼容旧模型）。
    * @returns {{ sansLeak: string, usedBodyEnvelope: boolean }}
    */
@@ -593,6 +594,10 @@
     if (i0 >= 0 && i1 > i0 + STORY_BODY_TAG_OPEN.length) {
       var inner = raw.slice(i0 + STORY_BODY_TAG_OPEN.length, i1).trim();
       inner = stripStoryAiMetaLeakFromNarrative(inner);
+      if (!String(inner || "").trim() && i0 > 0) {
+        var headBeforeEnvelope = raw.slice(0, i0).trim();
+        if (headBeforeEnvelope) inner = stripStoryAiMetaLeakFromNarrative(headBeforeEnvelope);
+      }
       var afterClose = raw.slice(i1 + STORY_BODY_TAG_CLOSE.length).replace(/^\s+/, "");
       var machineTail = extractPostBodyMachineTagBlocks(afterClose);
       var sansLeak = machineTail ? inner + "\n\n" + machineTail : inner;
@@ -615,7 +620,11 @@
     var start = i0 + STORY_BODY_TAG_OPEN.length;
     var i1 = s.indexOf(STORY_BODY_TAG_CLOSE, start);
     var chunk = i1 >= 0 ? s.slice(start, i1) : s.slice(start);
-    return stripStoryAiMetaLeakFromNarrative(chunk);
+    var body = stripStoryAiMetaLeakFromNarrative(chunk);
+    if (i1 >= 0 && !String(body || "").trim() && i0 > 0) {
+      return stripStoryAiMetaLeakFromNarrative(s.slice(0, i0));
+    }
+    return body;
   }
 
   /**

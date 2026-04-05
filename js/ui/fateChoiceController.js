@@ -17,6 +17,77 @@
   var START_REALM_MAJOR = "练气";
   var START_REALM_STAGE = "初期";
 
+  /** 自定义出身·境界下拉选项（与 RealmState 表一致） */
+  var CUSTOM_REALM_MAJORS = ["练气", "筑基", "结丹", "元婴", "化神"];
+  var CUSTOM_REALM_MINORS = ["初期", "中期", "后期"];
+
+  /**
+   * 自定义出身填写的境界文案 → 表可识别的 { major, minor }；失败返回 null。
+   * 化神无小境界；其它大境界缺小境界时默认为初期。
+   */
+  function parseRealmFromCustomText(text) {
+    var s = String(text || "").trim();
+    if (!s) return null;
+    var majors = ["化神", "元婴", "结丹", "筑基", "练气"];
+    var stages = ["后期", "中期", "初期"];
+    var major = "";
+    for (var mi = 0; mi < majors.length; mi++) {
+      if (s.indexOf(majors[mi]) >= 0) {
+        major = majors[mi];
+        break;
+      }
+    }
+    if (!major) return null;
+    if (major === "化神") return { major: "化神", minor: null };
+    var minor = "初期";
+    for (var si = 0; si < stages.length; si++) {
+      if (s.indexOf(stages[si]) >= 0) {
+        minor = stages[si];
+        break;
+      }
+    }
+    return { major: major, minor: minor };
+  }
+
+  /** 配置出身卡片顺序：在黄枫谷弟子右侧插入「自定义」（若配置里已有自定义键则先剔除再插入，避免重复） */
+  function buildOrderedBirthKeys(c) {
+    var raw = Object.keys((c && c.BIRTHS) || {});
+    var out = [];
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] !== "自定义") out.push(raw[i]);
+    }
+    var idx = out.indexOf("黄枫谷弟子");
+    if (idx >= 0) out.splice(idx + 1, 0, "自定义");
+    else out.push("自定义");
+    return out;
+  }
+
+  /** 命运抉择预览与开局写入用的境界（自定义出身优先结构化字段，否则解析旧版 realmText） */
+  function getEffectiveStartRealm() {
+    if (state.selectedBirth === "自定义" && state.customBirth) {
+      var cb = state.customBirth;
+      if (cb.realmMajor && CUSTOM_REALM_MAJORS.indexOf(cb.realmMajor) >= 0) {
+        if (cb.realmMajor === "化神") return { major: "化神", minor: null };
+        var mn =
+          cb.realmMinor && CUSTOM_REALM_MINORS.indexOf(cb.realmMinor) >= 0 ? cb.realmMinor : START_REALM_STAGE;
+        return { major: cb.realmMajor, minor: mn };
+      }
+      if (cb.realmText) {
+        var p = parseRealmFromCustomText(cb.realmText);
+        if (p && p.major) return { major: p.major, minor: p.minor };
+      }
+    }
+    return { major: START_REALM_MAJOR, minor: START_REALM_STAGE };
+  }
+
+  function syncCustomBirthRealmMinorRow() {
+    var majorEl = getEl("mj-custom-birth-realm-major");
+    var wrap = getEl("mj-custom-birth-realm-minor-wrap");
+    if (!majorEl || !wrap) return;
+    if (majorEl.value === "化神") wrap.classList.add("mj-custom-birth-realm-minor-wrap--hidden");
+    else wrap.classList.remove("mj-custom-birth-realm-minor-wrap--hidden");
+  }
+
   var state = {
     /** 难度选择已移除：统一按「简单」处理 */
     selectedDifficulty: "简单",
@@ -186,20 +257,24 @@
       logPlayerBaseIfChanged();
       return;
     }
-    var raw = RS.getBaseStats(START_REALM_MAJOR, START_REALM_STAGE);
+    var er0 = getEffectiveStartRealm();
+    var raw =
+      er0.major === "化神"
+      ? RS.getBaseStats("化神")
+      : RS.getBaseStats(er0.major, er0.minor || START_REALM_STAGE);
     if (!raw) {
-      state.rawRealmBase = null;
-      state.playerBase = null;
-      pushRuntimeSnapshot();
-      logPlayerBaseIfChanged();
-      return;
+      raw = RS.getBaseStats(START_REALM_MAJOR, START_REALM_STAGE);
+      er0 = { major: START_REALM_MAJOR, minor: START_REALM_STAGE };
     }
     var fakeFc = {
       difficulty: state.selectedDifficulty,
       birth: state.selectedBirth,
       traits: getAllDisplayedTraitsCloned(),
       linggen: state.selectedLinggen,
-      realm: { major: START_REALM_MAJOR, minor: START_REALM_STAGE },
+      realm:
+        er0.minor == null
+          ? { major: er0.major, minor: null }
+          : { major: er0.major, minor: er0.minor },
       worldFactors: [],
     };
     var c = cfg();
@@ -246,8 +321,12 @@
     zhRow[STAT_LABEL_ZH.charm] = String(state.playerBase.charm != null ? state.playerBase.charm : DEFAULT_CHARM);
     zhRow[STAT_LABEL_ZH.luck] = String(state.playerBase.luck != null ? state.playerBase.luck : DEFAULT_LUCK);
 
+    var erL = getEffectiveStartRealm();
     console.info(
-      "[命运抉择] 练气·初期 · 灵根:",
+      "[命运抉择] " +
+        erL.major +
+        (erL.minor != null && erL.minor !== "" ? "·" + erL.minor : "") +
+        " · 灵根:",
       state.selectedLinggen || "无",
       "· playerBase 已同步至 MortalJourneyGame.playerBase",
     );
@@ -255,7 +334,10 @@
 
     if (typeof global.GameLog === "object" && global.GameLog && typeof global.GameLog.info === "function") {
       global.GameLog.info(
-        "[练气初期] 灵根 " +
+        "[" +
+          erL.major +
+          (erL.minor != null && erL.minor !== "" ? erL.minor : "") +
+          "] 灵根 " +
           (state.selectedLinggen || "无") +
           " → " +
           JSON.stringify(zhRow),
@@ -266,7 +348,9 @@
   function pushRuntimeSnapshot() {
     global.MortalJourneyGame = global.MortalJourneyGame || {};
     var G = global.MortalJourneyGame;
-    G.realm = { major: START_REALM_MAJOR, minor: START_REALM_STAGE };
+    var er = getEffectiveStartRealm();
+    G.realm =
+      er.minor == null ? { major: er.major, minor: null } : { major: er.major, minor: er.minor };
     if (state.rawRealmBase) {
       G.rawRealmBase = Object.assign({}, state.rawRealmBase);
     } else {
@@ -498,6 +582,145 @@
     });
   }
 
+  var _customBirthModalBound = false;
+
+  function closeCustomBirthModal() {
+    var root = getEl("mj-custom-birth-root");
+    if (!root) return;
+    root.classList.add("hidden");
+    root.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  function openCustomBirthModal() {
+    ensureCustomBirthModal();
+    var root = getEl("mj-custom-birth-root");
+    if (!root) return;
+    var locEl = getEl("mj-custom-birth-location");
+    var majorEl = getEl("mj-custom-birth-realm-major");
+    var minorEl = getEl("mj-custom-birth-realm-minor");
+    var bgEl = getEl("mj-custom-birth-background");
+    if (locEl) {
+      locEl.value =
+        state.customBirth && state.customBirth.location != null ? String(state.customBirth.location) : "";
+    }
+    var maj = CUSTOM_REALM_MAJORS[0];
+    var mino = CUSTOM_REALM_MINORS[0];
+    var cb0 = state.customBirth;
+    if (cb0 && cb0.realmMajor && CUSTOM_REALM_MAJORS.indexOf(cb0.realmMajor) >= 0) {
+      maj = cb0.realmMajor;
+      if (cb0.realmMajor !== "化神" && cb0.realmMinor && CUSTOM_REALM_MINORS.indexOf(cb0.realmMinor) >= 0) {
+        mino = cb0.realmMinor;
+      }
+    } else if (cb0 && cb0.realmText) {
+      var parsed = parseRealmFromCustomText(cb0.realmText);
+      if (parsed && parsed.major) {
+        maj = parsed.major;
+        if (parsed.minor && CUSTOM_REALM_MINORS.indexOf(parsed.minor) >= 0) mino = parsed.minor;
+      }
+    }
+    if (majorEl) majorEl.value = maj;
+    if (minorEl) minorEl.value = mino;
+    syncCustomBirthRealmMinorRow();
+    if (bgEl) {
+      bgEl.value =
+        state.customBirth && state.customBirth.background != null ? String(state.customBirth.background) : "";
+    }
+    root.classList.remove("hidden");
+    root.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    if (locEl) locEl.focus();
+  }
+
+  function bindCustomBirthModal() {
+    if (_customBirthModalBound) return;
+    var root = getEl("mj-custom-birth-root");
+    if (!root) return;
+    _customBirthModalBound = true;
+    function onClose() {
+      closeCustomBirthModal();
+    }
+    root.querySelectorAll("[data-mj-custom-birth-close]").forEach(function (el) {
+      el.addEventListener("click", onClose);
+    });
+    var cancelBtn = getEl("mj-custom-birth-cancel");
+    if (cancelBtn) cancelBtn.addEventListener("click", onClose);
+    var majorSel0 = getEl("mj-custom-birth-realm-major");
+    if (majorSel0) {
+      majorSel0.addEventListener("change", function () {
+        syncCustomBirthRealmMinorRow();
+      });
+    }
+    var okBtn = getEl("mj-custom-birth-ok");
+    if (okBtn) {
+      okBtn.addEventListener("click", function () {
+        var locEl0 = getEl("mj-custom-birth-location");
+        var majorSel = getEl("mj-custom-birth-realm-major");
+        var minorSel = getEl("mj-custom-birth-realm-minor");
+        var bgEl0 = getEl("mj-custom-birth-background");
+        var loc = locEl0 ? String(locEl0.value || "").trim() : "";
+        var maj = majorSel ? String(majorSel.value || "").trim() : "";
+        var bg = bgEl0 ? String(bgEl0.value || "").trim() : "";
+        if (!loc || !maj || !bg) {
+          window.alert("请完整填写出身地点、境界与出身背景。");
+          return;
+        }
+        if (CUSTOM_REALM_MAJORS.indexOf(maj) < 0) {
+          window.alert("请选择有效的大境界。");
+          return;
+        }
+        var mino = null;
+        var realmTxt = "";
+        if (maj === "化神") {
+          realmTxt = "化神";
+        } else {
+          var mn = minorSel ? String(minorSel.value || "").trim() : "";
+          if (!mn || CUSTOM_REALM_MINORS.indexOf(mn) < 0) {
+            window.alert("请选择境界小阶段（初期 / 中期 / 后期）。");
+            return;
+          }
+          mino = mn;
+          realmTxt = maj + mino;
+        }
+        state.selectedBirth = "自定义";
+        state.birthLocation = loc;
+        state.customBirth = {
+          tag: loc,
+          name: loc,
+          location: loc,
+          realmMajor: maj,
+          realmMinor: mino,
+          realmText: realmTxt,
+          background: bg,
+        };
+        onClose();
+        renderPage();
+      });
+    }
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Escape") return;
+      var r = getEl("mj-custom-birth-root");
+      if (r && !r.classList.contains("hidden")) {
+        onClose();
+        ev.preventDefault();
+      }
+    });
+  }
+
+  /** 绑定自定义出身弹窗（DOM 须在 index.html 中静态声明为 #mj-custom-birth-root） */
+  function ensureCustomBirthModal() {
+    var root = getEl("mj-custom-birth-root");
+    if (!root) {
+      try {
+        console.warn(
+          "[命运抉择] 未找到 #mj-custom-birth-root：请在 index.html 中挂载自定义出身弹窗，或确认 creation.css 已加载。",
+        );
+      } catch (_e) {}
+      return;
+    }
+    if (!_customBirthModalBound) bindCustomBirthModal();
+  }
+
   function renderPage() {
     var contentEl = getEl("creation-content");
     var navEl = getEl("creation-nav");
@@ -516,7 +739,7 @@
     var diffReady = true;
     var isReady = !!state.selectedBirth && !!state.selectedGender && !!state.selectedLinggen;
 
-    var birthKeys = Object.keys(c.BIRTHS || {});
+    var birthKeys = buildOrderedBirthKeys(c);
 
     var lockedTraitCount = (state.currentTraitOptions || []).filter(function (t) {
       return t && t.locked;
@@ -606,24 +829,31 @@
       birthKeys
         .map(function (name) {
           var data = c.BIRTHS[name];
-          if (!data) return "";
           var selected = state.selectedBirth === name;
           if (name === "自定义") {
+            var customSummary = "点击填写出身地点、境界与背景";
+            if (state.selectedBirth === "自定义" && state.customBirth) {
+              customSummary =
+                escapeHtml(
+                  String(state.customBirth.location || state.customBirth.tag || "").slice(0, 40),
+                ) +
+                " · " +
+                escapeHtml(String(state.customBirth.realmText || "").slice(0, 16));
+            }
             return (
               '<div class="creation-card ' +
               (selected ? "selected" : "") +
               '" data-birth="' +
               name +
               '">' +
-              "<h4><span>自定义</span></h4>" +
+              "<h4><span>自定义出身</span></h4>" +
               "<p>" +
-              (state.selectedBirth === "自定义" && state.customBirth
-                ? "已选: " + (state.customBirth.tag || state.customBirth.name || "自定义")
-                : "点击填写自定义出身") +
+              customSummary +
               "</p>" +
               "</div>"
             );
           }
+          if (!data) return "";
           return (
             '<div class="creation-card ' +
             (selected ? "selected" : "") +
@@ -731,17 +961,7 @@
       card.addEventListener("click", function () {
         var birthName = card.getAttribute("data-birth");
         if (birthName === "自定义") {
-          var tag = window.prompt("自定义出身标识（必填，占位）:", "");
-          if (tag === null) return;
-          tag = String(tag).trim();
-          if (!tag) {
-            window.alert("未填写标识。");
-            return;
-          }
-          state.selectedBirth = "自定义";
-          state.customBirth = { tag: tag, name: tag };
-          state.birthLocation = tag;
-          renderPage();
+          openCustomBirthModal();
           return;
         }
         state.selectedBirth = birthName;
@@ -950,6 +1170,7 @@
         return;
       }
 
+      var erPayload = getEffectiveStartRealm();
       var payload = {
       difficulty: state.selectedDifficulty,
       playerName: String(state.playerName || "").trim() || "韩立",
@@ -961,7 +1182,10 @@
       linggen: state.selectedLinggen,
       worldFactors: [],
       birthLocation: birthLoc,
-      realm: { major: START_REALM_MAJOR, minor: START_REALM_STAGE },
+      realm: {
+        major: erPayload.major,
+        minor: erPayload.minor == null ? null : erPayload.minor,
+      },
       rawRealmBase: state.rawRealmBase ? Object.assign({}, state.rawRealmBase) : null,
       playerBase: state.playerBase ? Object.assign({}, state.playerBase) : null,
       };
@@ -1078,6 +1302,7 @@
       return;
     }
     bindFateTraitDetailModal();
+    ensureCustomBirthModal();
     resetState();
     // 默认进入「命运抉择」时先自动刷新一次灵根与逆天改命候选，
     // 让玩家无需手动点按钮即可获得一套默认开局（仍可继续手动刷新/锁定）。
@@ -1104,6 +1329,7 @@
 
   function hideFateChoice() {
     closeFateTraitDetailModal();
+    closeCustomBirthModal();
     var screen = getEl("character-creation-screen");
     var splash = getEl("splash-screen");
     if (screen) {
@@ -1130,7 +1356,8 @@
       return state.rawRealmBase ? Object.assign({}, state.rawRealmBase) : null;
     },
     getStartingRealm: function () {
-      return { major: START_REALM_MAJOR, minor: START_REALM_STAGE };
+      var er = getEffectiveStartRealm();
+      return { major: er.major, minor: er.minor == null ? null : er.minor };
     },
     recomputePlayerBase: recomputePlayerBase,
     /** 全局运行时：realm / rawRealmBase / playerBase / fateChoice */
@@ -1140,4 +1367,5 @@
   };
 
   bindFateTraitDetailModal();
+  ensureCustomBirthModal();
 })(typeof window !== "undefined" ? window : globalThis);

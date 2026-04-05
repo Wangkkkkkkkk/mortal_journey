@@ -24,6 +24,17 @@
   var DEFAULT_CHARM = 10;
   var DEFAULT_LUCK = 10;
   var INVENTORY_SLOT_COUNT = 12;
+  /** 主角储物袋每行 4 格；满且需入货时整行扩容，可滚动浏览 */
+  var INVENTORY_GRID_COLS = 4;
+  /**
+   * 储物袋中禁止与同名格合并堆叠的物品（每件独立占格，如每颗妖兽内丹来源不同）。
+   * tryPlaceItemInBag 须跳过同名累加；ensureInventorySlots 会将旧存档中的堆叠拆格。
+   */
+  var BAG_UNIQUE_STACK_ITEM_NAMES = { 妖兽内丹: true };
+  function bagItemSkipsSameNameStack(itemName) {
+    var nm = itemName != null ? String(itemName).trim() : "";
+    return nm !== "" && BAG_UNIQUE_STACK_ITEM_NAMES[nm] === true;
+  }
   /** 功法栏固定 2×4，共 8 格（不需要滚动框） */
   var GONGFA_SLOT_COUNT = 8;
   /** 佩戴栏固定 4 格：武器、法器、防具、载具 */
@@ -432,8 +443,9 @@
 
   function consumeOneFromInventorySlot(G, bagIdx) {
     if (!G || !G.inventorySlots) return false;
+    ensureInventorySlots(G);
     var bi = Number(bagIdx);
-    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    if (!isFinite(bi) || bi < 0 || bi >= G.inventorySlots.length) return false;
     var it = G.inventorySlots[bi];
     if (!it || !it.name) return false;
     var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
@@ -608,7 +620,8 @@
     hint.textContent = "选择放入本格的丹药（须对「" + ctx.major + "→" + ctx.nextMaj + "」有效）：";
     pick.appendChild(hint);
     var found = 0;
-    for (var b = 0; b < INVENTORY_SLOT_COUNT; b++) {
+    ensureInventorySlots(G);
+    for (var b = 0; b < G.inventorySlots.length; b++) {
       var it = G.inventorySlots[b];
       if (!it || !it.name) continue;
       var bonus = getPillBreakthroughBonusDelta(it.name, ctx.major, ctx.nextMaj);
@@ -670,7 +683,7 @@
       var s = majorBreakModalSlots[i];
       if (!s) continue;
       var bi = Number(s.bagIdx);
-      if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) {
+      if (!isFinite(bi) || bi < 0 || bi >= G.inventorySlots.length) {
         logBreakthroughMessages(["大境界突破取消：丹药格配置无效。"]);
         return;
       }
@@ -928,7 +941,7 @@
     if (!G || !G.inventorySlots) return false;
     ensureGameRuntimeDefaults(G);
     var bi = Number(bagIdx);
-    if (!isFinite(bi) || bi < 0 || bi >= INVENTORY_SLOT_COUNT) return false;
+    if (!isFinite(bi) || bi < 0 || bi >= G.inventorySlots.length) return false;
     var it = G.inventorySlots[bi];
     if (!it || !it.name) return false;
     var stoneBase = getSpiritStoneCultivationValue(it.name);
@@ -1002,7 +1015,7 @@
       var invOk =
         data.inventorySlots &&
         Array.isArray(data.inventorySlots) &&
-        data.inventorySlots.length === INVENTORY_SLOT_COUNT;
+        data.inventorySlots.length >= INVENTORY_SLOT_COUNT;
       var gfOk = data.gongfaSlots && Array.isArray(data.gongfaSlots) && data.gongfaSlots.length >= GONGFA_SLOT_COUNT;
       if (invOk) {
         global.MortalJourneyGame.inventorySlots = JSON.parse(JSON.stringify(data.inventorySlots));
@@ -1765,15 +1778,28 @@
     return typeof v === "number" && isFinite(v) ? v : null;
   }
 
+  /** 法器（及旧名副武器）不参与装备伤害倍率展示与入袋 magnification，与规则 9.3 一致 */
+  function equipmentIsFaqiForMagnificationRule(item, equipMeta) {
+    var ty =
+      (item && item.equipType != null && String(item.equipType).trim() !== ""
+        ? String(item.equipType).trim()
+        : "") ||
+      (equipMeta && equipMeta.type != null && String(equipMeta.type).trim() !== ""
+        ? String(equipMeta.type).trim()
+        : "");
+    return ty === "法器" || ty === "副武器";
+  }
+
   function resolveEquipmentMagnificationLine(itemName, item, equipMeta) {
     var meta = equipMeta || lookupEquipmentMetaByItemName(itemName);
+    if (equipmentIsFaqiForMagnificationRule(item, meta)) return "";
     var m0 = item && item.magnification && typeof item.magnification === "object" ? item.magnification : null;
     var m1 = meta && meta.magnification && typeof meta.magnification === "object" ? meta.magnification : null;
     var patkMag = toFiniteNumberOrNull(m0 && m0.物攻);
     if (patkMag == null) patkMag = toFiniteNumberOrNull(m1 && m1.物攻);
     var matkMag = toFiniteNumberOrNull(m0 && m0.法攻);
     if (matkMag == null) matkMag = toFiniteNumberOrNull(m1 && m1.法攻);
-    /** 与 equippedItemToBagPayload / 战斗默认一致：表外或残缺格子的武器/法器仍给出可读的默认倍率（仅展示与文案；入袋时仍应由 tryPlace 写入 magnification） */
+    /** 表外或残缺格子的武器仍给展示默认倍率；法器见 equipmentIsFaqiForMagnificationRule */
     if (patkMag == null && matkMag == null) {
       var tyInf =
         (item && item.equipType != null && String(item.equipType).trim() !== ""
@@ -1783,9 +1809,6 @@
       if (tyInf === "武器" || tyInf === "主武器") {
         patkMag = 1;
         matkMag = 0;
-      } else if (tyInf === "法器" || tyInf === "副武器") {
-        patkMag = 0;
-        matkMag = 1;
       } else {
         return "";
       }
@@ -2552,7 +2575,7 @@
     if (!G || !G.inventorySlots) return;
     var C = global.MjCreationConfig;
     if (!C) return;
-    for (var i = 0; i < INVENTORY_SLOT_COUNT; i++) {
+    for (var i = 0; i < G.inventorySlots.length; i++) {
       var it = G.inventorySlots[i];
       if (!it || !it.name) continue;
       var nm = String(it.name).trim();
@@ -2586,19 +2609,85 @@
     }
   }
 
-  /** 储物袋 12 格均为物品 { name, count, desc? }；兼容旧存档第 0 格 kind:lingshi → 下品灵石 */
+  function expandPlayerInventoryOneRow(G) {
+    if (!G || !Array.isArray(G.inventorySlots)) return;
+    for (var c = 0; c < INVENTORY_GRID_COLS; c++) {
+      G.inventorySlots.push(null);
+    }
+  }
+
+  function trimTrailingEmptyPlayerBagRows(G) {
+    if (!G || !Array.isArray(G.inventorySlots)) return;
+    while (G.inventorySlots.length > INVENTORY_SLOT_COUNT) {
+      var L = G.inventorySlots.length;
+      if (L < INVENTORY_GRID_COLS) break;
+      var start = L - INVENTORY_GRID_COLS;
+      var emptyRow = true;
+      for (var c = 0; c < INVENTORY_GRID_COLS; c++) {
+        if (G.inventorySlots[start + c]) {
+          emptyRow = false;
+          break;
+        }
+      }
+      if (!emptyRow) break;
+      G.inventorySlots.length = start;
+    }
+  }
+
+  function findFirstEmptyInventorySlot(G) {
+    if (!G || !Array.isArray(G.inventorySlots)) return -1;
+    for (var i = 0; i < G.inventorySlots.length; i++) {
+      if (!G.inventorySlots[i]) return i;
+    }
+    return -1;
+  }
+
+  /** 将禁止堆叠合并的物品（如妖兽内丹）从旧存档大单格拆成每格 1 件；空位不足时扩行 */
+  function splitUniqueStackItemCellsInPlace(G) {
+    if (!G || !Array.isArray(G.inventorySlots)) return;
+    function countEmptyBagSlots() {
+      var e = 0;
+      for (var x = 0; x < G.inventorySlots.length; x++) {
+        if (!G.inventorySlots[x]) e++;
+      }
+      return e;
+    }
+    for (var i = 0; i < G.inventorySlots.length; i++) {
+      var cell = G.inventorySlots[i];
+      if (!cell || !cell.name) continue;
+      var nm = String(cell.name).trim();
+      if (!nm || !bagItemSkipsSameNameStack(nm)) continue;
+      var qc = typeof cell.count === "number" && isFinite(cell.count) ? Math.max(1, Math.floor(cell.count)) : 1;
+      if (qc <= 1) continue;
+      var needExtra = qc - 1;
+      while (countEmptyBagSlots() < needExtra) {
+        expandPlayerInventoryOneRow(G);
+      }
+      var moveOut = needExtra;
+      var cont = continuityFieldsFromBagItem(cell);
+      var restOnFirst = qc - moveOut;
+      G.inventorySlots[i] = normalizeBagItem(Object.assign({ name: nm, count: restOnFirst }, cont));
+      for (var m = 0; m < moveOut; m++) {
+        var j = findFirstEmptyInventorySlot(G);
+        if (j < 0) break;
+        G.inventorySlots[j] = normalizeBagItem(Object.assign({ name: nm, count: 1 }, cont));
+      }
+    }
+  }
+
+  /** 储物袋至少 12 格，可向下扩行（4 列网格）；兼容旧存档 kind:lingshi → 下品灵石 */
   function ensureInventorySlots(G) {
     if (!G) return;
     var C = global.MjCreationConfig;
     var stoneName =
       C && C.LINGSHI_STACK_ITEM_NAME ? String(C.LINGSHI_STACK_ITEM_NAME) : "下品灵石";
-    if (!Array.isArray(G.inventorySlots) || G.inventorySlots.length !== INVENTORY_SLOT_COUNT) {
-      var a = [];
-      for (var j = 0; j < INVENTORY_SLOT_COUNT; j++) a.push(null);
-      G.inventorySlots = a;
-      return;
+    if (!Array.isArray(G.inventorySlots)) {
+      G.inventorySlots = [];
     }
-    for (var k = 0; k < INVENTORY_SLOT_COUNT; k++) {
+    while (G.inventorySlots.length < INVENTORY_SLOT_COUNT) {
+      G.inventorySlots.push(null);
+    }
+    for (var k = 0; k < G.inventorySlots.length; k++) {
       var cell = G.inventorySlots[k];
       if (cell && cell.kind === "lingshi") {
         var prev = typeof cell.count === "number" && isFinite(cell.count) ? Math.max(0, Math.floor(cell.count)) : 0;
@@ -2608,10 +2697,13 @@
       }
     }
     enrichInventoryGradesFromDescribe(G);
+    splitUniqueStackItemCellsInPlace(G);
+    trimTrailingEmptyPlayerBagRows(G);
   }
   global.MjMainScreenPanelRealm = {
     STORAGE_KEY: STORAGE_KEY, DEFAULT_WORLD_TIME: DEFAULT_WORLD_TIME, DEFAULT_AGE: DEFAULT_AGE, DEFAULT_SHOUYUAN: DEFAULT_SHOUYUAN,
-    DEFAULT_CHARM: DEFAULT_CHARM, DEFAULT_LUCK: DEFAULT_LUCK, INVENTORY_SLOT_COUNT: INVENTORY_SLOT_COUNT, GONGFA_SLOT_COUNT: GONGFA_SLOT_COUNT,
+    DEFAULT_CHARM: DEFAULT_CHARM, DEFAULT_LUCK: DEFAULT_LUCK,
+    INVENTORY_SLOT_COUNT: INVENTORY_SLOT_COUNT, INVENTORY_GRID_COLS: INVENTORY_GRID_COLS, GONGFA_SLOT_COUNT: GONGFA_SLOT_COUNT,
     EQUIP_SLOT_COUNT: EQUIP_SLOT_COUNT, EQUIP_SLOT_EMPTY_TITLE: EQUIP_SLOT_EMPTY_TITLE, EQUIP_SLOT_KIND_LABELS: EQUIP_SLOT_KIND_LABELS,
     bindMajorBreakthroughUi: bindMajorBreakthroughUi, bindNpcDetailModalUi: bindNpcDetailModalUi, restoreBootstrap: restoreBootstrap, ensureGameRuntimeDefaults: ensureGameRuntimeDefaults,
     ensureNearbyNpcsArray: ensureNearbyNpcsArray, normalizeNearbyNpcListInPlace: normalizeNearbyNpcListInPlace, buildDemoNearbyNpcSheet: buildDemoNearbyNpcSheet,
@@ -2619,11 +2711,14 @@
     sortNearbyNpcsForDisplay: sortNearbyNpcsForDisplay,
     applyRealmBreakthroughs: applyRealmBreakthroughs, logBreakthroughMessages: logBreakthroughMessages, computeCultivationUi: computeCultivationUi,
     persistBootstrapSnapshot: persistBootstrapSnapshot, syncNpcShouyuanFromRealmState: syncNpcShouyuanFromRealmState, ensureEquippedSlots: ensureEquippedSlots,
-    ensureGongfaSlots: ensureGongfaSlots, ensureInventorySlots: ensureInventorySlots, enrichInventoryGradesFromDescribe: enrichInventoryGradesFromDescribe,
+    ensureGongfaSlots: ensureGongfaSlots, ensureInventorySlots: ensureInventorySlots,
+    bagItemSkipsSameNameStack: bagItemSkipsSameNameStack, enrichInventoryGradesFromDescribe: enrichInventoryGradesFromDescribe,
     continuityFieldsFromBagItem: continuityFieldsFromBagItem, renderNearbyNpcsPanel: renderNearbyNpcsPanel, performAbsorbSpiritStonesFromBag: performAbsorbSpiritStonesFromBag,
     clampXiuweiToLateStageCapIfNeeded: clampXiuweiToLateStageCapIfNeeded, normalizeBagItem: normalizeBagItem, pickDescribeValueFromMetas: pickDescribeValueFromMetas,
     lookupStuffMetaByItemName: lookupStuffMetaByItemName, lookupEquipmentMetaByItemName: lookupEquipmentMetaByItemName, lookupGongfaConfigDef: lookupGongfaConfigDef,
-    resolveEquipmentMagnificationLine: resolveEquipmentMagnificationLine, resolveGongfaMagnificationLine: resolveGongfaMagnificationLine, resolveGongfaManacostLine: resolveGongfaManacostLine,
+    resolveEquipmentMagnificationLine: resolveEquipmentMagnificationLine,
+    equipmentIsFaqiForMagnificationRule: equipmentIsFaqiForMagnificationRule,
+    resolveGongfaMagnificationLine: resolveGongfaMagnificationLine, resolveGongfaManacostLine: resolveGongfaManacostLine,
     formatReferenceValueFromNumber: formatReferenceValueFromNumber, formatPillEffectsForUi: formatPillEffectsForUi, getSpiritStoneRawPerPiece: getSpiritStoneRawPerPiece,
     formatSpiritStonePointsForUi: formatSpiritStonePointsForUi, getMajorBreakthroughReadyContext: getMajorBreakthroughReadyContext, closeMajorBreakthroughModal: closeMajorBreakthroughModal,
     syncLateStageBreakSuffixState: syncLateStageBreakSuffixState, bumpLateStageBreakFailCount: bumpLateStageBreakFailCount, setBarFill: setBarFill, numOrDash: numOrDash,
