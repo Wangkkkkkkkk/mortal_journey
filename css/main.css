@@ -2211,3 +2211,133 @@ button.mj-npc-card.mj-npc-card--dead:hover {
     padding-right: 48px; /* 给关闭按钮留空 */
   }
 }
+
+/* —— 开局 AI 门闩（新档首次进入主界面前） —— */
+.mj-bootstrap-ai-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 200000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(8, 10, 9, 0.92);
+  backdrop-filter: blur(6px);
+}
+
+.mj-bootstrap-ai-gate.hidden {
+  display: none !important;
+}
+
+body.mj-main-body--bootstrap-gate .mj-main-header,
+body.mj-main-body--bootstrap-gate #mj-main-layout {
+  pointer-events: none;
+  user-select: none;
+  filter: grayscale(0.2) brightness(0.55);
+}
+
+.mj-bootstrap-ai-gate__panel {
+  width: 100%;
+  max-width: 440px;
+  max-height: min(90vh, 640px);
+  overflow: auto;
+  padding: 22px 22px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--mj-border);
+  background: var(--mj-panel-bg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+.mj-bootstrap-ai-gate__title {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--mj-gold);
+  letter-spacing: 0.04em;
+}
+
+.mj-bootstrap-ai-gate__hint {
+  margin: 0 0 18px;
+  font-size: 0.88rem;
+  color: var(--mj-muted);
+  line-height: 1.55;
+}
+
+.mj-bootstrap-ai-gate__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mj-bootstrap-ai-gate__row {
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 120, 83, 0.28);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.mj-bootstrap-ai-gate__label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--mj-text);
+  margin-bottom: 8px;
+}
+
+.mj-bootstrap-ai-gate__times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  font-size: 0.82rem;
+  color: var(--mj-muted);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 6px;
+}
+
+.mj-bootstrap-ai-gate__status {
+  font-size: 0.84rem;
+  color: var(--mj-gold-dim);
+}
+
+.mj-bootstrap-ai-gate__error {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(120, 40, 40, 0.35);
+  border: 1px solid rgba(200, 80, 80, 0.45);
+  color: #f0c0c0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.mj-bootstrap-ai-gate__actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mj-bootstrap-ai-gate__btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(232, 197, 71, 0.45);
+  background: rgba(232, 197, 71, 0.18);
+  color: var(--mj-gold);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.mj-bootstrap-ai-gate__btn:hover {
+  background: rgba(232, 197, 71, 0.28);
+}
+
+.mj-bootstrap-ai-gate__btn--secondary {
+  border-color: rgba(140, 120, 83, 0.5);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--mj-muted);
+}
+
+.mj-bootstrap-ai-gate__btn--secondary:hover {
+  color: var(--mj-text);
+  background: rgba(0, 0, 0, 0.35);
+}

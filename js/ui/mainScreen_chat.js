@@ -198,6 +198,8 @@
     var allowRollbackOnTimeout = !!opts.allowRollbackOnTimeout;
     var rollbackFn = opts.rollbackFn;
     var retryBtnEl = opts.retryButtonEl || null;
+    var strictPipelineOutcome = !!opts.strictPipelineOutcome;
+    var skipStateInventoryAfterStory = !!opts.skipStateInventoryAfterStory;
 
     _mjStateRetryStoryRaw = null;
     _mjStoryRetryContext = {
@@ -208,6 +210,7 @@
       assistantBody: assistantBody,
       userHistIndex: userHistIndex,
       forceBattleIntent: forceBattleIntent,
+      skipStateInventoryAfterStory: skipStateInventoryAfterStory,
     };
 
     var useStreamChat = getBridgeUseStreamingChat();
@@ -424,6 +427,9 @@
             "story",
           );
           if (retryBtnEl) retryBtnEl.disabled = false;
+          if (strictPipelineOutcome) {
+            return Promise.reject(new Error("剧情 AI 返回空正文"));
+          }
           return Promise.resolve();
         }
         if (assistantRoot) assistantRoot.classList.remove("mj-chat-msg--assistant-empty");
@@ -479,10 +485,27 @@
         _mjStoryRetryContext = null;
         finishAiReplyFeedback(feedbackGenStory, textarea, "done", undefined, { kind: AI_KIND_STORY_LABEL });
         if (retryBtnEl) retryBtnEl.disabled = false;
-        return runStateInventoryAiTurn(G, textarea, sansForPipeline);
+        if (skipStateInventoryAfterStory) {
+          return Promise.resolve();
+        }
+        return runStateInventoryAiTurn(G, textarea, sansForPipeline).then(function (stateRes) {
+          if (!stateRes || stateRes.ok !== true) {
+            var er = new Error(
+              stateRes && stateRes.error && stateRes.error.message
+                ? String(stateRes.error.message)
+                : "状态 AI 未成功同步",
+            );
+            er.__mjFromStateAi = true;
+            return Promise.reject(er);
+          }
+        });
       })
       .catch(function (err) {
         clearTimeoutIfAny();
+        if (err && err.__mjFromStateAi) {
+          if (retryBtnEl) retryBtnEl.disabled = false;
+          return Promise.reject(err);
+        }
         if (isTimeoutError(err)) {
           if (allowRollbackOnTimeout && typeof rollbackFn === "function") {
             finishAiReplyFeedback(feedbackGenStory, textarea, "error", "请求超时（300 秒）", {
@@ -490,14 +513,20 @@
             });
             rollbackFn();
             _mjStoryRetryContext = null;
+            if (strictPipelineOutcome) {
+              return Promise.reject(err || new Error("剧情 AI 请求超时"));
+            }
           } else {
             finishAiReplyFeedback(feedbackGenStory, textarea, "error", "请求超时（300 秒）", {
               kind: AI_KIND_STORY_LABEL,
             });
             appendChatErrorWithRetry("剧情 AI：请求超时（300 秒）。可点击下方按钮重试，无需重新打字。", "story");
+            if (strictPipelineOutcome) {
+              return Promise.reject(err || new Error("剧情 AI 请求超时"));
+            }
           }
           if (retryBtnEl) retryBtnEl.disabled = false;
-          return;
+          return undefined;
         }
         if (
           assistantBody &&
@@ -520,12 +549,22 @@
           global.GameLog.info("[主界面] 剧情请求失败：" + msg.slice(0, 300));
         }
         if (retryBtnEl) retryBtnEl.disabled = false;
+        if (strictPipelineOutcome) {
+          return Promise.reject(err || new Error("剧情 AI 请求失败"));
+        }
       })
-      .then(function () {
-        clearTimeoutIfAny();
-        if (sendBtn) sendBtn.disabled = false;
-        if (textarea) textarea.disabled = false;
-      });
+      .then(
+        function () {
+          clearTimeoutIfAny();
+          if (sendBtn) sendBtn.disabled = false;
+          if (textarea) textarea.disabled = false;
+        },
+        function () {
+          clearTimeoutIfAny();
+          if (sendBtn) sendBtn.disabled = false;
+          if (textarea) textarea.disabled = false;
+        },
+      );
   }
 
   function retryLastStoryAi(textarea, sendBtn, clickedBtn) {
@@ -573,6 +612,7 @@
       allowRollbackOnTimeout: false,
       rollbackFn: null,
       retryButtonEl: clickedBtn || null,
+      skipStateInventoryAfterStory: !!ctx.skipStateInventoryAfterStory,
     });
   }
 
@@ -1005,9 +1045,16 @@
 
   /**
    * 剧情 AI 成功后：请求状态 AI（储物袋等），状态栏计时与剧情一致。
-   * @returns {Promise<void>}
+   * @param {Object} [opts]
+   * @param {string} [opts.extraUserHintAppend] 追加到默认 extraUserHint（如开局门闩第三步）
+   * @returns {Promise<{ok:boolean, error?: Error}>}
    */
-  function runStateInventoryAiTurn(G, textarea, storyReply) {
+  function runStateInventoryAiTurn(G, textarea, storyReply, opts) {
+    var opt = opts && typeof opts === "object" ? opts : {};
+    var hintAppend =
+      opt.extraUserHintAppend != null && String(opt.extraUserHintAppend).trim() !== ""
+        ? String(opt.extraUserHintAppend).trim()
+        : "";
     var ST = global.MortalJourneyStateGenerate;
     if (
       !ST ||
@@ -1018,7 +1065,7 @@
       if (global.GameLog && typeof global.GameLog.warn === "function") {
         global.GameLog.warn("[主界面] MortalJourneyStateGenerate 未加载或不完整，跳过状态同步。");
       }
-      return Promise.resolve();
+      return Promise.resolve({ ok: false, error: new Error("MortalJourneyStateGenerate 未加载或不完整") });
     }
     var reply = storyReply != null ? String(storyReply) : "";
     _mjStateRetryStoryRaw = reply;
@@ -1028,26 +1075,28 @@
       wholeResponseWait: !useStreamState,
     });
     var streamStateNotified = false;
+    var baseExtraHint =
+      "以上正文为刚生成的剧情段落（含文末机器标签时请一并阅读）。请根据剧情：①同步储物袋（add/remove；无变化则 []）②在 " +
+      (ST.WORLD_STATE_TAG_OPEN || "<mj_world_state>") +
+      " 中写回 worldTimeString 与 currentLocation（时间只可不变或往后，禁止早于快照）③若有新出场人物或周围人物列表变化，输出 " +
+      (ST.NPC_NEARBY_TAG_OPEN || "<mj_nearby_npcs>") +
+      " 完整 JSON 数组（无变更则省略该标签）；功法/装备名尽量与 user 可引用表一致；每条 NPC 的 displayName 须为明确姓名/称呼且与 " +
+      (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
+        ? global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
+        : "<mj_npc_story_hints>") +
+      " 中一致，禁止留空。④若剧情已明确进入即时战斗：在全文末（上述标签之后亦可）输出 " +
+      (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_OPEN
+        ? global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_OPEN
+        : "<mj_battle_trigger>") +
+      "…" +
+      (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
+        ? global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
+        : "</mj_battle_trigger>") +
+      "，JSON 内 allies/enemies 的 displayName 必须与 user 快照中主角名及周边人物完全一致。**首接敌/对峙延续**：妖兽或敌修冲阵在途、双方**尚未碰招受击**，或正文末**无**合法战备段，或 user **未**明示开战——须 **shouldEnterBattle=false** 或省略第四对，先让玩家从第三对见敌方强弱。**仅当**叙事已写双方**已交手**落实，或（剧情末战备段 +（user 本回合已明确开战**或**叙事已写碰招/受击））等满足状态 system 第 13.1 条时，才 shouldEnterBattle=true。详见第 13 条。" +
+      (hintAppend ? "\n\n" + hintAppend : "");
     var stateMsgs = ST.buildMessages({
       storyText: reply,
-      extraUserHint:
-        "以上正文为刚生成的剧情段落（含文末机器标签时请一并阅读）。请根据剧情：①同步储物袋（add/remove；无变化则 []）②在 " +
-        (ST.WORLD_STATE_TAG_OPEN || "<mj_world_state>") +
-        " 中写回 worldTimeString 与 currentLocation（时间只可不变或往后，禁止早于快照）③若有新出场人物或周围人物列表变化，输出 " +
-        (ST.NPC_NEARBY_TAG_OPEN || "<mj_nearby_npcs>") +
-        " 完整 JSON 数组（无变更则省略该标签）；功法/装备名尽量与 user 可引用表一致；每条 NPC 的 displayName 须为明确姓名/称呼且与 " +
-        (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
-          ? global.MortalJourneyStoryChat.NPC_STORY_HINTS_TAG_OPEN
-          : "<mj_npc_story_hints>") +
-        " 中一致，禁止留空。④若剧情已明确进入即时战斗：在全文末（上述标签之后亦可）输出 " +
-        (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_OPEN
-          ? global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_OPEN
-          : "<mj_battle_trigger>") +
-        "…" +
-        (global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
-          ? global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
-          : "</mj_battle_trigger>") +
-        "，JSON 内 allies/enemies 的 displayName 必须与 user 快照中主角名及周边人物完全一致。**首接敌/对峙延续**：妖兽或敌修冲阵在途、双方**尚未碰招受击**，或正文末**无**合法战备段，或 user **未**明示开战——须 **shouldEnterBattle=false** 或省略第四对，先让玩家从第三对见敌方强弱。**仅当**叙事已写双方**已交手**落实，或（剧情末战备段 +（user 本回合已明确开战**或**叙事已写碰招/受击））等满足状态 system 第 13.1 条时，才 shouldEnterBattle=true。详见第 13 条。",
+      extraUserHint: baseExtraHint,
       game: G,
     });
     if (stateMsgs && global.GameLog && typeof global.GameLog.info === "function") {
@@ -1155,6 +1204,7 @@
             );
           }
         }
+        return { ok: true };
       })
       .catch(function (err) {
         clearTimeoutIfAny();
@@ -1172,7 +1222,80 @@
         if (global.GameLog && typeof global.GameLog.info === "function") {
           global.GameLog.info("[状态←AI] 失败：" + msg.slice(0, 300));
         }
+        return { ok: false, error: err };
       });
+  }
+
+  /**
+   * 非玩家输入触发的剧情请求（如开局自动生成）：行为与发送按钮一致，走同一套 buildMessages / 状态回合。
+   * @param {{ userText: string, skipIfChatNonEmpty?: boolean, forceBattleIntent?: boolean }} opts
+   * @returns {Promise<boolean>} 已发起请求则为 true；因跳过或未加载则为 false
+   */
+  function runScriptedStoryTurn(opts) {
+    var o = opts || {};
+    var userText = String(o.userText || "").trim();
+    if (!userText) return Promise.resolve(false);
+
+    var G = global.MortalJourneyGame;
+    if (!G) return Promise.resolve(false);
+    mjPanel().ensureGameRuntimeDefaults(G);
+
+    var skipIf = o.skipIfChatNonEmpty !== false;
+    if (skipIf) {
+      var hist0 = Array.isArray(G.chatHistory) ? G.chatHistory : [];
+      var hasUa = false;
+      for (var hi = 0; hi < hist0.length; hi++) {
+        var role0 = hist0[hi] && hist0[hi].role;
+        if (role0 === "user" || role0 === "assistant") {
+          hasUa = true;
+          break;
+        }
+      }
+      if (hasUa) return Promise.resolve(false);
+    }
+
+    var SC = global.MortalJourneyStoryChat;
+    if (!SC || typeof SC.sendTurn !== "function") {
+      flashChatStatusError("剧情模块未加载，无法请求 AI。");
+      return Promise.resolve(false);
+    }
+
+    var prior = (G.chatHistory || []).slice();
+    var userHistIndex = Array.isArray(G.chatHistory) ? G.chatHistory.length : 0;
+    G.chatHistory.push({ role: "user", content: userText });
+    var userUi = appendChatBubble("user", userText);
+    var userRoot = userUi ? userUi.root : null;
+
+    var asstUi = appendChatBubble("assistant", "");
+    var assistantBody = asstUi ? asstUi.body : null;
+    var assistantRoot = asstUi ? asstUi.root : null;
+
+    var refs = getChatComposerRefs();
+    var textarea = refs.textarea;
+    var sendBtn = refs.sendBtn;
+    if (sendBtn) sendBtn.disabled = true;
+
+    return runStoryAiTurn({
+      G: G,
+      SC: SC,
+      textarea: textarea,
+      sendBtn: sendBtn,
+      userText: userText,
+      priorHistory: prior,
+      forceBattleIntent: !!o.forceBattleIntent,
+      strictPipelineOutcome: !!o.strictPipelineOutcome,
+      skipStateInventoryAfterStory: !!o.skipStateInventoryAfterStory,
+      assistantBody: assistantBody,
+      assistantRoot: assistantRoot,
+      userRoot: userRoot,
+      userHistIndex: userHistIndex,
+      isRetry: false,
+      allowRollbackOnTimeout: false,
+      rollbackFn: null,
+      retryButtonEl: null,
+    }).then(function () {
+      return true;
+    });
   }
 
   function handleChatSend(textarea, sendBtn) {
@@ -1319,10 +1442,16 @@
 
   global.MjMainScreenChat = {
     handleChatSend: handleChatSend,
+    runScriptedStoryTurn: runScriptedStoryTurn,
+    /** 剧情后状态 AI（储物袋 / 世界状态 / 周围人物）；textarea 可为 null（全屏门闩等场景） */
+    runStateInventoryAiTurn: runStateInventoryAiTurn,
     /** 读档后把历史剧情渲染回聊天区（不会清除开局总览，只会追加） */
     renderHistoryIntoChatLog: function (history) {
       var arr = Array.isArray(history) ? history : [];
       if (!arr.length) return;
+      var log = getChatLogEl();
+      if (!log) return;
+      log.innerHTML = "";
       for (var i = 0; i < arr.length; i++) {
         var it = arr[i];
         if (!it || !it.role) continue;

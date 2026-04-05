@@ -1,5 +1,6 @@
 /**
  * 主界面（main.html）：加载顺序需为先 mainScreen_panel_realm.js、mainScreen_panel_inventory_ui.js，再 mainScreen_chat.js，最后本文件。
+ * 新档门闩：开局剧情 → 开局配置（主角）→ MjMainScreenChat.runStateInventoryAiTurn（NPC 等）。
  * 全局：MortalJourneyGame、MainScreen（对外 API）。
  */
 (function (global) {
@@ -29,6 +30,457 @@
     }
   }
 
+  function chatHistoryHasUserAssistant(G0) {
+    var h = G0 && Array.isArray(G0.chatHistory) ? G0.chatHistory : [];
+    for (var hi = 0; hi < h.length; hi++) {
+      var rr = h[hi] && h[hi].role;
+      if (rr === "user" || rr === "assistant") return true;
+    }
+    return false;
+  }
+
+  function shouldRunBootstrapAiGate(G0) {
+    if (!G0) return false;
+    if (chatHistoryHasUserAssistant(G0)) return false;
+    if (G0.mjInitStateAiApplied === true) return false;
+    return true;
+  }
+
+  function formatBootstrapGateTime(d) {
+    if (!(d instanceof Date) || !isFinite(d.getTime())) return "—";
+    function p(n) {
+      n = Math.floor(n);
+      return n < 10 ? "0" + n : String(n);
+    }
+    return (
+      p(d.getHours()) +
+      ":" +
+      p(d.getMinutes()) +
+      ":" +
+      p(d.getSeconds()) +
+      "." +
+      ("00" + d.getMilliseconds()).slice(-3)
+    );
+  }
+
+  function showBootstrapGateUi() {
+    var root = document.getElementById("mj-bootstrap-ai-gate");
+    if (!root) return;
+    document.body.classList.add("mj-main-body--bootstrap-gate");
+    root.classList.remove("hidden");
+    root.setAttribute("aria-hidden", "false");
+  }
+
+  function hideBootstrapGateUi() {
+    var root = document.getElementById("mj-bootstrap-ai-gate");
+    if (!root) return;
+    document.body.classList.remove("mj-main-body--bootstrap-gate");
+    root.classList.add("hidden");
+    root.setAttribute("aria-hidden", "true");
+  }
+
+  function resetBootstrapGateUi() {
+    var root = document.getElementById("mj-bootstrap-ai-gate");
+    if (!root) return;
+    var rows = root.querySelectorAll("[data-mj-bootstrap-phase]");
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var sEl = row.querySelector("[data-mj-bootstrap-start]");
+      var eEl = row.querySelector("[data-mj-bootstrap-end]");
+      if (sEl) sEl.textContent = "—";
+      if (eEl) eEl.textContent = "—";
+      var st = row.querySelector("[data-mj-bootstrap-status]");
+      if (st) st.textContent = "等待中";
+    }
+    var er = root.querySelector("[data-mj-bootstrap-error]");
+    if (er) {
+      er.textContent = "";
+      er.hidden = true;
+    }
+    var rb = root.querySelector("[data-mj-bootstrap-retry]");
+    var bb = root.querySelector("[data-mj-bootstrap-back]");
+    if (rb) rb.hidden = true;
+    if (bb) bb.hidden = true;
+  }
+
+  function updateBootstrapGateRow(phaseKey, patch) {
+    var root = document.getElementById("mj-bootstrap-ai-gate");
+    if (!root || !patch) return;
+    var row = root.querySelector('[data-mj-bootstrap-phase="' + phaseKey + '"]');
+    if (!row) return;
+    if (patch.start != null) {
+      var s0 = row.querySelector("[data-mj-bootstrap-start]");
+      if (s0) s0.textContent = formatBootstrapGateTime(patch.start);
+    }
+    if (patch.end != null) {
+      var e0 = row.querySelector("[data-mj-bootstrap-end]");
+      if (e0) e0.textContent = formatBootstrapGateTime(patch.end);
+    }
+    if (patch.status != null) {
+      var st0 = row.querySelector("[data-mj-bootstrap-status]");
+      if (st0) st0.textContent = String(patch.status);
+    }
+  }
+
+  function showBootstrapGateError(msg) {
+    var root = document.getElementById("mj-bootstrap-ai-gate");
+    if (!root) return;
+    var er = root.querySelector("[data-mj-bootstrap-error]");
+    var rb = root.querySelector("[data-mj-bootstrap-retry]");
+    var bb = root.querySelector("[data-mj-bootstrap-back]");
+    if (er) {
+      er.textContent = String(msg || "未知错误");
+      er.hidden = false;
+    }
+    if (rb) rb.hidden = false;
+    if (bb) bb.hidden = false;
+  }
+
+  /**
+   * 读档 / 已开局：先画界面，再走「开局配置 AI →（延时）开局剧情」非阻塞管线。
+   */
+  function runNormalFirstEnterPipeline(fc0, G0) {
+    P.renderInventorySlots();
+    P.renderGongfaGrid();
+    P.renderLeftPanel(fc0, G0);
+    P.renderBootstrapOverview(fc0);
+
+    function afterInitStateAiPipeline() {
+      try {
+        P.renderInventorySlots();
+        P.renderGongfaGrid();
+        P.renderLeftPanel(fc0, G0);
+        P.renderBootstrapOverview(fc0);
+      } catch (_ePaint) {
+        try {
+          console.warn("[主界面] 开局配置后刷新面板失败", _ePaint);
+        } catch (_eW) {}
+      }
+      try {
+        if (
+          global.MortalJourneyWorldGenerate &&
+          typeof global.MortalJourneyWorldGenerate.scheduleOpeningStoryIfNeeded === "function"
+        ) {
+          global.MortalJourneyWorldGenerate.scheduleOpeningStoryIfNeeded();
+        }
+      } catch (_eOpen) {
+        try {
+          console.warn("[主界面] 开局剧情调度失败", _eOpen);
+        } catch (_eW2) {}
+      }
+      if (
+        global.MortalJourneyWorldBook &&
+        typeof global.MortalJourneyWorldBook.syncToBridgeStorage === "function"
+      ) {
+        try {
+          global.MortalJourneyWorldBook.syncToBridgeStorage();
+        } catch (syncErr) {
+          console.warn("[主界面] 世界书同步到桥接存储失败", syncErr);
+        }
+      }
+      try {
+        if (Chat && typeof Chat.renderHistoryIntoChatLog === "function") {
+          Chat.renderHistoryIntoChatLog(G0 && G0.chatHistory);
+        }
+      } catch (_eChatRe) {}
+    }
+
+    try {
+      if (Chat && typeof Chat.renderHistoryIntoChatLog === "function") {
+        Chat.renderHistoryIntoChatLog(G0 && G0.chatHistory);
+      }
+    } catch (_e0) {}
+
+    var InitGenN = global.MortalJourneyInitStateGenerate;
+    if (InitGenN && typeof InitGenN.runInitStateAiIfNeeded === "function") {
+      InitGenN.runInitStateAiIfNeeded({
+        game: G0,
+        fateChoice: fc0,
+        onDone: afterInitStateAiPipeline,
+      });
+    } else {
+      afterInitStateAiPipeline();
+    }
+  }
+
+  /**
+   * 新档首次：全屏门闱，依次 strict 执行「开局剧情 AI → 开局配置 AI（主角）→ 状态 AI（周围人物等）」。
+   * 首段剧情不跑状态 AI；配置写主角面板后，再用状态 AI 对齐剧情中的 NPC 与可选世界/储物袋微调。
+   */
+  function runBootstrapAiGateOrSkip(fc0, G0) {
+    if (!shouldRunBootstrapAiGate(G0) || !document.getElementById("mj-bootstrap-ai-gate")) {
+      runNormalFirstEnterPipeline(fc0, G0);
+      return;
+    }
+
+    var root = document.getElementById("mj-bootstrap-ai-gate");
+    var WGen = global.MortalJourneyWorldGenerate;
+    var InitGen = global.MortalJourneyInitStateGenerate;
+
+    function failGate(msg) {
+      showBootstrapGateError(msg);
+    }
+
+    function runInitPhase() {
+      var t0 = new Date();
+      updateBootstrapGateRow("initState", { status: "执行中…", start: t0 });
+      if (!InitGen || typeof InitGen.runInitStateAiIfNeeded !== "function") {
+        var tBad = new Date();
+        updateBootstrapGateRow("initState", { status: "失败", end: tBad });
+        failGate("开局配置模块未加载");
+        return Promise.resolve({ ok: false });
+      }
+      return InitGen.runInitStateAiIfNeeded({
+        game: G0,
+        fateChoice: fc0,
+        afterOpeningStory: true,
+        onDone: function () {},
+      }).then(function (res) {
+        var t1 = new Date();
+        updateBootstrapGateRow("initState", { end: t1 });
+        if (!res) {
+          updateBootstrapGateRow("initState", { status: "失败" });
+          failGate("开局配置 AI 无返回");
+          return { ok: false };
+        }
+        if (res.skipped) {
+          if (res.reason === "no TavernHelper") {
+            updateBootstrapGateRow("initState", { status: "失败" });
+            failGate("TavernHelper 未就绪，请配置 API 后重试");
+            return { ok: false };
+          }
+          if (res.reason === "no game or fateChoice") {
+            updateBootstrapGateRow("initState", { status: "失败" });
+            failGate("缺少存档或命运抉择数据");
+            return { ok: false };
+          }
+          updateBootstrapGateRow("initState", { status: "已跳过（无需重复）" });
+          return { ok: true };
+        }
+        if (res.ok === false) {
+          updateBootstrapGateRow("initState", { status: "失败" });
+          var em = res.error && res.error.message ? String(res.error.message) : "开局配置 AI 请求失败";
+          failGate(em);
+          return { ok: false };
+        }
+        updateBootstrapGateRow("initState", { status: "成功" });
+        return { ok: true };
+      });
+    }
+
+    function extractLastAssistantOpeningStory(Gg) {
+      var hist = Gg && Array.isArray(Gg.chatHistory) ? Gg.chatHistory : [];
+      for (var i = hist.length - 1; i >= 0; i--) {
+        if (hist[i] && hist[i].role === "assistant" && hist[i].content) {
+          return String(hist[i].content).trim();
+        }
+      }
+      return "";
+    }
+
+    function runStateSyncPhase() {
+      var t0 = new Date();
+      updateBootstrapGateRow("stateSync", { status: "执行中…", start: t0 });
+      if (!Chat || typeof Chat.runStateInventoryAiTurn !== "function") {
+        var tBad0 = new Date();
+        updateBootstrapGateRow("stateSync", { status: "失败", end: tBad0 });
+        failGate("聊天模块未就绪，无法执行状态同步");
+        return Promise.resolve({ ok: false });
+      }
+      var ST = global.MortalJourneyStateGenerate;
+      if (
+        !ST ||
+        typeof ST.sendTurn !== "function" ||
+        typeof ST.applyStateTurnFromAssistantText !== "function"
+      ) {
+        var tBad1 = new Date();
+        updateBootstrapGateRow("stateSync", { status: "失败", end: tBad1 });
+        failGate("状态 AI 模块未加载");
+        return Promise.resolve({ ok: false });
+      }
+      var storyRaw = extractLastAssistantOpeningStory(G0);
+      if (!storyRaw) {
+        var tEmpty = new Date();
+        updateBootstrapGateRow("stateSync", { status: "失败", end: tEmpty });
+        failGate("未找到开局剧情正文，无法同步周围人物");
+        return Promise.resolve({ ok: false });
+      }
+      var npTag = ST.NPC_NEARBY_TAG_OPEN || "<mj_nearby_npcs>";
+      return Chat.runStateInventoryAiTurn(G0, null, storyRaw, {
+        extraUserHintAppend:
+          "【开局门闩】开局配置 AI 已写回主角佩戴、功法与储物袋。本回合请以周围人物为主：剧情中出现的 NPC 须在 " +
+          npTag +
+          " 给出完整当期列表（无 NPC 则可省略该标签）；储物袋仅在剧情明确交代得失时 add/remove，避免与开局配置重复发放。",
+      }).then(function (res) {
+        var t1 = new Date();
+        updateBootstrapGateRow("stateSync", { end: t1 });
+        if (!res || res.ok !== true) {
+          updateBootstrapGateRow("stateSync", { status: "失败" });
+          var em =
+            res && res.error && res.error.message
+              ? String(res.error.message)
+              : "状态同步 AI 未成功";
+          failGate(em);
+          return { ok: false };
+        }
+        updateBootstrapGateRow("stateSync", { status: "成功" });
+        return { ok: true };
+      });
+    }
+
+    function runStoryPhase(skipStateAfterStory) {
+      var t0 = new Date();
+      updateBootstrapGateRow("openingStory", { status: "执行中…", start: t0 });
+      if (!WGen || typeof WGen.runOpeningStoryStrictPromise !== "function") {
+        var tBad = new Date();
+        updateBootstrapGateRow("openingStory", { status: "失败", end: tBad });
+        failGate("开局剧情模块缺少 runOpeningStoryStrictPromise");
+        return Promise.resolve({ ok: false });
+      }
+      return WGen.runOpeningStoryStrictPromise(
+        skipStateAfterStory ? { skipStateInventoryAfterStory: true } : {},
+      )
+        .then(function (sub) {
+          var t1 = new Date();
+          updateBootstrapGateRow("openingStory", { end: t1 });
+          if (sub && sub.skipped) {
+            updateBootstrapGateRow("openingStory", { status: "已跳过" });
+            return { ok: true };
+          }
+          updateBootstrapGateRow("openingStory", { status: "成功" });
+          return { ok: true };
+        })
+        .catch(function (err) {
+          var t1 = new Date();
+          updateBootstrapGateRow("openingStory", { end: t1, status: "失败" });
+          failGate(err && err.message ? String(err.message) : "开局剧情或状态同步失败");
+          return { ok: false };
+        });
+    }
+
+    function finishBootstrapGateSuccess() {
+      hideBootstrapGateUi();
+      try {
+        P.renderInventorySlots();
+        P.renderGongfaGrid();
+        P.renderLeftPanel(fc0, G0);
+        P.renderBootstrapOverview(fc0);
+      } catch (_p) {}
+      try {
+        var logEl = document.getElementById("mj-chat-log");
+        if (logEl) logEl.innerHTML = "";
+        if (Chat && typeof Chat.renderHistoryIntoChatLog === "function") {
+          Chat.renderHistoryIntoChatLog(G0 && G0.chatHistory);
+        }
+      } catch (_h) {}
+      try {
+        if (typeof P.persistBootstrapSnapshot === "function") {
+          P.persistBootstrapSnapshot();
+        }
+      } catch (_ps) {
+        try {
+          console.warn("[主界面] 门闩结束持久化失败", _ps);
+        } catch (_eW) {}
+      }
+      try {
+        if (
+          global.MortalJourneyWorldBook &&
+          typeof global.MortalJourneyWorldBook.syncToBridgeStorage === "function"
+        ) {
+          global.MortalJourneyWorldBook.syncToBridgeStorage();
+        }
+      } catch (_wb) {}
+    }
+
+    function execStoryOnlyPipeline() {
+      var rowInit = root.querySelector('[data-mj-bootstrap-phase="initState"]');
+      if (rowInit) {
+        var stKeep = rowInit.querySelector("[data-mj-bootstrap-status]");
+        if (stKeep) stKeep.textContent = "已成功（保留）";
+      }
+      var rowSt = root.querySelector('[data-mj-bootstrap-phase="stateSync"]');
+      if (rowSt) {
+        var sSt = rowSt.querySelector("[data-mj-bootstrap-start]");
+        var eSt = rowSt.querySelector("[data-mj-bootstrap-end]");
+        if (sSt) sSt.textContent = "—";
+        if (eSt) eSt.textContent = "—";
+        var stSt = rowSt.querySelector("[data-mj-bootstrap-status]");
+        if (stSt) stSt.textContent = "等待中（剧情后内置状态 AI）";
+      }
+      var rowOp = root.querySelector('[data-mj-bootstrap-phase="openingStory"]');
+      if (rowOp) {
+        var sOp = rowOp.querySelector("[data-mj-bootstrap-start]");
+        var eOp = rowOp.querySelector("[data-mj-bootstrap-end]");
+        if (sOp) sOp.textContent = "—";
+        if (eOp) eOp.textContent = "—";
+        var stOp = rowOp.querySelector("[data-mj-bootstrap-status]");
+        if (stOp) stOp.textContent = "等待中";
+      }
+      var erCl = root.querySelector("[data-mj-bootstrap-error]");
+      if (erCl) {
+        erCl.hidden = true;
+        erCl.textContent = "";
+      }
+      var rbCl = root.querySelector("[data-mj-bootstrap-retry]");
+      var bbCl = root.querySelector("[data-mj-bootstrap-back]");
+      if (rbCl) rbCl.hidden = true;
+      if (bbCl) bbCl.hidden = true;
+      runStoryPhase(false).then(function (r2) {
+        if (r2 && r2.ok) {
+          if (rowSt) {
+            var stFin = rowSt.querySelector("[data-mj-bootstrap-status]");
+            if (stFin) stFin.textContent = "成功（剧情后内置）";
+          }
+          finishBootstrapGateSuccess();
+        }
+      });
+    }
+
+    function execFullPipeline() {
+      resetBootstrapGateUi();
+      runStoryPhase(true)
+        .then(function (r1) {
+          if (!r1 || !r1.ok) return Promise.resolve(null);
+          return runInitPhase();
+        })
+        .then(function (r2) {
+          if (!r2 || !r2.ok) return Promise.resolve(null);
+          return runStateSyncPhase();
+        })
+        .then(function (r3) {
+          if (!r3 || !r3.ok) return;
+          finishBootstrapGateSuccess();
+        });
+    }
+
+    showBootstrapGateUi();
+    resetBootstrapGateUi();
+
+    if (!root.dataset.mjBootstrapGateBound) {
+      root.dataset.mjBootstrapGateBound = "1";
+      var backEl = root.querySelector("[data-mj-bootstrap-back]");
+      var retryEl = root.querySelector("[data-mj-bootstrap-retry]");
+      if (backEl) {
+        backEl.addEventListener("click", function () {
+          window.location.href = "./index.html";
+        });
+      }
+      if (retryEl) {
+        retryEl.addEventListener("click", function () {
+          var GG = global.MortalJourneyGame;
+          if (!GG) return;
+          if (GG.mjInitStateAiApplied === true && !chatHistoryHasUserAssistant(GG)) {
+            execStoryOnlyPipeline();
+          } else {
+            execFullPipeline();
+          }
+        });
+      }
+    }
+
+    execFullPipeline();
+  }
+
   function init() {
     P.bindTraitDetailModalUi();
     P.bindGongfaBagDetailUi();
@@ -50,26 +502,8 @@
       G.cultivationProgress = uiInit.pct;
       P.persistBootstrapSnapshot();
     }
-    P.renderInventorySlots();
-    P.renderGongfaGrid();
-    P.renderLeftPanel(fc, G);
-    P.renderBootstrapOverview(fc);
-    // 恢复存档剧情：开局总览后追加历史聊天
-    try {
-      if (Chat && typeof Chat.renderHistoryIntoChatLog === "function") {
-        Chat.renderHistoryIntoChatLog(G && G.chatHistory);
-      }
-    } catch (_e0) {
-      /* 忽略 */
-    }
 
-    if (global.MortalJourneyWorldBook && typeof global.MortalJourneyWorldBook.syncToBridgeStorage === "function") {
-      try {
-        global.MortalJourneyWorldBook.syncToBridgeStorage();
-      } catch (syncErr) {
-        console.warn("[主界面] 世界书同步到桥接存储失败", syncErr);
-      }
-    }
+    runBootstrapAiGateOrSkip(fc, G);
 
     var sendBtn = document.getElementById("mj-chat-send");
     var textarea = document.getElementById("mj-chat-input");

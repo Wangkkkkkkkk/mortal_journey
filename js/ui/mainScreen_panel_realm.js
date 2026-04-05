@@ -15,6 +15,8 @@
   }
 
   var STORAGE_KEY = "mortal_journey_bootstrap_v1";
+  /** 与 SESSION 快照同内容的 localStorage 备份：应对部分环境下 tab 刷新后 sessionStorage 不可用或与存档槽未同步的情况 */
+  var LAST_SESSION_MIRROR_KEY = "mortal_journey_last_session_v1";
   var SAVE_INDEX_KEY = "MJ_SAVES_INDEX_V1";
   var SAVE_PREFIX = "MJ_SAVE_V1:";
   var ACTIVE_SAVE_ID_KEY = "MJ_ACTIVE_SAVE_ID_V1";
@@ -836,7 +838,10 @@
       }
       var data = {
         fateChoice: G.fateChoice,
-        startedAt: G.startedAt || 0,
+        startedAt:
+          typeof G.startedAt === "number" && isFinite(G.startedAt) && G.startedAt > 0
+            ? Math.floor(G.startedAt)
+            : null,
         xiuwei: typeof G.xiuwei === "number" ? G.xiuwei : 0,
         shouyuan: typeof G.shouyuan === "number" && isFinite(G.shouyuan) ? Math.floor(G.shouyuan) : 0,
         age: typeof G.age === "number" && isFinite(G.age) ? Math.floor(G.age) : DEFAULT_AGE,
@@ -888,8 +893,26 @@
           if (!a && !n && !c && !v) return null;
           return { aggressive: a, neutral: n, cautious: c, veryCautious: v };
         })(),
+        mjInitStateAiApplied: G.mjInitStateAiApplied === true ? true : false,
+        snapshotSavedAt: Date.now(),
       };
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      var jsonStr = "";
+      try {
+        jsonStr = JSON.stringify(data);
+      } catch (eSer) {
+        console.warn("[主界面] 存档序列化失败（未写入存储）", eSer);
+        return;
+      }
+      try {
+        sessionStorage.setItem(STORAGE_KEY, jsonStr);
+      } catch (eSess) {
+        console.warn("[主界面] sessionStorage 写入失败，将依赖 localStorage 镜像", eSess);
+      }
+      try {
+        localStorage.setItem(LAST_SESSION_MIRROR_KEY, jsonStr);
+      } catch (eMir) {
+        console.warn("[主界面] localStorage 镜像写入失败", eMir);
+      }
 
       // 同步到本地存档（若存在激活存档ID）
       var saveId = "";
@@ -980,33 +1003,210 @@
     callPanelRenderLeftIfReady(G.fateChoice, G);
     return true;
   }
-  function restoreBootstrap() {
+  /**
+   * 从多条原始 JSON 中选出「更完整」的开局快照：优先 user/assistant 条数，再 assistant 总字数，再时间戳。
+   * 仅比较「同一局」：`startedAt` 须与当前 session 一致；否则上一局的 localStorage 镜像会盖过命运抉择刚写入的 session，导致跳过 AI 门闩。
+   */
+  function parseBootstrapCandidateRaw(raw) {
+    if (raw == null || String(raw).trim() === "") return null;
     try {
-      var raw = sessionStorage.getItem(STORAGE_KEY);
-      // 若 sessionStorage 缺失（刷新/重新打开），尝试从最后激活存档恢复
-      if (!raw) {
-        try {
-          var sid = localStorage.getItem(ACTIVE_SAVE_ID_KEY) || "";
-          if (sid) {
-            var sraw = localStorage.getItem(SAVE_PREFIX + String(sid));
-            if (sraw) {
-              raw = sraw;
-              sessionStorage.setItem(STORAGE_KEY, String(raw));
-              sessionStorage.setItem(ACTIVE_SAVE_ID_KEY, String(sid));
-            }
-          }
-        } catch (_e2) {
-          /* 忽略 */
+      var d = JSON.parse(raw);
+      if (!d || !d.fateChoice) return null;
+      var ch = Array.isArray(d.chatHistory) ? d.chatHistory : [];
+      var ua = 0;
+      var assistChars = 0;
+      for (var ci = 0; ci < ch.length; ci++) {
+        var it = ch[ci];
+        var rr = it && it.role;
+        if (rr === "user" || rr === "assistant") {
+          ua++;
+          if (rr === "assistant" && it.content != null) assistChars += String(it.content).length;
         }
       }
-      if (!raw) return null;
-      var data = JSON.parse(raw);
-      if (!data || !data.fateChoice) return null;
+      var ts =
+        typeof d.snapshotSavedAt === "number" && isFinite(d.snapshotSavedAt) ? d.snapshotSavedAt : 0;
+      var up = typeof d.updatedAt === "number" && isFinite(d.updatedAt) ? d.updatedAt : 0;
+      return { raw: raw, data: d, ua: ua, assistChars: assistChars, t: Math.max(ts, up) };
+    } catch (_ePC) {
+      return null;
+    }
+  }
+
+  function betterBootstrapCandidate(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    if (a.ua !== b.ua) return a.ua > b.ua ? a : b;
+    if (a.assistChars !== b.assistChars) return a.assistChars > b.assistChars ? a : b;
+    if (a.t !== b.t) return a.t > b.t ? a : b;
+    return a;
+  }
+
+  function chatHistoryUaCount(arr) {
+    if (!Array.isArray(arr)) return 0;
+    var n = 0;
+    for (var i = 0; i < arr.length; i++) {
+      var rr = arr[i] && arr[i].role;
+      if (rr === "user" || rr === "assistant") n++;
+    }
+    return n;
+  }
+
+  function assistantCharsInChatHistory(arr) {
+    if (!Array.isArray(arr)) return 0;
+    var len = 0;
+    for (var j = 0; j < arr.length; j++) {
+      var it = arr[j];
+      if (it && it.role === "assistant" && it.content != null) len += String(it.content).length;
+    }
+    return len;
+  }
+
+  /**
+   * 「最佳」快照可能装备/NPC 更新更全但 chatHistory 仍空；从同源候选里并入对话最全的一份。
+   */
+  function mergeRichestChatIntoData(data, rSess, rMir, rSlot, candidateSameRunFn) {
+    if (!data || typeof data !== "object") return;
+    var srcData = [];
+    if (rSess && rSess.data && rSess.data.fateChoice) srcData.push(rSess.data);
+    if (rMir && rMir.data && candidateSameRunFn(rMir, "mir")) srcData.push(rMir.data);
+    if (rSlot && rSlot.data && candidateSameRunFn(rSlot, "slot")) srcData.push(rSlot.data);
+    var bestHist = null;
+    var bestUa = -1;
+    var bestAc = -1;
+    for (var si = 0; si < srcData.length; si++) {
+      var ch = srcData[si].chatHistory;
+      if (!Array.isArray(ch)) continue;
+      var ua = chatHistoryUaCount(ch);
+      var ac = assistantCharsInChatHistory(ch);
+      if (ua > bestUa || (ua === bestUa && ac > bestAc)) {
+        bestUa = ua;
+        bestAc = ac;
+        bestHist = ch;
+      }
+    }
+    if (bestHist && bestUa > 0) {
+      data.chatHistory = JSON.parse(JSON.stringify(bestHist));
+    }
+  }
+
+  function restoreBootstrap() {
+    try {
+      var rSess = null;
+      var rMir = null;
+      var rSlot = null;
+      try {
+        rSess = parseBootstrapCandidateRaw(sessionStorage.getItem(STORAGE_KEY) || "");
+      } catch (_eS) {
+        rSess = null;
+      }
+      try {
+        rMir = parseBootstrapCandidateRaw(localStorage.getItem(LAST_SESSION_MIRROR_KEY) || "");
+      } catch (_eM) {
+        rMir = null;
+      }
+      try {
+        var sidPick = localStorage.getItem(ACTIVE_SAVE_ID_KEY) || "";
+        if (sidPick) {
+          rSlot = parseBootstrapCandidateRaw(localStorage.getItem(SAVE_PREFIX + String(sidPick)) || "");
+        }
+      } catch (_eSl) {
+        rSlot = null;
+      }
+
+      /**
+       * 仅用「正数」开局时间作为同局标识。若用 0（历史上 startedAt || 0 填出来的缺省）当 runKey，
+       * 会与槽/镜像里真实的 Date.now() 对不上，带 chatHistory 的备份会被整池排除，只剩空 session，
+       * 刷新后剧情丢失；随后 init 里 persist 还会把空历史写死到镜像。
+       */
+      var runKey = null;
+      if (
+        rSess &&
+        rSess.data &&
+        typeof rSess.data.startedAt === "number" &&
+        isFinite(rSess.data.startedAt) &&
+        rSess.data.startedAt > 0
+      ) {
+        runKey = rSess.data.startedAt;
+      }
+
+      function candidateSameRun(c, source) {
+        if (!c || !c.data || !c.data.fateChoice) return false;
+        if (runKey == null) return true;
+        var st = c.data.startedAt;
+        if (typeof st === "number" && isFinite(st) && st > 0) return st === runKey;
+        return source === "slot";
+      }
+
+      var pool = [];
+      if (rSess && rSess.data && rSess.data.fateChoice) pool.push(rSess);
+      if (rMir && candidateSameRun(rMir, "mir")) pool.push(rMir);
+      if (rSlot && candidateSameRun(rSlot, "slot")) pool.push(rSlot);
+
+      var best = null;
+      for (var pi = 0; pi < pool.length; pi++) {
+        best = betterBootstrapCandidate(best, pool[pi]);
+      }
+      if (!best && rSess && rSess.data && rSess.data.fateChoice) best = rSess;
+      if (!best) {
+        best = betterBootstrapCandidate(rMir, rSlot);
+        best = betterBootstrapCandidate(rSess, best);
+      }
+      if (!best || !best.data) return null;
+      var data;
+      try {
+        data = JSON.parse(JSON.stringify(best.data));
+      } catch (_eDclone) {
+        data = best.data;
+      }
+
+      try {
+        mergeRichestChatIntoData(data, rSess, rMir, rSlot, candidateSameRun);
+      } catch (_eMrgCh) {}
+
+      try {
+        if (
+          chatHistoryUaCount(data.chatHistory) === 0 &&
+          data.chatPlotSnapshot != null &&
+          String(data.chatPlotSnapshot).trim() !== ""
+        ) {
+          data.chatHistory = [{ role: "assistant", content: String(data.chatPlotSnapshot).trim() }];
+        }
+      } catch (_eChSnap) {}
+
+      var mergedRaw = "";
+      try {
+        mergedRaw = JSON.stringify(data);
+      } catch (_eStrM) {
+        mergedRaw = String(best.raw || "");
+      }
+      try {
+        if (mergedRaw) {
+          sessionStorage.setItem(STORAGE_KEY, mergedRaw);
+          try {
+            localStorage.setItem(LAST_SESSION_MIRROR_KEY, mergedRaw);
+          } catch (_eMirFix) {}
+        }
+        var sidSync = localStorage.getItem(ACTIVE_SAVE_ID_KEY) || "";
+        if (sidSync) sessionStorage.setItem(ACTIVE_SAVE_ID_KEY, String(sidSync));
+        try {
+          var sidW = localStorage.getItem(ACTIVE_SAVE_ID_KEY) || "";
+          if (sidW && mergedRaw) {
+            var pFix = JSON.parse(mergedRaw);
+            localStorage.setItem(
+              SAVE_PREFIX + String(sidW),
+              JSON.stringify(Object.assign({}, pFix, { saveId: String(sidW), updatedAt: Date.now() })),
+            );
+          }
+        } catch (_eSlotFix) {}
+      } catch (_eSync) {
+        /* 忽略 */
+      }
 
       global.MortalJourneyGame = global.MortalJourneyGame || {};
       var fc = data.fateChoice;
       global.MortalJourneyGame.fateChoice = fc;
-      global.MortalJourneyGame.startedAt = data.startedAt || 0;
+      global.MortalJourneyGame.startedAt =
+        typeof data.startedAt === "number" && isFinite(data.startedAt) ? Math.floor(data.startedAt) : 0;
       global.MortalJourneyGame.playerBase = fc.playerBase ? Object.assign({}, fc.playerBase) : null;
       global.MortalJourneyGame.rawRealmBase = fc.rawRealmBase ? Object.assign({}, fc.rawRealmBase) : null;
       global.MortalJourneyGame.realm = fc.realm ? Object.assign({}, fc.realm) : null;
@@ -1141,6 +1341,27 @@
             veryCautious: dcv,
           };
         }
+      }
+
+      var GG = global.MortalJourneyGame;
+      if (data.mjInitStateAiApplied === true || data.mjPrologueStarterApplied === true) {
+        GG.mjInitStateAiApplied = true;
+      } else if (data.mjInitStateAiApplied === false) {
+        GG.mjInitStateAiApplied = false;
+      } else if (data.mjPrologueStarterApplied === false) {
+        GG.mjInitStateAiApplied = false;
+      } else {
+        var histLegacy = Array.isArray(data.chatHistory) ? data.chatHistory : [];
+        var progressedLegacy = false;
+        for (var hiL = 0; hiL < histLegacy.length; hiL++) {
+          var rL = histLegacy[hiL] && histLegacy[hiL].role;
+          if (rL === "user" || rL === "assistant") {
+            progressedLegacy = true;
+            break;
+          }
+        }
+        var snapLegacy = data.chatPlotSnapshot != null && String(data.chatPlotSnapshot).trim() !== "";
+        GG.mjInitStateAiApplied = !!(progressedLegacy || snapLegacy);
       }
 
       return fc;

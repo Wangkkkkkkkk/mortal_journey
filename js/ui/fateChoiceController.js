@@ -8,6 +8,8 @@
   var SAVE_PREFIX = "MJ_SAVE_V1:";
   var ACTIVE_SAVE_ID_KEY = "MJ_ACTIVE_SAVE_ID_V1";
   var BOOTSTRAP_KEY = "mortal_journey_bootstrap_v1";
+  /** 与 mainScreen_panel_realm 一致：开始新人生时清掉，避免主界面误用上局镜像 */
+  var LAST_SESSION_MIRROR_KEY = "mortal_journey_last_session_v1";
 
   var cfg = function () {
     return global.MjCreationConfig;
@@ -62,9 +64,42 @@
     return out;
   }
 
-  /** 命运抉择预览与开局写入用的境界（自定义出身优先结构化字段，否则解析旧版 realmText） */
+  /**
+   * 预设出身（凡人/黄枫谷弟子）生成与「自定义」同结构的 customBirth，境界固定练气初期，供开局/配置 AI 与摘要一致。
+   */
+  function makePresetCustomBirth(c, birthKey) {
+    var bd = c && c.BIRTHS && c.BIRTHS[birthKey];
+    if (!bd) return null;
+    var loc = resolveBirthLocationNameFromDef(bd) || "";
+    var locDesc = resolveBirthLocationDescFromDef(bd) || "";
+    var parts = [];
+    if (bd.desc != null && String(bd.desc).trim() !== "") parts.push(String(bd.desc).trim());
+    if (locDesc) parts.push(locDesc);
+    var bg = parts.join("\n\n");
+    return {
+      tag: loc || birthKey,
+      name: loc || birthKey,
+      location: loc,
+      realmMajor: START_REALM_MAJOR,
+      realmMinor: START_REALM_STAGE,
+      realmText: START_REALM_MAJOR + START_REALM_STAGE,
+      background: bg,
+      presetBirthKey: birthKey,
+    };
+  }
+
+  function syncCustomBirthForCurrentSelection(c) {
+    if (state.selectedBirth === "自定义") return;
+    if (!c || !c.BIRTHS || !c.BIRTHS[state.selectedBirth]) return;
+    state.customBirth = makePresetCustomBirth(c, state.selectedBirth);
+    var bd = c.BIRTHS[state.selectedBirth];
+    var locName = resolveBirthLocationNameFromDef(bd);
+    state.birthLocation = locName ? String(locName).trim() : null;
+  }
+
+  /** 命运抉择预览与开局写入用的境界（优先 customBirth 结构化字段，含预设出身同步生成的对象） */
   function getEffectiveStartRealm() {
-    if (state.selectedBirth === "自定义" && state.customBirth) {
+    if (state.customBirth) {
       var cb = state.customBirth;
       if (cb.realmMajor && CUSTOM_REALM_MAJORS.indexOf(cb.realmMajor) >= 0) {
         if (cb.realmMajor === "化神") return { major: "化神", minor: null };
@@ -169,6 +204,8 @@
     state.rawRealmBase = null;
     state.playerBase = null;
     _lastAttrLogSignature = "";
+    var cReset = cfg();
+    if (cReset) syncCustomBirthForCurrentSelection(cReset);
   }
 
   var BASE_STAT_KEYS = ["hp", "mp", "patk", "pdef", "matk", "mdef", "foot", "sense"];
@@ -728,6 +765,10 @@
     var c = cfg();
     if (!c || !contentEl || !navEl) return;
 
+    if (state.selectedBirth !== "自定义") {
+      syncCustomBirthForCurrentSelection(c);
+    }
+
     if (indicatorEl) indicatorEl.innerHTML = "";
 
     var bdSel = state.selectedBirth && c.BIRTHS && c.BIRTHS[state.selectedBirth];
@@ -965,11 +1006,7 @@
           return;
         }
         state.selectedBirth = birthName;
-        state.customBirth = null;
-        var bd = c.BIRTHS && c.BIRTHS[birthName];
-        var locName = bd ? resolveBirthLocationNameFromDef(bd) : "";
-        if (locName) state.birthLocation = locName;
-        else state.birthLocation = null;
+        syncCustomBirthForCurrentSelection(c);
         renderPage();
       });
     });
@@ -1248,6 +1285,9 @@
     G0.xiuwei = 0;
 
     try {
+      try {
+        localStorage.removeItem(LAST_SESSION_MIRROR_KEY);
+      } catch (_eClrMir0) {}
       var bootstrapObj = {
           fateChoice: payload,
           startedAt: global.MortalJourneyGame.startedAt,

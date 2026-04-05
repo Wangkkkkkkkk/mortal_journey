@@ -200,6 +200,7 @@
         var SAVE_PREFIX = "MJ_SAVE_V1:";
         var ACTIVE_SAVE_ID_KEY = "MJ_ACTIVE_SAVE_ID_V1";
         var BOOTSTRAP_KEY = "mortal_journey_bootstrap_v1";
+        var LAST_SESSION_MIRROR_KEY = "mortal_journey_last_session_v1";
 
         function qs(id) {
           return document.getElementById(id);
@@ -559,6 +560,9 @@
                     setSaveLoadStatus("读取失败：存档内容损坏。", false);
                     return;
                   }
+                  try {
+                    localStorage.removeItem(LAST_SESSION_MIRROR_KEY);
+                  } catch (_eMirL) {}
                   sessionStorage.setItem(BOOTSTRAP_KEY, JSON.stringify(data));
                   sessionStorage.setItem(ACTIVE_SAVE_ID_KEY, String(it.id));
                   localStorage.setItem(ACTIVE_SAVE_ID_KEY, String(it.id));
@@ -586,6 +590,13 @@
                       return x && String(x.id || "") !== String(it.id);
                     });
                     writeSaveIndex(idx2);
+                    try {
+                      var curAct = localStorage.getItem(ACTIVE_SAVE_ID_KEY) || "";
+                      if (curAct && String(curAct) === String(it.id)) {
+                        localStorage.removeItem(ACTIVE_SAVE_ID_KEY);
+                        localStorage.removeItem(LAST_SESSION_MIRROR_KEY);
+                      }
+                    } catch (_eAct) {}
                     renderSaveLoadList();
                     setSaveLoadStatus("已删除。", true);
                   } catch (e) {

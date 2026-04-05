@@ -154,6 +154,13 @@
       typeof g.currentMp === "number" && isFinite(g.currentMp)
         ? Math.max(0, Math.min(maxMp, Math.floor(g.currentMp)))
         : maxMp;
+    var defAge = 16;
+    var RAge = global.MjMainScreenPanelRealm;
+    if (RAge && typeof RAge.DEFAULT_AGE === "number" && isFinite(RAge.DEFAULT_AGE)) {
+      defAge = Math.max(0, Math.floor(RAge.DEFAULT_AGE));
+    }
+    var ageSnap =
+      typeof g.age === "number" && isFinite(g.age) ? Math.max(0, Math.floor(g.age)) : defAge;
     return JSON.stringify({
       worldTimeString: wt,
       currentLocation: loc,
@@ -161,6 +168,7 @@
       currentMp: curMp,
       maxHp: maxHp,
       maxMp: maxMp,
+      age: ageSnap,
     });
   }
 
@@ -1006,7 +1014,7 @@
   }
 
   /**
-   * 仅使用 worldTimeString、currentLocation；写回时校验世界时间单调。
+   * worldTimeString、currentLocation、可选血蓝与年龄；写回时校验世界时间单调。
    * @param {Object} G
    * @param {Object} patch
    * @returns {{ appliedWorldTime: boolean, appliedLocation: boolean, rejectedWorldTime: string|null, normalizedWorldTimeString: string|null }}
@@ -1069,6 +1077,10 @@
     }
     if (patch.currentMp != null && typeof patch.currentMp === "number" && isFinite(patch.currentMp)) {
       G.currentMp = Math.max(0, Math.min(maxMpNow, Math.floor(patch.currentMp)));
+    }
+
+    if (patch.age != null && typeof patch.age === "number" && isFinite(patch.age)) {
+      G.age = Math.max(1, Math.min(999, Math.floor(patch.age)));
     }
 
     return out;

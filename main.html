@@ -343,6 +343,58 @@
       </div>
     </div>
 
+    <!-- 新档开局：先在此弹层完成「开局剧情 AI」再「开局配置 AI」（配置依正文落实装备/功法），成功后再使用主界面 -->
+    <div
+      id="mj-bootstrap-ai-gate"
+      class="mj-bootstrap-ai-gate hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mj-bootstrap-ai-gate-title"
+      aria-hidden="true"
+    >
+      <div class="mj-bootstrap-ai-gate__panel">
+        <h2 id="mj-bootstrap-ai-gate-title" class="mj-bootstrap-ai-gate__title">正在开启修仙之路</h2>
+        <p class="mj-bootstrap-ai-gate__hint">
+          请保持网络畅通并完成桥接 API 配置。顺序为：首段开局叙事 → 据正文写主角装备、功法与储物袋 → 状态 AI 同步周围人物（及可选世界时间等）；三步均成功后再进入游戏界面。
+        </p>
+        <div class="mj-bootstrap-ai-gate__rows">
+          <div class="mj-bootstrap-ai-gate__row" data-mj-bootstrap-phase="openingStory">
+            <div class="mj-bootstrap-ai-gate__label">① 开局剧情 AI（首段叙事；本步不跑状态 AI，主角面板由②写入）</div>
+            <div class="mj-bootstrap-ai-gate__times">
+              <span>开始：<span data-mj-bootstrap-start>—</span></span>
+              <span>完成：<span data-mj-bootstrap-end>—</span></span>
+            </div>
+            <div class="mj-bootstrap-ai-gate__status" data-mj-bootstrap-status>等待中</div>
+          </div>
+          <div class="mj-bootstrap-ai-gate__row" data-mj-bootstrap-phase="initState">
+            <div class="mj-bootstrap-ai-gate__label">② 开局配置 AI（主角：据剧情正文生成装备、功法、储物袋、世界状态）</div>
+            <div class="mj-bootstrap-ai-gate__times">
+              <span>开始：<span data-mj-bootstrap-start>—</span></span>
+              <span>完成：<span data-mj-bootstrap-end>—</span></span>
+            </div>
+            <div class="mj-bootstrap-ai-gate__status" data-mj-bootstrap-status>等待中</div>
+          </div>
+          <div class="mj-bootstrap-ai-gate__row" data-mj-bootstrap-phase="stateSync">
+            <div class="mj-bootstrap-ai-gate__label">③ 状态 AI（周围人物等：按同一开局剧情补齐 NPC，储物袋与时间仅随剧情微调）</div>
+            <div class="mj-bootstrap-ai-gate__times">
+              <span>开始：<span data-mj-bootstrap-start>—</span></span>
+              <span>完成：<span data-mj-bootstrap-end>—</span></span>
+            </div>
+            <div class="mj-bootstrap-ai-gate__status" data-mj-bootstrap-status>等待中</div>
+          </div>
+        </div>
+        <p class="mj-bootstrap-ai-gate__error" data-mj-bootstrap-error hidden></p>
+        <div class="mj-bootstrap-ai-gate__actions">
+          <button type="button" class="mj-bootstrap-ai-gate__btn" data-mj-bootstrap-retry hidden>
+            重试
+          </button>
+          <button type="button" class="mj-bootstrap-ai-gate__btn mj-bootstrap-ai-gate__btn--secondary" data-mj-bootstrap-back hidden>
+            返回命运抉择
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script src="./js/data/leegen_state.js"></script>
     <script src="./js/worldbook/preset_content.js"></script>
     <script src="./js/worldbook/preset.js"></script>
@@ -355,13 +407,16 @@
     <script src="./js/stuff_describe/pill.js"></script>
     <script src="./js/stuff_describe/common_stuff.js"></script>
     <script src="./js/data/mjCreationConfig.js"></script>
+    <script src="./js/worldbook/init_state_rules.js"></script>
     <script src="./js/data/realm_state.js"></script>
     <script src="./js/game/player_base_runtime.js"></script>
     <script src="./js/game/mj_character_sheet.js"></script>
     <script src="./js/game/mortal_journey_battle.js"></script>
     <script src="./js/ai_server/story_generate.js"></script>
+    <script src="./js/ai_server/world_generate.js"></script>
     <script src="./js/ai_server/state_generate.js"></script>
     <script src="./silly_tarven/bridge.js"></script>
+    <script src="./js/ai_server/init_state_generate.js"></script>
     <script src="./js/ui/mainScreen_panel_realm.js"></script>
     <script src="./js/ui/mainScreen_panel_inventory_ui.js"></script>
     <script src="./js/ui/mainScreen_chat.js"></script>

@@ -763,7 +763,7 @@
     if (fc && fc.difficulty) profile.push("难度模式：" + String(fc.difficulty));
     if (fc && fc.birth) {
       var b = "出身：" + fc.birth;
-      if (fc.birth === "自定义" && fc.customBirth) {
+      if (fc.customBirth && (fc.customBirth.name != null || fc.customBirth.tag != null)) {
         b += "（" + String(fc.customBirth.name || fc.customBirth.tag || "").trim() + "）";
       }
       profile.push(b);
@@ -786,8 +786,32 @@
 
     var battleStory = buildStoryPromptBattleSection(G);
 
+    /** 出身详情（预设凡人/黄枫谷与自选均写入 customBirth）：地点 / 境界 / 背景，供开局剧情对齐 */
+    var customBirthBlock = [];
+    if (fc && fc.customBirth && typeof fc.customBirth === "object") {
+      var cb = fc.customBirth;
+      if (cb.location != null && String(cb.location).trim()) {
+        customBirthBlock.push("出身地点：" + String(cb.location).trim());
+      }
+      var rt =
+        cb.realmText != null && String(cb.realmText).trim()
+          ? String(cb.realmText).trim()
+          : cb.realmMajor
+            ? cb.realmMajor === "化神"
+              ? "化神"
+              : String(cb.realmMajor) + String(cb.realmMinor || "")
+            : "";
+      if (rt) customBirthBlock.push("开局境界：" + rt);
+      if (cb.background != null && String(cb.background).trim()) {
+        customBirthBlock.push("出身背景：\n" + String(cb.background).trim());
+      }
+    }
+
     var sections = [];
     if (profile.length) sections.push("【角色概要】\n" + profile.join("\n"));
+    if (customBirthBlock.length) {
+      sections.push("【出身详情（须在本局剧情中落实）】\n" + customBirthBlock.join("\n\n"));
+    }
     if (nearby.length) sections.push(nearby.join("\n"));
     if (attr.length) sections.push(attr.join("\n"));
     if (wf.length) sections.push(wf.join("\n"));
