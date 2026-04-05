@@ -390,6 +390,92 @@
     return MAJOR_BREAKTHROUGH_TABLE;
   }
 
+  /**
+   * 开局/摘要中与「大境界」自洽的常规年龄下限（岁），与世界书铁律区间一致。
+   * @type {Readonly<Record<string, number>>}
+   */
+  var MIN_NARRATIVE_AGE_BY_MAJOR = Object.freeze({
+    练气: 16,
+    筑基: 100,
+    结丹: 200,
+    元婴: 500,
+    化神: 1000,
+  });
+
+  /**
+   * @param {string} major
+   * @returns {number}
+   */
+  function getMinNarrativeAgeForMajor(major) {
+    var m = major != null ? String(major).trim() : "";
+    if (m.endsWith("期")) m = m.slice(0, -1).trim();
+    if (Object.prototype.hasOwnProperty.call(MIN_NARRATIVE_AGE_BY_MAJOR, m)) return MIN_NARRATIVE_AGE_BY_MAJOR[m];
+    return MIN_NARRATIVE_AGE_BY_MAJOR.练气;
+  }
+
+  /**
+   * `customBirth.background` 是否事先声明了可打破常规年龄区间的例外（与开局剧情提示一致）。
+   * @param {Object|null|undefined} fc
+   * @returns {boolean}
+   */
+  function customBirthBackgroundImpliesAgeException(fc) {
+    try {
+      var cb = fc && fc.customBirth;
+      if (!cb || typeof cb.background !== "string") return false;
+      return /灌顶|灌頂|催熟|夺舍|透支/.test(cb.background);
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  /**
+   * 取 `G.realm` 与 `customBirth.realmMajor` 中较高之大境界（避免摘要与 JSON 不一致时踩低地板）。
+   * @param {Object|null|undefined} fc
+   * @param {Object|null|undefined} G
+   * @returns {string}
+   */
+  function resolveEffectiveMajorForNarrativeAge(fc, G) {
+    var r = (G && G.realm) || (fc && fc.realm) || {};
+    var majFromRealm = r.major != null ? String(r.major).trim() : "";
+    var majFromCB =
+      fc && fc.customBirth && fc.customBirth.realmMajor != null
+        ? String(fc.customBirth.realmMajor).trim()
+        : "";
+    function rank(m) {
+      if (!m) return -1;
+      for (var i = 0; i < REALM_ORDER.length; i++) {
+        if (REALM_ORDER[i] === m) return i;
+      }
+      return -1;
+    }
+    var a = rank(majFromRealm);
+    var b = rank(majFromCB);
+    if (b > a && majFromCB) return majFromCB;
+    if (majFromRealm) return majFromRealm;
+    return majFromCB || "练气";
+  }
+
+  /**
+   * 主角在摘要/开局 JSON 中应呈现的年龄：max(存档年龄或默认, 大境界叙事下限)，除非出身背景事先声明例外。
+   * @param {Object|null|undefined} G
+   * @param {Object|null|undefined} [fc]
+   * @returns {number}
+   */
+  function getProtagonistNarrativeAge(G, fc) {
+    var g = G && typeof G === "object" ? G : {};
+    var fc0 = fc != null ? fc : g.fateChoice;
+    var defAge = 16;
+    var RAge = global.MjMainScreenPanelRealm;
+    if (RAge && typeof RAge.DEFAULT_AGE === "number" && isFinite(RAge.DEFAULT_AGE)) {
+      defAge = Math.max(0, Math.floor(RAge.DEFAULT_AGE));
+    }
+    var base = typeof g.age === "number" && isFinite(g.age) ? Math.max(0, Math.floor(g.age)) : defAge;
+    if (customBirthBackgroundImpliesAgeException(fc0)) return base;
+    var maj = resolveEffectiveMajorForNarrativeAge(fc0, g);
+    var floor = getMinNarrativeAgeForMajor(maj);
+    return Math.max(base, floor);
+  }
+
   global.RealmState = {
     TABLE: TABLE,
     CULTIVATION_TABLE: CULTIVATION_TABLE,
@@ -413,5 +499,8 @@
     rollMajorBreakthrough: rollMajorBreakthrough,
     rollBreakthroughWithProbability: rollBreakthroughWithProbability,
     getMajorBreakthroughTable: getMajorBreakthroughTable,
+    MIN_NARRATIVE_AGE_BY_MAJOR: MIN_NARRATIVE_AGE_BY_MAJOR,
+    getMinNarrativeAgeForMajor: getMinNarrativeAgeForMajor,
+    getProtagonistNarrativeAge: getProtagonistNarrativeAge,
   };
 })(typeof window !== "undefined" ? window : globalThis);

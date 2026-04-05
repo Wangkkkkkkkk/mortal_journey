@@ -748,7 +748,16 @@
     if (npRaw === "first") narrationLabel = "第一人称（我）";
     else if (npRaw === "third") narrationLabel = "第三人称（" + playerName + "）";
     profile.push("叙事人称偏好：" + narrationLabel);
-    if (G && G.age != null) profile.push("年龄：" + String(G.age));
+    if (G) {
+      var RSna = global.RealmState;
+      var ageDisp =
+        RSna && typeof RSna.getProtagonistNarrativeAge === "function"
+          ? RSna.getProtagonistNarrativeAge(G, fc)
+          : G.age != null
+            ? Number(G.age)
+            : null;
+      if (ageDisp != null && isFinite(ageDisp)) profile.push("年龄：" + String(Math.floor(ageDisp)));
+    }
     if (G && G.shouyuan != null) profile.push("寿元：" + String(G.shouyuan));
     if (fc && fc.birthLocation) profile.push("出生地：" + String(fc.birthLocation));
     var curLoc =

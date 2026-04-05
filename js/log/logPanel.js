@@ -14,7 +14,7 @@
    * GitHub Pages（hostname 以 .github.io 结尾）会强制视为 false，避免线上仍加载到浏览器缓存里的旧脚本把面板打开。
    * 若要在线上临时看面板：在页面 URL 后加参数 mjDebugLog=1（例如 .../mortal_journey/?mjDebugLog=1）。
    */
-  var MJ_GAME_LOG_PANEL_UI_ENABLED = true;
+  var MJ_GAME_LOG_PANEL_UI_ENABLED = false;
 
   (function applyHostRuleForLogPanel() {
     try {

@@ -587,6 +587,12 @@
   padding: 0 12px;
 }
 
+.mj-custom-birth-input::placeholder,
+.mj-custom-birth-textarea::placeholder {
+  color: var(--mj-form-control-text);
+  opacity: 0.45;
+}
+
 .mj-custom-birth-select {
   height: 40px;
   padding: 0 10px;

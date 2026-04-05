@@ -15,6 +15,35 @@
     return { open: open, close: close };
   }
 
+  /** 与 story_generate / 开局摘要一致的境界一行（化神无小阶） */
+  function formatOpeningRealmLine(fc, G) {
+    var r = (fc && fc.realm) || (G && G.realm) || {};
+    var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+    if (major === "化神") return "化神";
+    var minor =
+      r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
+    return major + minor;
+  }
+
+  function openingRealmMajorOnly(fc, G) {
+    var r = (fc && fc.realm) || (G && G.realm) || {};
+    return r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+  }
+
+  function openingProtagonistAgeSnap(G, fc) {
+    var RS = global.RealmState;
+    if (RS && typeof RS.getProtagonistNarrativeAge === "function") {
+      return RS.getProtagonistNarrativeAge(G, fc != null ? fc : G && G.fateChoice);
+    }
+    var g = G && typeof G === "object" ? G : {};
+    var defAge = 16;
+    var RAge = global.MjMainScreenPanelRealm;
+    if (RAge && typeof RAge.DEFAULT_AGE === "number" && isFinite(RAge.DEFAULT_AGE)) {
+      defAge = Math.max(0, Math.floor(RAge.DEFAULT_AGE));
+    }
+    return typeof g.age === "number" && isFinite(g.age) ? Math.max(0, Math.floor(g.age)) : defAge;
+  }
+
   /**
    * @param {Object|null} fc fateChoice
    * @param {Object|null} G MortalJourneyGame（全屏门闩下：配置 AI 尚未执行，快照多为空；读档且已配置后可为实数据）
@@ -35,13 +64,33 @@
         "【开局请求】本局将**先**写第一段开局剧情，再由「开局配置 AI」根据你的正文落实装备、功法与储物袋。请依据命运抉择与世界书写出处境与氛围；可在文中**具体写出**兵刃、法器、衣物、代步、功法名与袋中灵石丹药等，便于后续配置对齐（未写细则处由配置 AI 结合摘要补全）。",
       );
     }
+    if (!postInit) {
+      lines.push(
+        "【系统真值】随后 JSON 里的 **realm**、**age**、灵根与 `customBirth` 为当前局硬约束；**不要**套用他书常见的「少年天骄结丹/元婴」套路去覆盖——叙事中的**真实修为层级**只能在此范围内展开。",
+      );
+    }
     lines.push("");
     lines.push("写作要求：");
+    var realmLbl = formatOpeningRealmLine(fc, g);
+    var maj = openingRealmMajorOnly(fc, g);
+    var age0 = openingProtagonistAgeSnap(g, fc);
+    lines.push(
+      "· 【铁律 · 优先级最高】本局主角在摘要中的境界为 **" +
+        realmLbl +
+        "**（大境界：" +
+        maj +
+        "），世界快照年龄 **" +
+        String(age0) +
+        "** 岁。**正文描写的主角修为不得超过该大境界**（例如大境界为练气时，禁止写体内金丹、浑圆金丹、结丹法力、已踏入结丹等；筑基时禁止写结丹/元婴层次的功体实相）。比喻、夸张或他人误判若会误导读者，亦须避免。",
+    );
+    lines.push(
+      "· 【禁止「正文现编例外」】**不得**在叙事里**临时编造**「皇室灌頂、秘药洗髓、长老合力拔境、真龙化境丹」等情节，来解释与 JSON 不符的低龄高境或越级功体——除非 **下方命运抉择 JSON** 的 `customBirth.background`（或已给出的等价长文本）**事先写清**了灌顶/催熟/夺舍/透支等字样。若 JSON 中无此类事前说明，则年龄还须落在下表常规区间，**不得**用模型幻觉自圆其说。",
+    );
     lines.push(
       "· 从主角当前处境直接写起，时间、地点、境界与灵根须与摘要一致，叙事人称遵守「叙事人称偏好」。",
     );
     lines.push(
-      "· **年龄与境界须自洽**：叙事中写到的主角年龄必须与摘要中的 `realm`（及寿元、出身）一致。练气期常见少年至青年；筑基期一般以青年、壮年为宜，**不宜**写成十余岁稚龄却已达筑基中后期（除非是摘要已明确写的夺舍、转世、异胎等特例，且正文需点明缘由）。结丹期及以上须体现更长修行积淀，禁止为「天才」人设随意套用低幼年龄与高境位的失真组合。",
+      "· **年龄与摘要大境界（常规区间）**：若 JSON 未包含上条所述事前例外，则叙事年龄须落在——**练气**：约 16–100 岁；**筑基**：约 100–200 岁；**结丹**：约 200–500 岁；**元婴**：约 500–1000 岁；**化神**：约 1000 岁以上。小境界（初/中/后期）不得用来把年龄压到更低一档大境界。",
     );
     if (postInit) {
       lines.push(
@@ -185,6 +234,7 @@
         userText: prompt,
         skipIfChatNonEmpty: true,
         forceBattleIntent: false,
+        suppressUserInChatLog: true,
       });
     }, 320);
   }
@@ -224,6 +274,7 @@
       forceBattleIntent: false,
       strictPipelineOutcome: true,
       skipStateInventoryAfterStory: o.skipStateInventoryAfterStory === true,
+      suppressUserInChatLog: true,
     }).then(function (ok) {
       if (!ok) return Promise.reject(new Error("开局剧情未发起或已跳过"));
       return { skipped: false };

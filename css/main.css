@@ -2237,6 +2237,7 @@ body.mj-main-body--bootstrap-gate #mj-main-layout {
 }
 
 .mj-bootstrap-ai-gate__panel {
+  position: relative;
   width: 100%;
   max-width: 440px;
   max-height: min(90vh, 640px);
@@ -2248,12 +2249,42 @@ body.mj-main-body--bootstrap-gate #mj-main-layout {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
 }
 
+.mj-bootstrap-ai-gate__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
 .mj-bootstrap-ai-gate__title {
-  margin: 0 0 10px;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
   font-size: 1.15rem;
   font-weight: 600;
   color: var(--mj-gold);
   letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+
+.mj-bootstrap-ai-gate__cancel {
+  flex-shrink: 0;
+  margin: -4px -6px 0 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 120, 83, 0.5);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--mj-muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.mj-bootstrap-ai-gate__cancel:hover {
+  color: var(--mj-text);
+  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(232, 197, 71, 0.35);
 }
 
 .mj-bootstrap-ai-gate__hint {

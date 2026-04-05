@@ -159,8 +159,13 @@
     if (RAge && typeof RAge.DEFAULT_AGE === "number" && isFinite(RAge.DEFAULT_AGE)) {
       defAge = Math.max(0, Math.floor(RAge.DEFAULT_AGE));
     }
+    var RSna = global.RealmState;
     var ageSnap =
-      typeof g.age === "number" && isFinite(g.age) ? Math.max(0, Math.floor(g.age)) : defAge;
+      RSna && typeof RSna.getProtagonistNarrativeAge === "function"
+        ? RSna.getProtagonistNarrativeAge(g, g.fateChoice)
+        : typeof g.age === "number" && isFinite(g.age)
+          ? Math.max(0, Math.floor(g.age))
+          : defAge;
     return JSON.stringify({
       worldTimeString: wt,
       currentLocation: loc,

@@ -216,8 +216,31 @@
     var root = document.getElementById("mj-bootstrap-ai-gate");
     var WGen = global.MortalJourneyWorldGenerate;
     var InitGen = global.MortalJourneyInitStateGenerate;
+    /** 用户点击「取消」后仍为 true，避免异步收尾时误关界面或写入完成态 */
+    var bootstrapGatePipelineCancelled = false;
+
+    function cancelBootstrapGateToFateChoice() {
+      if (bootstrapGatePipelineCancelled) return;
+      bootstrapGatePipelineCancelled = true;
+      try {
+        if (P && typeof P.deleteProvisionalNewSaveIfBootstrapCancelled === "function") {
+          P.deleteProvisionalNewSaveIfBootstrapCancelled();
+        }
+      } catch (_eDel) {}
+      try {
+        var rawBr = P && P.STORAGE_KEY ? sessionStorage.getItem(P.STORAGE_KEY) : null;
+        if (rawBr) sessionStorage.setItem("mj_return_fate_choice_payload_v1", rawBr);
+        if (P && P.STORAGE_KEY) sessionStorage.removeItem(P.STORAGE_KEY);
+      } catch (_eRm) {}
+      hideBootstrapGateUi();
+      try {
+        resetBootstrapGateUi();
+      } catch (_eRs) {}
+      window.location.href = "./index.html#fate";
+    }
 
     function failGate(msg) {
+      if (bootstrapGatePipelineCancelled) return;
       showBootstrapGateError(msg);
     }
 
@@ -359,6 +382,12 @@
     }
 
     function finishBootstrapGateSuccess() {
+      if (bootstrapGatePipelineCancelled) return;
+      try {
+        if (P && typeof P.clearProvisionalBootstrapSaveMarker === "function") {
+          P.clearProvisionalBootstrapSaveMarker();
+        }
+      } catch (_eProv) {}
       hideBootstrapGateUi();
       try {
         P.renderInventorySlots();
@@ -462,7 +491,13 @@
       var retryEl = root.querySelector("[data-mj-bootstrap-retry]");
       if (backEl) {
         backEl.addEventListener("click", function () {
-          window.location.href = "./index.html";
+          cancelBootstrapGateToFateChoice();
+        });
+      }
+      var cancelEl = root.querySelector("[data-mj-bootstrap-cancel]");
+      if (cancelEl) {
+        cancelEl.addEventListener("click", function () {
+          cancelBootstrapGateToFateChoice();
         });
       }
       if (retryEl) {

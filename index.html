@@ -32,7 +32,7 @@
 
       <div id="splash-content">
         <h1 id="splash-title">凡人修仙传</h1>
-        <p id="splash-info">作者: KAI&nbsp;&nbsp;|&nbsp;&nbsp;版本: 1.4.4</p>
+        <p id="splash-info">作者: KAI&nbsp;&nbsp;|&nbsp;&nbsp;版本: 1.5.0</p>
 
         <div id="splash-buttons">
           <button class="splash-btn" id="start-new-life-btn" type="button">开始新人生</button>
@@ -889,10 +889,47 @@
           } catch (_e2) {}
         })();
 
+        function maybeOpenFateFromBootstrapCancel() {
+          if (String(location.hash || "") !== "#fate") return;
+          try {
+            history.replaceState(null, "", location.pathname + (location.search || ""));
+          } catch (_e) {}
+          var raw = null;
+          try {
+            raw = sessionStorage.getItem("mj_return_fate_choice_payload_v1");
+            if (raw) sessionStorage.removeItem("mj_return_fate_choice_payload_v1");
+          } catch (_e2) {}
+          var bootstrap = null;
+          if (raw) {
+            try {
+              bootstrap = JSON.parse(raw);
+            } catch (_e3) {}
+          }
+          var FC = window.FateChoiceController;
+          if (!FC) return;
+          if (
+            bootstrap &&
+            bootstrap.fateChoice &&
+            typeof FC.showFromCancelledBootstrap === "function"
+          ) {
+            FC.showFromCancelledBootstrap(bootstrap);
+            return;
+          }
+          if (typeof FC.show === "function") FC.show();
+        }
+
         if (document.readyState === "loading") {
-          document.addEventListener("DOMContentLoaded", bindSplashUiOnce, { once: true });
+          document.addEventListener(
+            "DOMContentLoaded",
+            function () {
+              bindSplashUiOnce();
+              maybeOpenFateFromBootstrapCancel();
+            },
+            { once: true },
+          );
         } else {
           bindSplashUiOnce();
+          maybeOpenFateFromBootstrapCancel();
         }
       })();
     </script>

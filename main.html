@@ -353,13 +353,20 @@
       aria-hidden="true"
     >
       <div class="mj-bootstrap-ai-gate__panel">
-        <h2 id="mj-bootstrap-ai-gate-title" class="mj-bootstrap-ai-gate__title">正在开启修仙之路</h2>
-        <p class="mj-bootstrap-ai-gate__hint">
-          请保持网络畅通并完成桥接 API 配置。顺序为：首段开局叙事 → 据正文写主角装备、功法与储物袋 → 状态 AI 同步周围人物（及可选世界时间等）；三步均成功后再进入游戏界面。
-        </p>
+        <div class="mj-bootstrap-ai-gate__header">
+          <h2 id="mj-bootstrap-ai-gate-title" class="mj-bootstrap-ai-gate__title">正在开启修仙之路</h2>
+          <button
+            type="button"
+            class="mj-bootstrap-ai-gate__cancel"
+            data-mj-bootstrap-cancel
+            aria-label="取消生成并返回命运抉择"
+          >
+            取消
+          </button>
+        </div>
         <div class="mj-bootstrap-ai-gate__rows">
           <div class="mj-bootstrap-ai-gate__row" data-mj-bootstrap-phase="openingStory">
-            <div class="mj-bootstrap-ai-gate__label">① 开局剧情 AI（首段叙事；本步不跑状态 AI，主角面板由②写入）</div>
+            <div class="mj-bootstrap-ai-gate__label">① 开局剧情 AI</div>
             <div class="mj-bootstrap-ai-gate__times">
               <span>开始：<span data-mj-bootstrap-start>—</span></span>
               <span>完成：<span data-mj-bootstrap-end>—</span></span>
@@ -367,7 +374,7 @@
             <div class="mj-bootstrap-ai-gate__status" data-mj-bootstrap-status>等待中</div>
           </div>
           <div class="mj-bootstrap-ai-gate__row" data-mj-bootstrap-phase="initState">
-            <div class="mj-bootstrap-ai-gate__label">② 开局配置 AI（主角：据剧情正文生成装备、功法、储物袋、世界状态）</div>
+            <div class="mj-bootstrap-ai-gate__label">② 开局配置 AI</div>
             <div class="mj-bootstrap-ai-gate__times">
               <span>开始：<span data-mj-bootstrap-start>—</span></span>
               <span>完成：<span data-mj-bootstrap-end>—</span></span>
@@ -375,7 +382,7 @@
             <div class="mj-bootstrap-ai-gate__status" data-mj-bootstrap-status>等待中</div>
           </div>
           <div class="mj-bootstrap-ai-gate__row" data-mj-bootstrap-phase="stateSync">
-            <div class="mj-bootstrap-ai-gate__label">③ 状态 AI（周围人物等：按同一开局剧情补齐 NPC，储物袋与时间仅随剧情微调）</div>
+            <div class="mj-bootstrap-ai-gate__label">③ 状态 AI</div>
             <div class="mj-bootstrap-ai-gate__times">
               <span>开始：<span data-mj-bootstrap-start>—</span></span>
               <span>完成：<span data-mj-bootstrap-end>—</span></span>

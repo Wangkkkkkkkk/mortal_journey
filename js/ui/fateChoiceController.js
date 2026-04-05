@@ -273,12 +273,98 @@
       if (!t || !t.name) continue;
       var row = {};
       for (var k in t) {
-        if (!Object.prototype.hasOwnProperty.call(t, k) || k === "locked") continue;
+        if (!Object.prototype.hasOwnProperty.call(t, k)) continue;
         row[k] = t[k];
       }
       out.push(row);
     }
     return out;
+  }
+
+  /**
+   * 从「开始人生」写入的 fateChoice 快照恢复命运抉择表单（主界面门闩取消返回时使用）。
+   */
+  function applyFateChoicePayloadToState(fc) {
+    if (!fc || typeof fc !== "object") return false;
+    state.selectedDifficulty = fc.difficulty != null ? String(fc.difficulty) : "简单";
+    state.playerName =
+      fc.playerName != null ? String(fc.playerName).trim().replace(/\s+/g, " ") || "韩立" : "韩立";
+    var np = fc.narrationPerson;
+    state.narrationPerson = np === "first" || np === "third" ? np : "second";
+    state.selectedGender = fc.gender != null ? String(fc.gender) : "男性";
+    state.selectedBirth = fc.birth != null ? String(fc.birth) : "凡人";
+    state.customBirth = null;
+    if (fc.customBirth && typeof fc.customBirth === "object") {
+      try {
+        state.customBirth = JSON.parse(JSON.stringify(fc.customBirth));
+      } catch (_e) {
+        state.customBirth = null;
+      }
+    }
+    state.selectedWorldFactors = Array.isArray(fc.worldFactors) ? fc.worldFactors.slice() : [];
+    state.birthLocation = fc.birthLocation != null ? String(fc.birthLocation).trim() : null;
+    state.rawRealmBase = null;
+    if (fc.rawRealmBase && typeof fc.rawRealmBase === "object") {
+      try {
+        state.rawRealmBase = JSON.parse(JSON.stringify(fc.rawRealmBase));
+      } catch (_e2) {
+        state.rawRealmBase = null;
+      }
+    }
+    state.playerBase = null;
+    if (fc.playerBase && typeof fc.playerBase === "object") {
+      try {
+        state.playerBase = JSON.parse(JSON.stringify(fc.playerBase));
+      } catch (_e3) {
+        state.playerBase = null;
+      }
+    }
+    state.selectedLinggen = fc.linggen != null ? String(fc.linggen) : null;
+    var traitRows = Array.isArray(fc.traits) ? fc.traits : [];
+    state.currentTraitOptions = [];
+    for (var ti = 0; ti < traitRows.length; ti++) {
+      var t0 = traitRows[ti];
+      if (!t0 || !t0.name) continue;
+      try {
+        var row = JSON.parse(JSON.stringify(t0));
+        row.locked = !!row.locked;
+        state.currentTraitOptions.push(row);
+      } catch (_e4) {}
+    }
+    state.selectedTraits = state.currentTraitOptions.filter(function (t) {
+      return t && t.locked;
+    });
+    var c = cfg();
+    if (c && state.selectedBirth && state.selectedBirth !== "自定义") {
+      syncCustomBirthForCurrentSelection(c);
+    }
+    if (!state.currentTraitOptions.length && !isMortalMode()) {
+      state.currentTraitOptions = pickRandomTraits([], 5);
+      state.selectedTraits = [];
+    }
+    _lastAttrLogSignature = "";
+    recomputePlayerBase();
+    return true;
+  }
+
+  /** 主界面开局 AI 取消：用 session 中的开局快照打开命运抉择并恢复表单 */
+  function showFromCancelledBootstrap(bootstrap) {
+    if (!cfg()) {
+      window.alert("MjCreationConfig 未加载。");
+      return;
+    }
+    bindFateTraitDetailModal();
+    ensureCustomBirthModal();
+    var restored = !!(bootstrap && bootstrap.fateChoice && applyFateChoicePayloadToState(bootstrap.fateChoice));
+    if (!restored) resetState();
+    var screen = getEl("character-creation-screen");
+    var splash = getEl("splash-screen");
+    if (screen) {
+      screen.classList.remove("hidden");
+      screen.setAttribute("aria-hidden", "false");
+    }
+    if (splash) splash.classList.add("hidden");
+    renderPage();
   }
 
   /**
@@ -637,13 +723,20 @@
     var majorEl = getEl("mj-custom-birth-realm-major");
     var minorEl = getEl("mj-custom-birth-realm-minor");
     var bgEl = getEl("mj-custom-birth-background");
+    /** 仅回填用户已确认的「自定义」；预设出身同步的 customBirth（含 presetBirthKey）只用于开局摘要，不填入表单 */
+    var fillFromSavedCustom =
+      state.selectedBirth === "自定义" &&
+      state.customBirth &&
+      !state.customBirth.presetBirthKey;
     if (locEl) {
       locEl.value =
-        state.customBirth && state.customBirth.location != null ? String(state.customBirth.location) : "";
+        fillFromSavedCustom && state.customBirth.location != null
+          ? String(state.customBirth.location)
+          : "";
     }
     var maj = CUSTOM_REALM_MAJORS[0];
     var mino = CUSTOM_REALM_MINORS[0];
-    var cb0 = state.customBirth;
+    var cb0 = fillFromSavedCustom ? state.customBirth : null;
     if (cb0 && cb0.realmMajor && CUSTOM_REALM_MAJORS.indexOf(cb0.realmMajor) >= 0) {
       maj = cb0.realmMajor;
       if (cb0.realmMajor !== "化神" && cb0.realmMinor && CUSTOM_REALM_MINORS.indexOf(cb0.realmMinor) >= 0) {
@@ -661,7 +754,9 @@
     syncCustomBirthRealmMinorRow();
     if (bgEl) {
       bgEl.value =
-        state.customBirth && state.customBirth.background != null ? String(state.customBirth.background) : "";
+        fillFromSavedCustom && state.customBirth.background != null
+          ? String(state.customBirth.background)
+          : "";
     }
     root.classList.remove("hidden");
     root.setAttribute("aria-hidden", "false");
@@ -895,6 +990,10 @@
             );
           }
           if (!data) return "";
+          var cardPara =
+            data.cardDesc !== undefined
+              ? String(data.cardDesc || "").trim()
+              : String(data.desc || "").trim();
           return (
             '<div class="creation-card ' +
             (selected ? "selected" : "") +
@@ -904,9 +1003,7 @@
             "<h4><span>" +
             name +
             "</span></h4>" +
-            "<p>" +
-            (data.desc || "") +
-            "</p>" +
+            (cardPara ? "<p>" + escapeHtml(cardPara) + "</p>" : "") +
             "</div>"
           );
         })
@@ -1299,6 +1396,9 @@
       sessionStorage.setItem(BOOTSTRAP_KEY, JSON.stringify(bootstrapObj));
       sessionStorage.setItem(ACTIVE_SAVE_ID_KEY, String(saveId));
       localStorage.setItem(ACTIVE_SAVE_ID_KEY, String(saveId));
+      try {
+        sessionStorage.setItem("mj_pending_provisional_save_v1", String(saveId));
+      } catch (_eProv) {}
       localStorage.setItem(
         SAVE_PREFIX + String(saveId),
         JSON.stringify(Object.assign({ saveId: saveId, name: saveName, updatedAt: Date.now() }, bootstrapObj)),
@@ -1381,6 +1481,7 @@
 
   global.FateChoiceController = {
     show: showFateChoice,
+    showFromCancelledBootstrap: showFromCancelledBootstrap,
     hide: hideFateChoice,
     render: renderPage,
     /** 逆天改命品质权重表（可改各 `weight`，下次刷新即生效） */

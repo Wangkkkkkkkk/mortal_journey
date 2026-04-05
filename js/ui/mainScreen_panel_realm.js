@@ -20,6 +20,8 @@
   var SAVE_INDEX_KEY = "MJ_SAVES_INDEX_V1";
   var SAVE_PREFIX = "MJ_SAVE_V1:";
   var ACTIVE_SAVE_ID_KEY = "MJ_ACTIVE_SAVE_ID_V1";
+  /** 命运抉择「开始人生」后、开局门闩成功前：与当前 ACTIVE_SAVE_ID 一致时，取消门闩可删档，避免误删「读取人生」载入的槽位 */
+  var PENDING_PROVISIONAL_SAVE_KEY = "mj_pending_provisional_save_v1";
   var DEFAULT_WORLD_TIME = "0001年 01月 01日 08:00";
   var DEFAULT_AGE = 16;
   var DEFAULT_SHOUYUAN = 100;
@@ -1388,6 +1390,10 @@
       G.cultivationProgress = 0;
     }
     if (G.age == null) G.age = DEFAULT_AGE;
+    var RSna = global.RealmState;
+    if (RSna && typeof RSna.getProtagonistNarrativeAge === "function") {
+      G.age = RSna.getProtagonistNarrativeAge(G, G.fateChoice);
+    }
     if (G.shouyuan == null || typeof G.shouyuan !== "number" || !isFinite(G.shouyuan)) G.shouyuan = 0;
     syncShouyuanFromRealmState(G, G.fateChoice);
     if (G.charm == null || typeof G.charm !== "number") G.charm = DEFAULT_CHARM;
@@ -2921,6 +2927,50 @@
     splitUniqueStackItemCellsInPlace(G);
     trimTrailingEmptyPlayerBagRows(G);
   }
+
+  function clearProvisionalBootstrapSaveMarker() {
+    try {
+      sessionStorage.removeItem(PENDING_PROVISIONAL_SAVE_KEY);
+    } catch (_e) {}
+  }
+
+  /**
+   * 开局门闩取消 / 返回命运抉择：仅当 session 中标为「本次新建」的槽位与当前活跃 ID 一致时，删除 localStorage 存档与索引项。
+   */
+  function deleteProvisionalNewSaveIfBootstrapCancelled() {
+    var pending = "";
+    var active = "";
+    try {
+      pending = String(sessionStorage.getItem(PENDING_PROVISIONAL_SAVE_KEY) || "").trim();
+      active = String(
+        sessionStorage.getItem(ACTIVE_SAVE_ID_KEY) || localStorage.getItem(ACTIVE_SAVE_ID_KEY) || "",
+      ).trim();
+    } catch (_e0) {}
+    try {
+      sessionStorage.removeItem(PENDING_PROVISIONAL_SAVE_KEY);
+    } catch (_e1) {}
+    if (!pending || !active || pending !== active) return;
+    try {
+      localStorage.removeItem(SAVE_PREFIX + active);
+    } catch (_e2) {}
+    try {
+      var raw = localStorage.getItem(SAVE_INDEX_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) arr = [];
+      var next = arr.filter(function (x) {
+        return !x || String(x.id || "") !== String(active);
+      });
+      localStorage.setItem(SAVE_INDEX_KEY, JSON.stringify(next));
+    } catch (_e3) {}
+    try {
+      sessionStorage.removeItem(ACTIVE_SAVE_ID_KEY);
+      localStorage.removeItem(ACTIVE_SAVE_ID_KEY);
+    } catch (_e4) {}
+    try {
+      localStorage.removeItem(LAST_SESSION_MIRROR_KEY);
+    } catch (_e5) {}
+  }
+
   global.MjMainScreenPanelRealm = {
     STORAGE_KEY: STORAGE_KEY, DEFAULT_WORLD_TIME: DEFAULT_WORLD_TIME, DEFAULT_AGE: DEFAULT_AGE, DEFAULT_SHOUYUAN: DEFAULT_SHOUYUAN,
     DEFAULT_CHARM: DEFAULT_CHARM, DEFAULT_LUCK: DEFAULT_LUCK,
@@ -2931,7 +2981,10 @@
     mergeNearbyNpcListInPlace: mergeNearbyNpcListInPlace,
     sortNearbyNpcsForDisplay: sortNearbyNpcsForDisplay,
     applyRealmBreakthroughs: applyRealmBreakthroughs, logBreakthroughMessages: logBreakthroughMessages, computeCultivationUi: computeCultivationUi,
-    persistBootstrapSnapshot: persistBootstrapSnapshot, syncNpcShouyuanFromRealmState: syncNpcShouyuanFromRealmState, ensureEquippedSlots: ensureEquippedSlots,
+    persistBootstrapSnapshot: persistBootstrapSnapshot,
+    clearProvisionalBootstrapSaveMarker: clearProvisionalBootstrapSaveMarker,
+    deleteProvisionalNewSaveIfBootstrapCancelled: deleteProvisionalNewSaveIfBootstrapCancelled,
+    syncNpcShouyuanFromRealmState: syncNpcShouyuanFromRealmState, ensureEquippedSlots: ensureEquippedSlots,
     ensureGongfaSlots: ensureGongfaSlots, ensureInventorySlots: ensureInventorySlots,
     bagItemSkipsSameNameStack: bagItemSkipsSameNameStack, enrichInventoryGradesFromDescribe: enrichInventoryGradesFromDescribe,
     continuityFieldsFromBagItem: continuityFieldsFromBagItem, renderNearbyNpcsPanel: renderNearbyNpcsPanel, performAbsorbSpiritStonesFromBag: performAbsorbSpiritStonesFromBag,

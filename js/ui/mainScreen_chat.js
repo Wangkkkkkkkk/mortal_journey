@@ -120,7 +120,7 @@
    */
   function insertAssistantBubbleAfterUser(userRoot) {
     var log = getChatLogEl();
-    if (!log || !userRoot) return null;
+    if (!log) return null;
     clearChatPlaceholders();
     var wrap = document.createElement("div");
     wrap.className = "mj-chat-msg--role mj-chat-msg--assistant";
@@ -131,8 +131,17 @@
     body.textContent = "";
     wrap.appendChild(label);
     wrap.appendChild(body);
-    if (userRoot.nextSibling) log.insertBefore(wrap, userRoot.nextSibling);
-    else log.appendChild(wrap);
+    if (userRoot && userRoot.parentNode) {
+      try {
+        if (log.contains(userRoot)) {
+          if (userRoot.nextSibling) log.insertBefore(wrap, userRoot.nextSibling);
+          else log.appendChild(wrap);
+          scrollChatLog();
+          return { root: wrap, body: body };
+        }
+      } catch (_eIns) {}
+    }
+    log.appendChild(wrap);
     scrollChatLog();
     return { root: wrap, body: body };
   }
@@ -200,6 +209,7 @@
     var retryBtnEl = opts.retryButtonEl || null;
     var strictPipelineOutcome = !!opts.strictPipelineOutcome;
     var skipStateInventoryAfterStory = !!opts.skipStateInventoryAfterStory;
+    var suppressUserInChatLog = !!opts.suppressUserInChatLog;
 
     _mjStateRetryStoryRaw = null;
     _mjStoryRetryContext = {
@@ -211,6 +221,7 @@
       userHistIndex: userHistIndex,
       forceBattleIntent: forceBattleIntent,
       skipStateInventoryAfterStory: skipStateInventoryAfterStory,
+      suppressUserInChatLog: suppressUserInChatLog,
     };
 
     var useStreamChat = getBridgeUseStreamingChat();
@@ -434,7 +445,8 @@
         }
         if (assistantRoot) assistantRoot.classList.remove("mj-chat-msg--assistant-empty");
         if (isRetry && Array.isArray(G.chatHistory)) {
-          while (G.chatHistory.length > userHistIndex + 1) {
+          var keepHistLen = suppressUserInChatLog ? userHistIndex : userHistIndex + 1;
+          while (G.chatHistory.length > keepHistLen) {
             var rm = G.chatHistory.pop();
             if (
               rm &&
@@ -613,6 +625,7 @@
       rollbackFn: null,
       retryButtonEl: clickedBtn || null,
       skipStateInventoryAfterStory: !!ctx.skipStateInventoryAfterStory,
+      suppressUserInChatLog: !!ctx.suppressUserInChatLog,
     });
   }
 
@@ -1228,7 +1241,8 @@
 
   /**
    * 非玩家输入触发的剧情请求（如开局自动生成）：行为与发送按钮一致，走同一套 buildMessages / 状态回合。
-   * @param {{ userText: string, skipIfChatNonEmpty?: boolean, forceBattleIntent?: boolean }} opts
+   * @param {{ userText: string, skipIfChatNonEmpty?: boolean, forceBattleIntent?: boolean, suppressUserInChatLog?: boolean }} opts
+   * @param {boolean} [opts.suppressUserInChatLog] 为 true 时不写入 chatHistory、不显示「你」气泡（开局长提示仅走 API，界面从「剧情」起）
    * @returns {Promise<boolean>} 已发起请求则为 true；因跳过或未加载则为 false
    */
   function runScriptedStoryTurn(opts) {
@@ -1239,6 +1253,8 @@
     var G = global.MortalJourneyGame;
     if (!G) return Promise.resolve(false);
     mjPanel().ensureGameRuntimeDefaults(G);
+
+    var suppressUserInChatLog = o.suppressUserInChatLog === true;
 
     var skipIf = o.skipIfChatNonEmpty !== false;
     if (skipIf) {
@@ -1262,9 +1278,12 @@
 
     var prior = (G.chatHistory || []).slice();
     var userHistIndex = Array.isArray(G.chatHistory) ? G.chatHistory.length : 0;
-    G.chatHistory.push({ role: "user", content: userText });
-    var userUi = appendChatBubble("user", userText);
-    var userRoot = userUi ? userUi.root : null;
+    var userRoot = null;
+    if (!suppressUserInChatLog) {
+      G.chatHistory.push({ role: "user", content: userText });
+      var userUi = appendChatBubble("user", userText);
+      userRoot = userUi ? userUi.root : null;
+    }
 
     var asstUi = appendChatBubble("assistant", "");
     var assistantBody = asstUi ? asstUi.body : null;
@@ -1293,6 +1312,7 @@
       allowRollbackOnTimeout: false,
       rollbackFn: null,
       retryButtonEl: null,
+      suppressUserInChatLog: suppressUserInChatLog,
     }).then(function () {
       return true;
     });
