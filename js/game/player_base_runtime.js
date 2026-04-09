@@ -25,6 +25,21 @@
     魅力: "charm",
     气运: "luck",
   };
+  var REALM_EQUIP_BONUS_RATIO_MAP = {
+    练气初期: 1.25,
+    练气中期: 1.5,
+    练气后期: 2.0,
+    筑基初期: 2.5,
+    筑基中期: 3.0,
+    筑基后期: 3.5,
+    结丹初期: 4.0,
+    结丹中期: 5.0,
+    结丹后期: 6.0,
+    元婴初期: 7.0,
+    元婴中期: 8.0,
+    元婴后期: 9.0,
+    化神: 10.0,
+  };
 
   function clampSpecialAttr(n, fallback) {
     if (typeof n !== "number" || !isFinite(n)) return fallback;
@@ -88,6 +103,88 @@
       minor: r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期",
     };
   }
+  function buildRealmStageKey(realm) {
+    var r = realm || {};
+    var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+    if (major === "化神") return "化神";
+    var minor = r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
+    return major + minor;
+  }
+  function getEquipBonusRealmRatio(realm) {
+    var key = buildRealmStageKey(realm);
+    var ratio = REALM_EQUIP_BONUS_RATIO_MAP[key];
+    return typeof ratio === "number" && isFinite(ratio) && ratio > 0 ? ratio : 1.0;
+  }
+  function scaleZhBonusObject(bonus, ratio) {
+    if (!bonus || typeof bonus !== "object") return null;
+    var out = {};
+    for (var k in bonus) {
+      if (!Object.prototype.hasOwnProperty.call(bonus, k)) continue;
+      var v = bonus[k];
+      if (typeof v !== "number" || !isFinite(v)) continue;
+      out[k] = v * ratio;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+  function inferGongfaSubtypeFromCellAndDef(cell, def) {
+    var c = cell && typeof cell === "object" ? cell : {};
+    var d = def && typeof def === "object" ? def : null;
+    var st =
+      c.subtype != null && String(c.subtype).trim() !== ""
+        ? String(c.subtype).trim()
+        : c.subType != null && String(c.subType).trim() !== ""
+          ? String(c.subType).trim()
+          : d && d.subtype != null && String(d.subtype).trim() !== ""
+            ? String(d.subtype).trim()
+            : d && d.subType != null && String(d.subType).trim() !== ""
+              ? String(d.subType).trim()
+              : "";
+    if (st === "攻击功法") st = "攻击";
+    if (st === "辅助功法") st = "辅助";
+    if (st === "攻击" || st === "辅助") return st;
+    var ty =
+      c.type != null && String(c.type).trim() !== ""
+        ? String(c.type).trim()
+        : d && d.type != null
+          ? String(d.type).trim()
+          : "";
+    if (ty === "攻击功法" || ty === "攻击") return "攻击";
+    if (ty === "辅助功法" || ty === "辅助") return "辅助";
+    return "";
+  }
+  /**
+   * 运行时按境界重算功法法力消耗：
+   * - 辅助功法不保留 manacost
+   * - 攻击功法 manacost = round(基础值 × 境界倍率)
+   * 基础值优先 cell.baseManacost，再取当前 cell.manacost，再回退配置表 manacost。
+   */
+  function applyRealmScaledGongfaManacostInPlace(gongfaSlots, realm) {
+    if (!Array.isArray(gongfaSlots)) return;
+    var ratio = getEquipBonusRealmRatio(realm);
+    for (var i = 0; i < gongfaSlots.length; i++) {
+      var s = gongfaSlots[i];
+      if (!s || typeof s !== "object") continue;
+      var n = s.name != null ? s.name : s.label;
+      var def = n ? lookupGongfaDefByName(String(n)) : null;
+      var subtype = inferGongfaSubtypeFromCellAndDef(s, def);
+      if (subtype === "辅助") {
+        if (Object.prototype.hasOwnProperty.call(s, "manacost")) delete s.manacost;
+        continue;
+      }
+      if (subtype !== "攻击") continue;
+      var base =
+        typeof s.baseManacost === "number" && isFinite(s.baseManacost) && s.baseManacost > 0
+          ? Math.round(s.baseManacost)
+          : typeof s.manacost === "number" && isFinite(s.manacost) && s.manacost > 0
+            ? Math.round(s.manacost)
+            : def && typeof def.manacost === "number" && isFinite(def.manacost) && def.manacost > 0
+              ? Math.round(def.manacost)
+              : null;
+      if (!(typeof base === "number" && isFinite(base) && base > 0)) continue;
+      s.baseManacost = base;
+      s.manacost = Math.max(1, Math.round(base * ratio));
+    }
+  }
 
   /** 境界表八维（未乘灵根、未加任何加成），与命运抉择里 rawRealmBase 一致 */
   function snapshotRawRealmBase(fc, G) {
@@ -131,41 +228,47 @@
     return C.getEquipmentDescribe(String(name).trim());
   }
 
-  function collectGongfaSlotBonuses(gongfaSlots) {
+  function collectGongfaSlotBonuses(gongfaSlots, realm) {
     var list = [];
     if (!Array.isArray(gongfaSlots)) return list;
+    var ratio = getEquipBonusRealmRatio(realm);
     for (var i = 0; i < gongfaSlots.length; i++) {
       var s = gongfaSlots[i];
       if (!s) continue;
       var n = s.name != null ? s.name : s.label;
       if (!n) continue;
       if (s.bonus && typeof s.bonus === "object" && Object.keys(s.bonus).length) {
-        list.push(s.bonus);
+        var scaledRaw = scaleZhBonusObject(s.bonus, ratio);
+        if (scaledRaw) list.push(scaledRaw);
         continue;
       }
       var def = lookupGongfaDefByName(String(n));
       if (def && def.bonus && typeof def.bonus === "object" && Object.keys(def.bonus).length) {
-        list.push(def.bonus);
+        var scaledDef = scaleZhBonusObject(def.bonus, ratio);
+        if (scaledDef) list.push(scaledDef);
       }
     }
     return list;
   }
 
-  function collectEquipmentSlotBonuses(equippedSlots) {
+  function collectEquipmentSlotBonuses(equippedSlots, realm) {
     var list = [];
     if (!Array.isArray(equippedSlots)) return list;
+    var ratio = getEquipBonusRealmRatio(realm);
     for (var i = 0; i < equippedSlots.length; i++) {
       var s = equippedSlots[i];
       if (!s) continue;
       var n = s.name != null ? s.name : s.label;
       if (!n) continue;
       if (s.bonus && typeof s.bonus === "object" && Object.keys(s.bonus).length) {
-        list.push(s.bonus);
+        var scaledRaw = scaleZhBonusObject(s.bonus, ratio);
+        if (scaledRaw) list.push(scaledRaw);
         continue;
       }
       var def = lookupEquipmentDefByName(String(n));
       if (def && def.bonus && typeof def.bonus === "object" && Object.keys(def.bonus).length) {
-        list.push(def.bonus);
+        var scaledDef = scaleZhBonusObject(def.bonus, ratio);
+        if (scaledDef) list.push(scaledDef);
       }
     }
     return list;
@@ -195,10 +298,11 @@
     var ovr = overrides || {};
     var gfSlots = ovr.gongfaSlots != null ? ovr.gongfaSlots : G && G.gongfaSlots;
     var eqSlots = ovr.equippedSlots != null ? ovr.equippedSlots : G && G.equippedSlots;
+    applyRealmScaledGongfaManacostInPlace(gfSlots, realm);
 
-    var gb = collectGongfaSlotBonuses(gfSlots);
+    var gb = collectGongfaSlotBonuses(gfSlots, realm);
     for (var a = 0; a < gb.length; a++) bonusList.push(gb[a]);
-    var eb = collectEquipmentSlotBonuses(eqSlots);
+    var eb = collectEquipmentSlotBonuses(eqSlots, realm);
     for (var b = 0; b < eb.length; b++) bonusList.push(eb[b]);
 
     var afterFlat = mergeZhBonusesOntoPlayerBase(merged, bonusList);

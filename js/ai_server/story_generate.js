@@ -671,6 +671,28 @@
     return bits.join("\n\n");
   }
 
+  function getPresetRowSystemPromptById(id) {
+    var sid = String(id || "").trim();
+    if (!sid) return "";
+    var root = global.MortalJourneyPresetContent;
+    var list = root && Array.isArray(root.presets) ? root.presets : [];
+    for (var i = 0; i < list.length; i++) {
+      var row = list[i];
+      if (!row || String(row.id || "").trim() !== sid) continue;
+      if (row.systemPrompt == null) return "";
+      return String(row.systemPrompt).trim();
+    }
+    return "";
+  }
+
+  function shouldApplyExplorationRules(userText, G) {
+    var t0 = String(userText || "").trim();
+    var loc = G && G.currentLocation != null ? String(G.currentLocation).trim() : "";
+    var joined = (t0 + "\n" + loc).trim();
+    if (!joined) return false;
+    return /(秘境|遗迹|废墟|洞府|古修洞府|探险|探索|历练|禁地|秘地|试炼)/.test(joined);
+  }
+
   /**
    * 上一场程序结算的战斗摘要：在结算未能写入聊天区（或兼容旧档）时注入剧情 system；
    * 正常流程下 appendBattleSettlementFromDetail 已把结算写入对话并置 storyBattleContextConsumed，此处为空。
@@ -872,6 +894,10 @@
     var lsv = lowerSpiritStoneValueUnit();
     var runtimeRuleBlock = buildRuntimeRuleBlock(lsv);
     if (runtimeRuleBlock) systemParts.push(runtimeRuleBlock);
+    if (shouldApplyExplorationRules(userText, G)) {
+      var explorationRule = getPresetRowSystemPromptById("exploration_rules");
+      if (explorationRule) systemParts.push(explorationRule);
+    }
 
     var stateBlock = "";
     if (P && typeof P.shouldAppendRuntimeState === "function" && P.shouldAppendRuntimeState()) {
