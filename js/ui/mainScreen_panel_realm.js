@@ -46,6 +46,34 @@
   var EQUIP_SLOT_EMPTY_TITLE = ["武器空位", "法器空位", "防具空位", "载具空位"];
   var EQUIP_SLOT_KIND_LABELS = ["武器", "法器", "防具", "载具"];
 
+  var REALM_EQUIP_BONUS_RATIO_MAP = {
+    练气初期: 1.25,
+    练气中期: 1.5,
+    练气后期: 2.0,
+    筑基初期: 2.5,
+    筑基中期: 3.0,
+    筑基后期: 3.5,
+    结丹初期: 4.0,
+    结丹中期: 5.0,
+    结丹后期: 6.0,
+    元婴初期: 7.0,
+    元婴中期: 8.0,
+    元婴后期: 9.0,
+    化神: 10.0,
+  };
+  function buildRealmStageKeyFromRealmObj(realm) {
+    var r = realm && typeof realm === "object" ? realm : {};
+    var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+    if (major === "化神") return "化神";
+    var minor = r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
+    return major + minor;
+  }
+  function getRealmEquipBonusRatioFromRealmObj(realm) {
+    var key = buildRealmStageKeyFromRealmObj(realm);
+    var ratio = REALM_EQUIP_BONUS_RATIO_MAP[key];
+    return typeof ratio === "number" && isFinite(ratio) && ratio > 0 ? ratio : 1.0;
+  }
+
   function clampPct(n) {
     if (typeof n !== "number" || !isFinite(n)) return 0;
     return Math.max(0, Math.min(100, n));
@@ -69,31 +97,26 @@
   }
 
   /**
-   * 是否可用灵石炼化修为：仅 stuff_describe 中 MjDescribeSpiritStones 表内物品（及旧名「灵石」）。
-   * 令牌、丹药等也有 describe.value（灵石等价比价），不可炼化。
+   * 是否可用灵石炼化修为：按名称判定灵石，不依赖参考表。
    */
   function isSpiritStoneCultivationItemName(itemName) {
     var nm = String(itemName || "").trim();
     if (!nm) return false;
     if (nm === "灵石") return true;
-    var SS = global.MjDescribeSpiritStones;
-    return !!(SS && typeof SS === "object" && SS[nm]);
+    return nm === "下品灵石" || nm === "中品灵石" || nm === "上品灵石" || nm === "极品灵石" || nm === "仙品灵石";
   }
 
-  /** 灵石类 describe.value → 表列「单灵根」基准修为（原样返回；炼化写入修为时用 computeSpiritStoneTotalGain 四舍五入） */
+  /** 灵石类 value（内置映射）→ 单灵根基准修为 */
   function getSpiritStoneCultivationValue(itemName) {
     var nm = String(itemName || "").trim();
     if (!nm) return 0;
     if (!isSpiritStoneCultivationItemName(nm)) return 0;
-    var C = global.MjCreationConfig;
-    if (!C || typeof C.getStuffDescribe !== "function") return 0;
-    var d = C.getStuffDescribe(nm);
-    if (d && typeof d.value === "number" && isFinite(d.value) && d.value > 0) return d.value;
-    if (nm === "灵石") {
-      var d2 = C.getStuffDescribe("下品灵石");
-      if (d2 && typeof d2.value === "number" && isFinite(d2.value) && d2.value > 0) return d2.value;
-    }
-    return 0;
+    if (nm === "灵石" || nm === "下品灵石") return 10;
+    if (nm === "中品灵石") return 100;
+    if (nm === "上品灵石") return 1000;
+    if (nm === "极品灵石") return 10000;
+    if (nm === "仙品灵石") return 100000;
+    return 10;
   }
 
   /**
@@ -363,15 +386,34 @@
     return String(fromRealm || "").trim() + "-" + String(toRealm || "").trim() + "概率";
   }
 
-  function getPillBreakthroughBonusDelta(itemName, fromRealm, toRealm) {
-    var nm = String(itemName || "").trim();
+  function getPillBreakthroughBonusDelta(itemLikeOrName, fromRealm, toRealm) {
+    var itemLike =
+      itemLikeOrName && typeof itemLikeOrName === "object" ? itemLikeOrName : null;
+    var nm = itemLike
+      ? String(itemLike.name != null ? itemLike.name : "").trim()
+      : String(itemLikeOrName || "").trim();
     if (!nm) return 0;
+    var fromS = String(fromRealm || "").trim();
+    var toS = String(toRealm || "").trim();
+    if (
+      itemLike &&
+      itemLike.effects &&
+      typeof itemLike.effects === "object" &&
+      Array.isArray(itemLike.effects.breakthrough)
+    ) {
+      for (var bi = 0; bi < itemLike.effects.breakthrough.length; bi++) {
+        var bb = itemLike.effects.breakthrough[bi];
+        if (!bb) continue;
+        if (String(bb.from || "").trim() === fromS && String(bb.to || "").trim() === toS) {
+          var cb0 = bb.chanceBonus;
+          return typeof cb0 === "number" && isFinite(cb0) ? Math.max(0, cb0) : 0;
+        }
+      }
+    }
     var C = global.MjCreationConfig;
     if (!C || typeof C.getStuffDescribe !== "function") return 0;
     var d = C.getStuffDescribe(nm);
     if (!d) return 0;
-    var fromS = String(fromRealm || "").trim();
-    var toS = String(toRealm || "").trim();
     if (d.effects && Array.isArray(d.effects.breakthrough)) {
       for (var i = 0; i < d.effects.breakthrough.length; i++) {
         var b = d.effects.breakthrough[i];
@@ -536,11 +578,15 @@
 
   function computeMajorBreakModalTotalP(ctx) {
     if (!ctx) return 0;
+    var G = global.MortalJourneyGame || {};
+    ensureInventorySlots(G);
     var add = 0;
     for (var i = 0; i < majorBreakModalSlots.length; i++) {
       var s = majorBreakModalSlots[i];
       if (!s || s.name == null) continue;
-      add += getPillBreakthroughBonusDelta(s.name, ctx.major, ctx.nextMaj);
+      var bagIdx = Number(s.bagIdx);
+      var it = isFinite(bagIdx) && bagIdx >= 0 ? G.inventorySlots[bagIdx] : null;
+      add += getPillBreakthroughBonusDelta(it || s.name, ctx.major, ctx.nextMaj);
     }
     return Math.min(1, ctx.baseP + add);
   }
@@ -628,7 +674,7 @@
     for (var b = 0; b < G.inventorySlots.length; b++) {
       var it = G.inventorySlots[b];
       if (!it || !it.name) continue;
-      var bonus = getPillBreakthroughBonusDelta(it.name, ctx.major, ctx.nextMaj);
+      var bonus = getPillBreakthroughBonusDelta(it, ctx.major, ctx.nextMaj);
       if (bonus <= 0) continue;
       var cnt = typeof it.count === "number" && isFinite(it.count) ? Math.max(1, Math.floor(it.count)) : 1;
       var reserved = countMajorBreakModalUsesOfBagIdx(slotIndex, b);
@@ -696,7 +742,7 @@
         logBreakthroughMessages(["大境界突破取消：储物袋与所选丹药不一致。"]);
         return;
       }
-      var bonus = getPillBreakthroughBonusDelta(it.name, ctx.major, ctx.nextMaj);
+      var bonus = getPillBreakthroughBonusDelta(it, ctx.major, ctx.nextMaj);
       if (bonus <= 0) {
         logBreakthroughMessages(["大境界突破取消：「" + it.name + "」对当前进阶无效。"]);
         return;
@@ -2024,10 +2070,8 @@
     var m1 = meta && meta.magnification && typeof meta.magnification === "object" ? meta.magnification : null;
     var patkMag = toFiniteNumberOrNull(m0 && m0.物攻);
     if (patkMag == null) patkMag = toFiniteNumberOrNull(m1 && m1.物攻);
-    var matkMag = toFiniteNumberOrNull(m0 && m0.法攻);
-    if (matkMag == null) matkMag = toFiniteNumberOrNull(m1 && m1.法攻);
     /** 表外或残缺格子的武器仍给展示默认倍率；法器见 equipmentIsFaqiForMagnificationRule */
-    if (patkMag == null && matkMag == null) {
+    if (patkMag == null) {
       var tyInf =
         (item && item.equipType != null && String(item.equipType).trim() !== ""
           ? String(item.equipType).trim()
@@ -2035,19 +2079,11 @@
         (meta && meta.type != null && String(meta.type).trim() !== "" ? String(meta.type).trim() : "");
       if (tyInf === "武器" || tyInf === "主武器") {
         patkMag = 1;
-        matkMag = 0;
       } else {
         return "";
       }
     }
-    if (patkMag == null) patkMag = 0;
-    if (matkMag == null) matkMag = 0;
-    return (
-      "物攻倍率=" +
-      String(Math.round(patkMag * 100) / 100) +
-      ", 法攻倍率=" +
-      String(Math.round(matkMag * 100) / 100)
-    );
+    return "物攻倍率=" + String(Math.round(patkMag * 100) / 100);
   }
 
   function resolveGongfaMagnificationLine(gongfaName, item, gongfaMeta) {
@@ -2056,37 +2092,40 @@
     if (resolveGongfaSubtype(item, meta) === "辅助") return "";
     var m0 = item && item.magnification && typeof item.magnification === "object" ? item.magnification : null;
     var m1 = meta && meta.magnification && typeof meta.magnification === "object" ? meta.magnification : null;
-    var patkMag = toFiniteNumberOrNull(m0 && m0.物攻);
-    if (patkMag == null) patkMag = toFiniteNumberOrNull(m1 && m1.物攻);
     var matkMag = toFiniteNumberOrNull(m0 && m0.法攻);
     if (matkMag == null) matkMag = toFiniteNumberOrNull(m1 && m1.法攻);
-    /** 表外攻击功法可能无 magnification；给展示默认(1,0)。辅助类在表内可无倍率且战斗用 0,0 跳过输出，此处不臆造倍率以免与结算口径矛盾 */
-    if (patkMag == null && matkMag == null) {
+    /** 表外攻击功法可能无 magnification；给展示默认法攻倍率 1。 */
+    if (matkMag == null) {
       var st = resolveGongfaSubtype(item, meta);
       if (st === "攻击") {
-        patkMag = 1;
-        matkMag = 0;
+        matkMag = 1;
       } else {
         return "";
       }
     }
-    if (patkMag == null) patkMag = 0;
-    if (matkMag == null) matkMag = 0;
-    return (
-      "物攻倍率=" +
-      String(Math.round(patkMag * 100) / 100) +
-      ", 法攻倍率=" +
-      String(Math.round(matkMag * 100) / 100)
-    );
+    return "法攻倍率=" + String(Math.round(matkMag * 100) / 100);
   }
 
-  function resolveGongfaManacostLine(gongfaName, item, gongfaMeta) {
+  function resolveGongfaManacostLine(gongfaName, item, gongfaMeta, realmForScale, showRealmDetail) {
     var meta = gongfaMeta || lookupGongfaConfigDef(gongfaName);
+    /** 辅助类功法不显示法力消耗（当前规则仅攻击类功法需要消耗） */
+    if (resolveGongfaSubtype(item, meta) === "辅助") return "";
     var c0 = toFiniteNumberOrNull(item && item.manacost);
     var c1 = toFiniteNumberOrNull(meta && meta.manacost);
     var cost = c0 != null ? c0 : c1;
     if (cost == null) return "";
-    return String(Math.max(0, Math.round(cost)));
+    if (showRealmDetail === false) return String(Math.max(0, Math.round(cost)));
+    var ratio = getRealmEquipBonusRatioFromRealmObj(realmForScale);
+    var b0 = toFiniteNumberOrNull(item && item.baseManacost);
+    var b1 = toFiniteNumberOrNull(meta && meta.manacost);
+    var base =
+      b0 != null
+        ? Math.max(1, Math.round(b0))
+        : b1 != null
+          ? Math.max(1, Math.round(b1))
+          : Math.max(1, Math.round(Number(cost) / ratio));
+    var realmAdd = Math.max(0, Math.round(cost) - base);
+    return String(base) + "（境界加成 +" + String(realmAdd) + "）";
   }
 
   /** stuff 品阶（下品…）→ 与逆天改命槽位 data-rarity 相同的键，供 CSS 复用 */
@@ -2755,6 +2794,24 @@
     if (entry.grade != null && String(entry.grade).trim() !== "") o.grade = String(entry.grade).trim();
     if (typeof entry.value === "number" && isFinite(entry.value)) {
       o.value = Math.max(0, Math.floor(entry.value));
+    }
+    var SS = global.MjDescribeSpiritStones;
+    if (SS && typeof SS === "object" && Object.prototype.hasOwnProperty.call(SS, name)) {
+      var ssRow = SS[name];
+      if (ssRow && typeof ssRow === "object") {
+        if (o.grade == null || String(o.grade).trim() === "") {
+          if (ssRow.grade != null && String(ssRow.grade).trim() !== "") o.grade = String(ssRow.grade).trim();
+        }
+        if (typeof o.value !== "number" || !isFinite(o.value)) {
+          if (typeof ssRow.value === "number" && isFinite(ssRow.value)) o.value = Math.max(0, Math.floor(ssRow.value));
+        }
+        if (o.desc == null || String(o.desc).trim() === "") {
+          if (ssRow.desc != null && String(ssRow.desc).trim() !== "") o.desc = String(ssRow.desc).trim();
+        }
+        if (o.type == null || String(o.type).trim() === "") {
+          o.type = "材料";
+        }
+      }
     }
     /** 储物袋功法书必须保留 type=功法 且不得带 equipType，否则会被判成装备、无法打开功法详情与装入功法栏 */
     if (entry.type != null && String(entry.type).trim() === "功法") {

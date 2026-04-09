@@ -15,11 +15,439 @@
   var OPS_TAG_CLOSE = "</mj_inventory_ops>";
   var WORLD_STATE_TAG_OPEN = "<mj_world_state>";
   var WORLD_STATE_TAG_CLOSE = "</mj_world_state>";
+  var USER_STATE_TAG_OPEN = "<mj_user_state>";
+  var USER_STATE_TAG_CLOSE = "</mj_user_state>";
   /** 周围人物完整列表替换（可选标签；省略则不改 G.nearbyNpcs） */
   var NPC_NEARBY_TAG_OPEN = "<mj_nearby_npcs>";
   var NPC_NEARBY_TAG_CLOSE = "</mj_nearby_npcs>";
   var BATTLE_TRIGGER_TAG_OPEN = "<mj_battle_trigger>";
   var BATTLE_TRIGGER_TAG_CLOSE = "</mj_battle_trigger>";
+  var SPIRIT_STONE_TAG_OPEN = "<mj_spirit_stone_ops>";
+  var SPIRIT_STONE_TAG_CLOSE = "</mj_spirit_stone_ops>";
+  var ITEM_ADD_TAG_OPEN = "<mj_item_add_ops>";
+  var ITEM_ADD_TAG_CLOSE = "</mj_item_add_ops>";
+  var ITEM_REMOVE_TAG_OPEN = "<mj_item_remove_ops>";
+  var ITEM_REMOVE_TAG_CLOSE = "</mj_item_remove_ops>";
+  /**
+   * 9.1 品阶属性基准（表外装备/功法请贴近此量级）
+   * 每项为 [最小值, 最大值]。
+   */
+  var QUALITY_ATTR_BASELINE_MAP = {
+    下品: { 血量: [10, 50], 法力: [5, 25], 物攻: [5, 10], 物防: [1, 5], 法攻: [5, 10], 法防: [1, 5], 脚力: [5, 10], 神识: [5, 10] },
+    中品: { 血量: [50, 100], 法力: [25, 50], 物攻: [10, 20], 物防: [5, 10], 法攻: [10, 20], 法防: [5, 10], 脚力: [10, 20], 神识: [10, 25] },
+    上品: { 血量: [100, 200], 法力: [50, 100], 物攻: [20, 30], 物防: [10, 15], 法攻: [20, 30], 法防: [10, 15], 脚力: [20, 30], 神识: [25, 50] },
+    极品: { 血量: [200, 300], 法力: [100, 150], 物攻: [30, 40], 物防: [15, 20], 法攻: [30, 40], 法防: [15, 20], 脚力: [30, 40], 神识: [50, 75] },
+    仙品: { 血量: [300, 500], 法力: [150, 200], 物攻: [40, 50], 物防: [20, 25], 法攻: [40, 50], 法防: [20, 25], 脚力: [40, 50], 神识: [75, 100] },
+  };
+  /** 灵石价值映射（按品阶） */
+  var SPIRIT_STONE_VALUE_MAP = {
+    下品: 10,
+    中品: 100,
+    上品: 1000,
+    极品: 10000,
+    仙品: 100000,
+  };
+  /** 物品品阶价值映射（按品阶） */
+  var ITEM_GRADE_VALUE_MAP = {
+    下品: [10, 100],
+    中品: [100, 1000],
+    上品: [1000, 10000],
+    极品: [10000, 100000],
+    仙品: [100000, 1000000],
+  };
+  /** 伤害倍率品阶映射（按品阶） */
+  var ITEM_GRADE_DAMAGE_MULTIPLIER_MAP = {
+    下品: [1.0, 1.1],
+    中品: [1.1, 1.3],
+    上品: [1.3, 1.6],
+    极品: [1.6, 2.0],
+    仙品: [2.0, 2.5],
+  };
+  var SPIRIT_STONE_GRADE_ORDER = ["仙品", "极品", "上品", "中品", "下品"];
+  var SPIRIT_STONE_NAME_TO_GRADE = {
+    下品灵石: "下品",
+    中品灵石: "中品",
+    上品灵石: "上品",
+    极品灵石: "极品",
+    仙品灵石: "仙品",
+  };
+  /** 突破丹药按品阶提供的概率加成区间（单位：%） */
+  var BREAKTHROUGH_PILL_GRADE_BONUS_RANGE_MAP = {
+    中品: [10, 15],
+    上品: [15, 20],
+    极品: [20, 25],
+    仙品: [25, 30],
+  };
+  /** 突破丹药按品阶对应的境界突破方向 */
+  var BREAKTHROUGH_PILL_ROUTE_BY_GRADE = {
+    中品: { from: "练气", to: "筑基" },
+    上品: { from: "筑基", to: "结丹" },
+    极品: { from: "结丹", to: "元婴" },
+    仙品: { from: "元婴", to: "化神" },
+  };
+  function lowerSpiritStoneValueUnit() {
+    return SPIRIT_STONE_VALUE_MAP.下品;
+  }
+  function randomIntInRange(min, max) {
+    var a = Math.floor(Number(min));
+    var b = Math.floor(Number(max));
+    if (!isFinite(a) || !isFinite(b)) return 0;
+    if (a > b) {
+      var t = a;
+      a = b;
+      b = t;
+    }
+    return a + Math.floor(Math.random() * (b - a + 1));
+  }
+  function randomFloatInRange(min, max, digits) {
+    var a = Number(min);
+    var b = Number(max);
+    if (!isFinite(a) || !isFinite(b)) return 0;
+    if (a > b) {
+      var t = a;
+      a = b;
+      b = t;
+    }
+    var n = a + Math.random() * (b - a);
+    var d = typeof digits === "number" && isFinite(digits) ? Math.max(0, Math.floor(digits)) : 2;
+    var p = Math.pow(10, d);
+    return Math.round(n * p) / p;
+  }
+  function isSpiritStoneName(name) {
+    var nm = name != null ? String(name).trim() : "";
+    return Object.prototype.hasOwnProperty.call(SPIRIT_STONE_NAME_TO_GRADE, nm);
+  }
+  function spiritStoneUnitValueByName(name) {
+    var nm = name != null ? String(name).trim() : "";
+    var g = SPIRIT_STONE_NAME_TO_GRADE[nm];
+    return g && typeof SPIRIT_STONE_VALUE_MAP[g] === "number" ? SPIRIT_STONE_VALUE_MAP[g] : 0;
+  }
+  function spiritStoneNameByGrade(grade) {
+    var g = grade != null ? String(grade).trim() : "";
+    return g ? g + "灵石" : "";
+  }
+  function calcSpiritStoneTotalValueInBag(G) {
+    ensureInventoryShape(G);
+    var total = 0;
+    for (var i = 0; i < G.inventorySlots.length; i++) {
+      var c = G.inventorySlots[i];
+      if (!c || !isSpiritStoneName(c.name)) continue;
+      var u = spiritStoneUnitValueByName(c.name);
+      if (u <= 0) continue;
+      var cnt = typeof c.count === "number" && isFinite(c.count) ? Math.max(1, Math.floor(c.count)) : 1;
+      total += u * cnt;
+    }
+    return total;
+  }
+  function clearSpiritStoneFromBag(G) {
+    ensureInventoryShape(G);
+    for (var i = 0; i < G.inventorySlots.length; i++) {
+      var c = G.inventorySlots[i];
+      if (c && isSpiritStoneName(c.name)) G.inventorySlots[i] = null;
+    }
+  }
+  function getSpiritStoneCountsByGrade(G) {
+    ensureInventoryShape(G);
+    var counts = { 下品: 0, 中品: 0, 上品: 0, 极品: 0, 仙品: 0 };
+    for (var i = 0; i < G.inventorySlots.length; i++) {
+      var c = G.inventorySlots[i];
+      if (!c || !isSpiritStoneName(c.name)) continue;
+      var g = SPIRIT_STONE_NAME_TO_GRADE[String(c.name).trim()];
+      if (!g) continue;
+      var cnt = typeof c.count === "number" && isFinite(c.count) ? Math.max(1, Math.floor(c.count)) : 1;
+      counts[g] += cnt;
+    }
+    return counts;
+  }
+  function writeSpiritStoneCountsByGrade(G, counts) {
+    clearSpiritStoneFromBag(G);
+    for (var i = 0; i < SPIRIT_STONE_GRADE_ORDER.length; i++) {
+      var grade = SPIRIT_STONE_GRADE_ORDER[i];
+      var cnt = counts && typeof counts[grade] === "number" && isFinite(counts[grade]) ? Math.floor(counts[grade]) : 0;
+      if (cnt <= 0) continue;
+      tryPlaceItemInBag(G, {
+        name: spiritStoneNameByGrade(grade),
+        count: cnt,
+        grade: grade,
+        value: SPIRIT_STONE_VALUE_MAP[grade],
+        type: "材料",
+      });
+    }
+  }
+  function spiritStoneGradeAsc() {
+    return ["下品", "中品", "上品", "极品", "仙品"];
+  }
+  function findGradeIndexAsc(grade) {
+    var arr = spiritStoneGradeAsc();
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i] === grade) return i;
+    }
+    return -1;
+  }
+  function removeSpiritStoneWithChange(G, name, count) {
+    var grade = SPIRIT_STONE_NAME_TO_GRADE[name];
+    if (!grade) return { ok: false, reason: "灵石名称不合法" };
+    var cnt = typeof count === "number" && isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
+    var needValue = spiritStoneUnitValueByName(name) * cnt;
+    if (needValue <= 0) return { ok: false, reason: "灵石单价无效" };
+    var beforeTotal = calcSpiritStoneTotalValueInBag(G);
+    if (beforeTotal <= 0) return { ok: true, removedValue: 0 };
+    if (needValue >= beforeTotal) {
+      clearSpiritStoneFromBag(G);
+      return { ok: true, removedValue: beforeTotal };
+    }
+    var counts = getSpiritStoneCountsByGrade(G);
+    var asc = spiritStoneGradeAsc();
+    var denoms = [10, 100, 1000, 10000, 100000];
+    var need = needValue;
+    while (need > 0) {
+      var progressed = false;
+      for (var i = 0; i < asc.length; i++) {
+        var g = asc[i];
+        var d = denoms[i];
+        if (d > need) break;
+        var canUse = Math.min(counts[g], Math.floor(need / d));
+        if (canUse > 0) {
+          counts[g] -= canUse;
+          need -= canUse * d;
+          progressed = true;
+        }
+      }
+      if (need <= 0) break;
+      var broke = false;
+      for (var j = 1; j < asc.length; j++) {
+        if (counts[asc[j]] > 0) {
+          counts[asc[j]] -= 1;
+          counts[asc[j - 1]] += 10;
+          broke = true;
+          progressed = true;
+          break;
+        }
+      }
+      if (!broke || !progressed) break;
+    }
+    if (need > 0) {
+      clearSpiritStoneFromBag(G);
+      return { ok: true, removedValue: beforeTotal };
+    }
+    writeSpiritStoneCountsByGrade(G, counts);
+    return { ok: true, removedValue: needValue };
+  }
+  function applySpiritStoneDeltaByValue(G, name, count, isAdd) {
+    var nm = name != null ? String(name).trim() : "";
+    var cnt = typeof count === "number" && isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
+    if (!isSpiritStoneName(nm)) return { ok: false, reason: "灵石名称不合法" };
+    if (isAdd) {
+      if (
+        tryPlaceItemInBag(G, {
+          name: nm,
+          count: cnt,
+          grade: SPIRIT_STONE_NAME_TO_GRADE[nm],
+          value: spiritStoneUnitValueByName(nm),
+          type: "材料",
+        })
+      ) {
+        return { ok: true };
+      }
+      return { ok: false, reason: "储物袋已满或无法放置灵石" };
+    }
+    return removeSpiritStoneWithChange(G, nm, cnt);
+  }
+  function fillRandomValueByGrade(grade) {
+    var g = grade != null ? String(grade).trim() : "";
+    var r = ITEM_GRADE_VALUE_MAP[g];
+    if (!Array.isArray(r) || r.length < 2) return undefined;
+    var base = Math.max(1, r[0]);
+    var lo = Math.ceil(r[0] / base);
+    var hi = Math.floor(r[1] / base);
+    if (lo > hi) hi = lo;
+    return randomIntInRange(lo, hi) * base;
+  }
+  function getAttrRandomByGrade(grade, key) {
+    var g = grade != null ? String(grade).trim() : "";
+    var row = QUALITY_ATTR_BASELINE_MAP[g];
+    if (!row || !row[key] || !Array.isArray(row[key])) return undefined;
+    return randomIntInRange(row[key][0], row[key][1]);
+  }
+  function getAttrRangeByGrade(grade, key) {
+    var g = grade != null ? String(grade).trim() : "";
+    var row = QUALITY_ATTR_BASELINE_MAP[g];
+    if (!row || !row[key] || !Array.isArray(row[key]) || row[key].length < 2) return null;
+    var a = Number(row[key][0]);
+    var b = Number(row[key][1]);
+    if (!isFinite(a) || !isFinite(b)) return null;
+    if (a > b) {
+      var t = a;
+      a = b;
+      b = t;
+    }
+    return [Math.floor(a), Math.floor(b)];
+  }
+  function getDamageMultiplierByGrade(grade) {
+    var g = grade != null ? String(grade).trim() : "";
+    var r = ITEM_GRADE_DAMAGE_MULTIPLIER_MAP[g];
+    if (!Array.isArray(r) || r.length < 2) return undefined;
+    return randomFloatInRange(r[0], r[1], 2);
+  }
+  function inferGongfaSubtype(op) {
+    var st = op && op.subtype != null ? String(op.subtype).trim() : "";
+    if (!st && op && op.subType != null) st = String(op.subType).trim();
+    var t = op && op.type != null ? String(op.type).trim() : "";
+    if (!st && (t === "攻击功法" || t === "攻击")) st = "攻击";
+    if (!st && (t === "辅助功法" || t === "辅助")) st = "辅助";
+    return st;
+  }
+  function ensurePillRecoverEffectsByGrade(p, grade) {
+    if (!p || typeof p !== "object") return;
+    var hasBreakthrough =
+      (Array.isArray(p.breakthrough) && p.breakthrough.length > 0) ||
+      (p.effects &&
+        typeof p.effects === "object" &&
+        Array.isArray(p.effects.breakthrough) &&
+        p.effects.breakthrough.length > 0);
+    if (hasBreakthrough) return;
+    var hpRange = getAttrRangeByGrade(grade, "血量");
+    var mpRange = getAttrRangeByGrade(grade, "法力");
+    if (!hpRange && !mpRange) return;
+    var effects = p.effects && typeof p.effects === "object" ? Object.assign({}, p.effects) : {};
+    var recover = effects.recover && typeof effects.recover === "object" ? Object.assign({}, effects.recover) : {};
+    if (!(typeof recover.hp === "number" && isFinite(recover.hp) && recover.hp > 0) && hpRange) {
+      recover.hp = randomIntInRange(hpRange[0], hpRange[1]);
+    }
+    if (!(typeof recover.mp === "number" && isFinite(recover.mp) && recover.mp > 0) && mpRange) {
+      recover.mp = randomIntInRange(mpRange[0], mpRange[1]);
+    }
+    if (
+      (typeof recover.hp === "number" && isFinite(recover.hp) && recover.hp > 0) ||
+      (typeof recover.mp === "number" && isFinite(recover.mp) && recover.mp > 0)
+    ) {
+      effects.recover = recover;
+      p.effects = effects;
+    }
+  }
+  function getBreakthroughBonusRangeByGrade(grade) {
+    var g = grade != null ? String(grade).trim() : "";
+    var r = BREAKTHROUGH_PILL_GRADE_BONUS_RANGE_MAP[g];
+    if (!Array.isArray(r) || r.length < 2) return null;
+    return [Math.floor(r[0]), Math.floor(r[1])];
+  }
+  function getBreakthroughRouteByGrade(grade) {
+    var g = grade != null ? String(grade).trim() : "";
+    if (!g) return null;
+    return BREAKTHROUGH_PILL_ROUTE_BY_GRADE[g] || null;
+  }
+  function ensureBreakthroughPillEffects(payload, raw) {
+    if (!payload || typeof payload !== "object") return;
+    var p = payload;
+    var src = raw && typeof raw === "object" ? raw : {};
+    var rawType = src.type != null ? String(src.type).trim() : "";
+    var payloadType = p.type != null ? String(p.type).trim() : "";
+    var hasExistingBreakthrough =
+      (Array.isArray(src.breakthrough) && src.breakthrough.length > 0) ||
+      (src.effects &&
+        typeof src.effects === "object" &&
+        Array.isArray(src.effects.breakthrough) &&
+        src.effects.breakthrough.length > 0) ||
+      (Array.isArray(p.breakthrough) && p.breakthrough.length > 0) ||
+      (p.effects &&
+        typeof p.effects === "object" &&
+        Array.isArray(p.effects.breakthrough) &&
+        p.effects.breakthrough.length > 0);
+    var shouldTreatAsBreakthroughPill =
+      rawType === "突破丹药" || payloadType === "突破丹药" || hasExistingBreakthrough;
+    if (!shouldTreatAsBreakthroughPill) return;
+    var g = p.grade != null ? String(p.grade).trim() : "";
+    var route = getBreakthroughRouteByGrade(g);
+    var range = getBreakthroughBonusRangeByGrade(g);
+    if (!route || !range) return;
+    var bonusPercent = randomIntInRange(range[0], range[1]);
+    var bonusRatio = bonusPercent / 100;
+    var eff = p.effects && typeof p.effects === "object" ? Object.assign({}, p.effects) : {};
+    eff.breakthrough = [{ from: route.from, to: route.to, chanceBonus: bonusRatio }];
+    p.effects = eff;
+    p.breakthrough = eff.breakthrough;
+    p.type = "丹药";
+    if (!p.desc || String(p.desc).trim() === "") {
+      p.desc = "用于" + route.from + "突破" + route.to + "，可提升约" + bonusPercent + "%成功率。";
+    }
+  }
+  function ensureGeneratedItemStats(payload, raw) {
+    if (!payload || typeof payload !== "object") return payload;
+    var p = payload;
+    var g = p.grade != null ? String(p.grade).trim() : "";
+    if (!g) return p;
+    if (typeof p.value !== "number" || !isFinite(p.value)) {
+      var rv = fillRandomValueByGrade(g);
+      if (typeof rv === "number" && isFinite(rv)) p.value = rv;
+    }
+    var et = p.equipType != null ? String(p.equipType).trim() : "";
+    var bt = p.type != null ? String(p.type).trim() : "";
+    var subtype = inferGongfaSubtype(raw || p);
+    if (!p.bonus || typeof p.bonus !== "object") p.bonus = {};
+    if (et === "武器" || bt === "武器") {
+      var wb =
+        typeof p.bonus.物攻 === "number" && isFinite(p.bonus.物攻) && p.bonus.物攻 > 0
+          ? p.bonus.物攻
+          : getAttrRandomByGrade(g, "物攻") || 1;
+      p.bonus = { 物攻: wb };
+      if (!p.magnification || typeof p.magnification !== "object") p.magnification = {};
+      var wm = typeof p.magnification.物攻 === "number" && isFinite(p.magnification.物攻) ? p.magnification.物攻 : null;
+      p.magnification = { 物攻: wm != null ? wm : getDamageMultiplierByGrade(g) || 1.0 };
+    } else if (et === "法器" || bt === "法器") {
+      if (!(typeof p.bonus.法攻 === "number" && isFinite(p.bonus.法攻) && p.bonus.法攻 > 0)) {
+        p.bonus.法攻 = getAttrRandomByGrade(g, "法攻") || 1;
+      }
+      if (!(typeof p.bonus.法力 === "number" && isFinite(p.bonus.法力) && p.bonus.法力 > 0)) {
+        p.bonus.法力 = getAttrRandomByGrade(g, "法力") || 1;
+      }
+    } else if (et === "防具" || bt === "防具") {
+      if (!(typeof p.bonus.物防 === "number" && isFinite(p.bonus.物防) && p.bonus.物防 > 0)) {
+        p.bonus.物防 = getAttrRandomByGrade(g, "物防") || 1;
+      }
+      if (!(typeof p.bonus.法防 === "number" && isFinite(p.bonus.法防) && p.bonus.法防 > 0)) {
+        p.bonus.法防 = getAttrRandomByGrade(g, "法防") || 1;
+      }
+    } else if (bt === "载具") {
+      if (!(typeof p.bonus.脚力 === "number" && isFinite(p.bonus.脚力) && p.bonus.脚力 > 0)) {
+        p.bonus.脚力 = getAttrRandomByGrade(g, "脚力") || 1;
+      }
+    } else if (bt === "丹药") {
+      // 先识别突破丹药并写入 effects.breakthrough，避免后续被当作普通恢复丹药补 recover。
+      ensureBreakthroughPillEffects(p, raw || p);
+      ensurePillRecoverEffectsByGrade(p, g);
+    } else if (bt === "功法") {
+      if (subtype === "攻击") {
+        var gb =
+          typeof p.bonus.法攻 === "number" && isFinite(p.bonus.法攻) && p.bonus.法攻 > 0
+            ? p.bonus.法攻
+            : getAttrRandomByGrade(g, "法攻") || 1;
+        p.bonus = { 法攻: gb };
+        if (!p.magnification || typeof p.magnification !== "object") p.magnification = {};
+        var gm = typeof p.magnification.法攻 === "number" && isFinite(p.magnification.法攻) ? p.magnification.法攻 : null;
+        p.magnification = { 法攻: gm != null ? gm : getDamageMultiplierByGrade(g) || 1.0 };
+        var mpRangeAtk = getAttrRangeByGrade(g, "法力");
+        if (mpRangeAtk) {
+          if (!(typeof p.manacost === "number" && isFinite(p.manacost))) {
+            p.manacost = randomIntInRange(mpRangeAtk[0], mpRangeAtk[1]);
+          } else {
+            p.manacost = Math.max(mpRangeAtk[0], Math.min(mpRangeAtk[1], Math.round(p.manacost)));
+          }
+        } else if (!(typeof p.manacost === "number" && isFinite(p.manacost))) {
+          p.manacost = 1;
+        }
+      } else if (subtype === "辅助") {
+        if (!(typeof p.bonus.法力 === "number" && isFinite(p.bonus.法力) && p.bonus.法力 > 0)) {
+          p.bonus.法力 = getAttrRandomByGrade(g, "法力") || 1;
+        }
+        if (!(typeof p.bonus.神识 === "number" && isFinite(p.bonus.神识) && p.bonus.神识 > 0)) {
+          p.bonus.神识 = getAttrRandomByGrade(g, "神识") || 1;
+        }
+      }
+    }
+    if (p.bonus && typeof p.bonus === "object" && !Object.keys(p.bonus).length) delete p.bonus;
+    ensureBreakthroughPillEffects(p, raw || p);
+    return p;
+  }
   function getStateRulesApi() {
     return global.MortalJourneyStateRules;
   }
@@ -39,6 +467,8 @@
       OPS_TAG_CLOSE: OPS_TAG_CLOSE,
       WORLD_STATE_TAG_OPEN: WORLD_STATE_TAG_OPEN,
       WORLD_STATE_TAG_CLOSE: WORLD_STATE_TAG_CLOSE,
+      USER_STATE_TAG_OPEN: USER_STATE_TAG_OPEN,
+      USER_STATE_TAG_CLOSE: USER_STATE_TAG_CLOSE,
       NPC_NEARBY_TAG_OPEN: NPC_NEARBY_TAG_OPEN,
       NPC_NEARBY_TAG_CLOSE: NPC_NEARBY_TAG_CLOSE,
       NPC_STORY_HINTS_TAG_OPEN:
@@ -57,6 +487,12 @@
         global.MortalJourneyStoryChat && global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
           ? global.MortalJourneyStoryChat.BATTLE_TRIGGER_TAG_CLOSE
           : BATTLE_TRIGGER_TAG_CLOSE,
+      SPIRIT_STONE_TAG_OPEN: SPIRIT_STONE_TAG_OPEN,
+      SPIRIT_STONE_TAG_CLOSE: SPIRIT_STONE_TAG_CLOSE,
+      ITEM_ADD_TAG_OPEN: ITEM_ADD_TAG_OPEN,
+      ITEM_ADD_TAG_CLOSE: ITEM_ADD_TAG_CLOSE,
+      ITEM_REMOVE_TAG_OPEN: ITEM_REMOVE_TAG_OPEN,
+      ITEM_REMOVE_TAG_CLOSE: ITEM_REMOVE_TAG_CLOSE,
     };
   }
 
@@ -648,6 +1084,7 @@
 
     var desc = "";
     if (op.desc != null && String(op.desc).trim() !== "") desc = String(op.desc).trim();
+    else if (op.intro != null && String(op.intro).trim() !== "") desc = String(op.intro).trim();
     else if (base && base.desc) desc = String(base.desc);
 
     var grade = "";
@@ -666,10 +1103,16 @@
       var top = String(op.type).trim();
       if (isWearSlotEquipType(top)) {
         if (!equipType) equipType = top;
+      } else if (top === "攻击功法" || top === "辅助功法") {
+        bagType = "功法";
+        if (!op.subtype && !op.subType) op.subtype = top === "攻击功法" ? "攻击" : "辅助";
+      } else if (top === "突破丹药") {
+        bagType = "丹药";
       } else {
         bagType = top;
       }
     }
+    var gfSubtype = inferGongfaSubtype(op);
     if (!bagType && st && st.type != null && String(st.type).trim() !== "" && !eq) {
       bagType = String(st.type).trim();
     }
@@ -682,6 +1125,9 @@
       valueNum = Math.max(0, Math.floor(op.value));
     } else if (base && typeof base.value === "number" && isFinite(base.value)) {
       valueNum = Math.floor(base.value);
+    } else {
+      var randomValue = fillRandomValueByGrade(grade);
+      if (typeof randomValue === "number" && isFinite(randomValue)) valueNum = randomValue;
     }
 
     var mergedBonus = {};
@@ -718,6 +1164,7 @@
         };
         if (typeof valueNum === "number") pay.value = valueNum;
         if (bagType) pay.type = bagType;
+        if (bagType === "功法" && gfSubtype) pay.subtype = gfSubtype;
         if (bonusOut) pay.bonus = bonusOut;
         if (effectsOut) pay.effects = effectsOut;
         if (typeof op.manacost === "number" && isFinite(op.manacost)) {
@@ -740,7 +1187,7 @@
         if (magPayOp) pay.magnification = Object.assign({}, magPayOp);
         else if (magPayEq) pay.magnification = Object.assign({}, magPayEq);
         else if (magPayGf) pay.magnification = Object.assign({}, magPayGf);
-        return pay;
+        return ensureGeneratedItemStats(pay, op);
       }
     }
 
@@ -753,6 +1200,7 @@
     };
     if (typeof valueNum === "number") out.value = valueNum;
     if (bagType) out.type = bagType;
+    if (bagType === "功法" && gfSubtype) out.subtype = gfSubtype;
     if (bonusOut) out.bonus = bonusOut;
     if (effectsOut) out.effects = effectsOut;
     if (typeof op.manacost === "number" && isFinite(op.manacost)) {
@@ -775,19 +1223,7 @@
     if (magOutOp) out.magnification = Object.assign({}, magOutOp);
     else if (magOutEq) out.magnification = Object.assign({}, magOutEq);
     else if (magOutGf) out.magnification = Object.assign({}, magOutGf);
-    return out;
-  }
-
-  /**
-   * 可引用物品表中「下品灵石」单颗在灵石等价刻度轴上的 value（与杂物/装备 value 同轴）。
-   * 用于提示模型：合计刻度 ÷ 此数 ≈ 应发下品灵石颗数，避免把刻度直接当颗数。
-   */
-  function lowerSpiritStoneValueUnit() {
-    var s = global.MjDescribeSpiritStones && global.MjDescribeSpiritStones["下品灵石"];
-    if (s && typeof s.value === "number" && isFinite(s.value) && s.value > 0) {
-      return Math.max(1, Math.floor(s.value));
-    }
-    return 10;
+    return ensureGeneratedItemStats(out, op);
   }
 
   function buildDefaultStateSystemPrompt() {
@@ -837,18 +1273,8 @@
       parts.push("### 补充说明");
       parts.push(String(o.extraUserHint).trim());
     }
-    parts.push("### 变量操作（储物袋）");
-    parts.push(buildDefaultOutputRules());
-    var lsv = lowerSpiritStoneValueUnit();
-    parts.push(
-      "■ 【折算下品灵石】各物 value 为「灵石等价刻度」，与同表「下品灵石」的 value 同一数轴，不是下品灵石的颗数。单颗下品灵石在表中的刻度为 " +
-        lsv +
-        "。剧情按战利品、收购等价折算发放下品灵石时：add 下品灵石的 count = 对 (战利品等合计刻度 ÷ " +
-        lsv +
-        ") 四舍五入后的整数；禁止把「合计刻度」直接当作 count。例：刻度合计 202、基数 " +
-        lsv +
-        " → 应收约 20 颗（四舍五入），不可 add 202。若正文明确写了「N 块下品灵石」则以 N 为准。",
-    );
+    // parts.push("### 变量操作（储物袋）");
+    // parts.push(buildDefaultOutputRules());
     return parts.join("\n");
   }
 
@@ -867,17 +1293,6 @@
     var lsv = lowerSpiritStoneValueUnit();
     var baseSystemPrompt = buildDefaultStateSystemPrompt();
     var sys = custom ? custom + "\n\n---\n\n" + baseSystemPrompt : baseSystemPrompt;
-    sys +=
-      "\n【铁律 · 续】折算下品灵石：单颗下品灵石刻度为 " +
-      lsv +
-      "（与 items 表一致）。战利品等合计刻度 ÷ " +
-      lsv +
-      " 四舍五入 = 应 add 下品灵石 count；禁止刻度合计当颗数（例 202 刻度 → 约 20 颗，非 202）。" +
-      "\n【铁律 · 续】世界时间：须输出 " +
-      WORLD_STATE_TAG_OPEN +
-      ' {"worldTimeString":"…","currentLocation":"…"} ' +
-      WORLD_STATE_TAG_CLOSE +
-      "；worldTimeString 不得早于 user 快照（程序会拒绝倒流）。";
     messages.push({ role: "system", content: sys });
     messages.push({ role: "user", content: buildInventoryStateUserContent(o) });
     return messages;
@@ -887,6 +1302,76 @@
     var t = String(s || "").trim();
     var m = /^```(?:json)?\s*([\s\S]*?)\s*```$/im.exec(t);
     return m ? m[1].trim() : t;
+  }
+  function readTaggedJsonArray(raw, tagOpen, tagClose) {
+    var open = String(tagOpen || "").trim();
+    var close = String(tagClose || "").trim();
+    if (!open || !close) return { ok: false, found: false, arr: [], error: "标签配置缺失" };
+    var esc = function (x) {
+      return x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    };
+    var re = new RegExp(esc(open) + "\\s*([\\s\\S]*?)\\s*" + esc(close), "i");
+    var m = re.exec(String(raw || ""));
+    if (!m) return { ok: false, found: false, arr: [], error: null };
+    var inner = stripJsonFence(m[1].trim());
+    try {
+      var parsed = JSON.parse(inner);
+      if (!Array.isArray(parsed)) {
+        return { ok: false, found: true, arr: [], error: open + " 内须为 JSON 数组" };
+      }
+      return { ok: true, found: true, arr: parsed, error: null };
+    } catch (e) {
+      return {
+        ok: false,
+        found: true,
+        arr: [],
+        error: open + " JSON：" + (e && e.message ? String(e.message) : "解析失败"),
+      };
+    }
+  }
+  function parseInventoryOpsBySplitTags(text) {
+    var raw = String(text || "");
+    var ss = readTaggedJsonArray(raw, SPIRIT_STONE_TAG_OPEN, SPIRIT_STONE_TAG_CLOSE);
+    var ia = readTaggedJsonArray(raw, ITEM_ADD_TAG_OPEN, ITEM_ADD_TAG_CLOSE);
+    var ir = readTaggedJsonArray(raw, ITEM_REMOVE_TAG_OPEN, ITEM_REMOVE_TAG_CLOSE);
+    var any = ss.found || ia.found || ir.found;
+    if (!any) return { ok: false, ops: [], error: "未找到新规则标签", parseVia: null };
+    var errs = [];
+    if (ss.found && !ss.ok) errs.push(ss.error);
+    if (ia.found && !ia.ok) errs.push(ia.error);
+    if (ir.found && !ir.ok) errs.push(ir.error);
+    if (errs.length) return { ok: false, ops: [], error: errs.join("；"), parseVia: "split_tags" };
+    var ops = [];
+    if (ss.ok) {
+      for (var i = 0; i < ss.arr.length; i++) {
+        var a = ss.arr[i];
+        if (!a || typeof a !== "object") continue;
+        ops.push({
+          op: a.op != null ? String(a.op).trim().toLowerCase() : "add",
+          name: a.name,
+          count: a.count,
+        });
+      }
+    }
+    if (ia.ok) {
+      for (var j = 0; j < ia.arr.length; j++) {
+        var b = ia.arr[j];
+        if (!b || typeof b !== "object") continue;
+        var addOp = Object.assign({}, b);
+        addOp.op = "add";
+        ops.push(addOp);
+      }
+    }
+    if (ir.ok) {
+      for (var k = 0; k < ir.arr.length; k++) {
+        var c = ir.arr[k];
+        if (!c || typeof c !== "object") continue;
+        var rmOp = Object.assign({}, c);
+        rmOp.op = "remove";
+        ops.push(rmOp);
+      }
+    }
+    return { ok: true, ops: ops, error: null, parseVia: "split_tags" };
   }
 
   /**
@@ -942,6 +1427,9 @@
   function parseInventoryOpsFromText(text) {
     var raw = String(text || "");
     var errBits = [];
+    var split = parseInventoryOpsBySplitTags(raw);
+    if (split.ok) return split;
+    if (split.parseVia === "split_tags" && split.error) errBits.push(split.error);
 
     var tagRe = /<mj_inventory_ops\s*>\s*([\s\S]*?)\s*<\/mj_inventory_ops\s*>/i;
     var tm = tagRe.exec(raw);
@@ -1013,6 +1501,35 @@
         ok: false,
         patch: null,
         error: "mj_world_state JSON：" + (e && e.message ? String(e.message) : "解析失败"),
+        parseVia: "tag",
+      };
+    }
+  }
+
+  /**
+   * @param {string} text
+   * @returns {{ ok: boolean, patch: Object|null, absent: boolean, error?: string, parseVia?: string }}
+   */
+  function parseUserStateFromText(text) {
+    var raw = String(text || "");
+    var tagRe = /<mj_user_state\s*>\s*([\s\S]*?)\s*<\/mj_user_state\s*>/i;
+    var tm = tagRe.exec(raw);
+    if (!tm) {
+      return { ok: false, patch: null, absent: true, error: null, parseVia: null };
+    }
+    var inner = stripJsonFence(tm[1].trim());
+    try {
+      var parsed = JSON.parse(inner);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { ok: false, patch: null, absent: false, error: "mj_user_state 内须为 JSON 对象", parseVia: "tag" };
+      }
+      return { ok: true, patch: parsed, absent: false, parseVia: "tag" };
+    } catch (e) {
+      return {
+        ok: false,
+        patch: null,
+        absent: false,
+        error: "mj_user_state JSON：" + (e && e.message ? String(e.message) : "解析失败"),
         parseVia: "tag",
       };
     }
@@ -1091,6 +1608,38 @@
     return out;
   }
 
+  /**
+   * 仅应用主角血量/法力状态（新规则：独立 user_state 标签）
+   * @param {Object} G
+   * @param {Object} patch
+   * @returns {{ appliedHp:boolean, appliedMp:boolean }}
+   */
+  function applyUserStatePatch(G, patch) {
+    var out = { appliedHp: false, appliedMp: false };
+    if (!G || !patch || typeof patch !== "object") return out;
+    var maxHpNow =
+      typeof G.maxHp === "number" && isFinite(G.maxHp)
+        ? Math.max(1, Math.floor(G.maxHp))
+        : G.playerBase && typeof G.playerBase.hp === "number" && isFinite(G.playerBase.hp)
+          ? Math.max(1, Math.floor(G.playerBase.hp))
+          : 1;
+    var maxMpNow =
+      typeof G.maxMp === "number" && isFinite(G.maxMp)
+        ? Math.max(1, Math.floor(G.maxMp))
+        : G.playerBase && typeof G.playerBase.mp === "number" && isFinite(G.playerBase.mp)
+          ? Math.max(1, Math.floor(G.playerBase.mp))
+          : 1;
+    if (patch.currentHp != null && typeof patch.currentHp === "number" && isFinite(patch.currentHp)) {
+      G.currentHp = Math.max(0, Math.min(maxHpNow, Math.floor(patch.currentHp)));
+      out.appliedHp = true;
+    }
+    if (patch.currentMp != null && typeof patch.currentMp === "number" && isFinite(patch.currentMp)) {
+      G.currentMp = Math.max(0, Math.min(maxMpNow, Math.floor(patch.currentMp)));
+      out.appliedMp = true;
+    }
+    return out;
+  }
+
   function padSlotArrayToLen(arr, len) {
     var out = [];
     for (var i = 0; i < len; i++) {
@@ -1160,6 +1709,132 @@
     return n;
   }
 
+  function normalizeNpcEquipSlotFromStateRule(cell) {
+    if (!cell || typeof cell !== "object") return null;
+    var raw = Object.assign({}, cell);
+    if (!raw.type && raw.equipType) raw.type = raw.equipType;
+    var payload = resolvePlacePayload(raw);
+    var src = payload || raw;
+    var name = src.name != null ? String(src.name).trim() : "";
+    if (!name) return null;
+    var out = { name: name };
+    var et = src.equipType != null ? String(src.equipType).trim() : "";
+    var t = src.type != null ? String(src.type).trim() : "";
+    var finalType = et || t;
+    if (isWearSlotEquipType(finalType) || finalType === "载具") out.equipType = finalType;
+    if (src.desc != null && String(src.desc).trim() !== "") out.desc = String(src.desc).trim();
+    else if (src.intro != null && String(src.intro).trim() !== "") out.desc = String(src.intro).trim();
+    if (src.grade != null && String(src.grade).trim() !== "") out.grade = String(src.grade).trim();
+    if (typeof src.value === "number" && isFinite(src.value)) out.value = Math.max(0, Math.floor(src.value));
+    if (src.bonus && typeof src.bonus === "object" && Object.keys(src.bonus).length > 0) out.bonus = src.bonus;
+    if (src.effects && typeof src.effects === "object" && Object.keys(src.effects).length > 0) {
+      out.effects = shallowCloneEffects(src.effects);
+    }
+    if (src.magnification && typeof src.magnification === "object" && Object.keys(src.magnification).length > 0) {
+      out.magnification = Object.assign({}, src.magnification);
+    }
+    return out;
+  }
+
+  function normalizeNpcGongfaSlotFromStateRule(cell) {
+    if (!cell || typeof cell !== "object") return null;
+    var raw = Object.assign({}, cell);
+    if (!raw.type && (raw.subtype || raw.subType)) raw.type = "功法";
+    if (raw.type === "攻击" || raw.type === "辅助") raw.type = raw.type + "功法";
+    var payload = resolvePlacePayload(raw);
+    var src = payload || raw;
+    var name = src.name != null ? String(src.name).trim() : "";
+    if (!name) return null;
+    var out = { name: name, type: "功法" };
+    var t = src.type != null ? String(src.type).trim() : "";
+    var st = src.subtype != null ? String(src.subtype).trim() : "";
+    if (!st && src.subType != null) st = String(src.subType).trim();
+    if (!st) st = inferGongfaSubtype(raw);
+    if (!st && t === "攻击功法") st = "攻击";
+    if (!st && t === "辅助功法") st = "辅助";
+    if (st) {
+      out.subtype = st;
+      out.subType = st;
+    }
+    if (src.desc != null && String(src.desc).trim() !== "") out.desc = String(src.desc).trim();
+    else if (src.intro != null && String(src.intro).trim() !== "") out.desc = String(src.intro).trim();
+    if (src.grade != null && String(src.grade).trim() !== "") out.grade = String(src.grade).trim();
+    if (typeof src.value === "number" && isFinite(src.value)) out.value = Math.max(0, Math.floor(src.value));
+    if (src.bonus && typeof src.bonus === "object" && Object.keys(src.bonus).length > 0) out.bonus = src.bonus;
+    if (src.effects && typeof src.effects === "object" && Object.keys(src.effects).length > 0) {
+      out.effects = shallowCloneEffects(src.effects);
+    }
+    if (typeof src.manacost === "number" && isFinite(src.manacost)) out.manacost = Math.max(0, Math.round(src.manacost));
+    if (src.magnification && typeof src.magnification === "object" && Object.keys(src.magnification).length > 0) {
+      out.magnification = Object.assign({}, src.magnification);
+    }
+    return out;
+  }
+
+  function normalizeNpcInventorySlotFromStateRule(cell) {
+    if (!cell || typeof cell !== "object") return null;
+    var payload = resolvePlacePayload(cell);
+    if (payload) return normalizeBagItem(payload);
+    var name = cell.name != null ? String(cell.name).trim() : "";
+    if (!name) return null;
+    var fallback = {
+      name: name,
+      count: typeof cell.count === "number" && isFinite(cell.count) ? Math.max(1, Math.floor(cell.count)) : 1,
+    };
+    if (cell.desc != null && String(cell.desc).trim() !== "") fallback.desc = String(cell.desc).trim();
+    else if (cell.intro != null && String(cell.intro).trim() !== "") fallback.desc = String(cell.intro).trim();
+    if (cell.grade != null && String(cell.grade).trim() !== "") fallback.grade = String(cell.grade).trim();
+    if (cell.type != null && String(cell.type).trim() !== "") fallback.type = String(cell.type).trim();
+    if (typeof cell.value === "number" && isFinite(cell.value)) fallback.value = Math.max(0, Math.floor(cell.value));
+    if (cell.bonus && typeof cell.bonus === "object" && Object.keys(cell.bonus).length > 0) fallback.bonus = cell.bonus;
+    if (cell.effects && typeof cell.effects === "object" && Object.keys(cell.effects).length > 0) {
+      fallback.effects = cell.effects;
+    }
+    return normalizeBagItem(fallback);
+  }
+
+  /**
+   * 兼容 state_rules NPC 示例：equipped/gongfa/inventory 支持 intro、攻击功法/辅助功法等字段。
+   * 仅用于“新建 NPC”分支，避免影响旧 NPC 的延续策略。
+   */
+  function normalizeNpcIncomingSlotsFromStateRules(npc) {
+    if (!npc || typeof npc !== "object") return npc;
+    var eqRaw = Array.isArray(npc.equippedSlots) ? npc.equippedSlots : [];
+    var gfRaw = Array.isArray(npc.gongfaSlots) ? npc.gongfaSlots : [];
+    var invRaw = Array.isArray(npc.inventorySlots) ? npc.inventorySlots : [];
+    var eq = [];
+    for (var ei = 0; ei < EQUIP_SLOT_COUNT; ei++) eq.push(null);
+    for (var i = 0; i < eqRaw.length; i++) {
+      var ec = normalizeNpcEquipSlotFromStateRule(eqRaw[i]);
+      if (!ec) continue;
+      var et = ec.equipType != null ? String(ec.equipType).trim() : "";
+      var si =
+        et === "武器" ? 0 : et === "法器" ? 1 : et === "防具" ? 2 : et === "载具" ? 3 : -1;
+      if (si >= 0 && si < EQUIP_SLOT_COUNT) {
+        eq[si] = ec;
+        continue;
+      }
+      for (var fi = 0; fi < EQUIP_SLOT_COUNT; fi++) {
+        if (!eq[fi]) {
+          eq[fi] = ec;
+          break;
+        }
+      }
+    }
+    var gf = [];
+    for (var j = 0; j < GONGFA_SLOT_COUNT; j++) {
+      gf.push(normalizeNpcGongfaSlotFromStateRule(gfRaw[j]) || null);
+    }
+    var inv = [];
+    for (var k = 0; k < INVENTORY_SLOT_COUNT; k++) {
+      inv.push(normalizeNpcInventorySlotFromStateRule(invRaw[k]) || null);
+    }
+    npc.equippedSlots = eq;
+    npc.gongfaSlots = gf;
+    npc.inventorySlots = inv;
+    return npc;
+  }
+
   /**
    * @param {Object} G
    * @param {Array} arr mj_nearby_npcs 解析结果
@@ -1201,6 +1876,7 @@
         n = applyExistingNpcHpMpOnly(oldMap[key], copy);
         ensureNpcSheetSlotLengths(n);
       } else {
+        normalizeNpcIncomingSlotsFromStateRules(copy);
         ensureNpcSheetSlotLengths(copy);
         n = MCS && typeof MCS.normalize === "function" ? MCS.normalize(copy) : copy;
         if (PBR && typeof PBR.applyComputedPlayerBaseToCharacterSheet === "function") {
@@ -1320,6 +1996,23 @@
       world.parseError = ws.error;
     }
 
+    var us = parseUserStateFromText(raw);
+    var userState = {
+      ok: us.ok,
+      parseVia: us.parseVia != null ? us.parseVia : null,
+      parseError: null,
+      appliedHp: false,
+      appliedMp: false,
+      absent: !!us.absent,
+    };
+    if (us.ok && us.patch) {
+      var ur = applyUserStatePatch(G, us.patch);
+      userState.appliedHp = ur.appliedHp;
+      userState.appliedMp = ur.appliedMp;
+    } else if (!us.ok && !us.absent && us.error) {
+      userState.parseError = us.error;
+    }
+
     var nr = parseNearbyNpcsFromText(raw);
     var npc = {
       skipped: false,
@@ -1354,6 +2047,7 @@
       parseError: parseError,
       parseVia: parseVia,
       world: world,
+      userState: userState,
       npc: npc,
     };
   }
@@ -1385,6 +2079,12 @@
           failed.push({ op: raw, reason: "remove 缺少有效 name" });
           continue;
         }
+        if (isSpiritStoneName(rnm)) {
+          var srm = applySpiritStoneDeltaByValue(G, rnm, rcnt, false);
+          if (srm.ok) removed.push({ name: rnm, count: rcnt, byValue: true });
+          else failed.push({ op: raw, reason: srm.reason || "灵石扣减失败" });
+          continue;
+        }
         var rm = removeStackedItemsFromBag(G, rnm, rcnt);
         if (rm.ok) {
           var act =
@@ -1397,6 +2097,14 @@
       }
       if (opn !== "add") {
         failed.push({ op: raw, reason: "不支持的 op（仅支持 add、remove）" });
+        continue;
+      }
+      var addName = raw.name != null ? String(raw.name).trim() : "";
+      var addCnt = typeof raw.count === "number" && isFinite(raw.count) ? Math.max(1, Math.floor(raw.count)) : 1;
+      if (isSpiritStoneName(addName)) {
+        var sAdd = applySpiritStoneDeltaByValue(G, addName, addCnt, true);
+        if (sAdd.ok) placed.push({ name: addName, count: addCnt, byValue: true });
+        else failed.push({ op: raw, reason: sAdd.reason || "灵石增加失败" });
         continue;
       }
       var payload = resolvePlacePayload(raw);
@@ -1461,10 +2169,13 @@
     OPS_TAG_CLOSE: OPS_TAG_CLOSE,
     WORLD_STATE_TAG_OPEN: WORLD_STATE_TAG_OPEN,
     WORLD_STATE_TAG_CLOSE: WORLD_STATE_TAG_CLOSE,
+    USER_STATE_TAG_OPEN: USER_STATE_TAG_OPEN,
+    USER_STATE_TAG_CLOSE: USER_STATE_TAG_CLOSE,
     NPC_NEARBY_TAG_OPEN: NPC_NEARBY_TAG_OPEN,
     NPC_NEARBY_TAG_CLOSE: NPC_NEARBY_TAG_CLOSE,
     BATTLE_TRIGGER_TAG_OPEN: BATTLE_TRIGGER_TAG_OPEN,
     BATTLE_TRIGGER_TAG_CLOSE: BATTLE_TRIGGER_TAG_CLOSE,
+    QUALITY_ATTR_BASELINE_MAP: QUALITY_ATTR_BASELINE_MAP,
     buildStuffDescribeCatalog: buildStuffDescribeCatalog,
     buildStuffDescribeCatalogJson: buildStuffDescribeCatalogJson,
     buildGongfaDescribeCatalog: buildGongfaDescribeCatalog,
@@ -1478,11 +2189,13 @@
     buildMessages: buildMessages,
     parseInventoryOpsFromText: parseInventoryOpsFromText,
     parseWorldStateFromText: parseWorldStateFromText,
+    parseUserStateFromText: parseUserStateFromText,
     parseNearbyNpcsFromText: parseNearbyNpcsFromText,
     applyNearbyNpcsArrayToGame: applyNearbyNpcsArrayToGame,
     resolvePlacePayload: resolvePlacePayload,
     applyInventoryOps: applyInventoryOps,
     applyWorldStatePatch: applyWorldStatePatch,
+    applyUserStatePatch: applyUserStatePatch,
     applyStateTurnFromAssistantText: applyStateTurnFromAssistantText,
     applyInventoryOpsFromAssistantText: applyInventoryOpsFromAssistantText,
     sendTurn: sendTurn,

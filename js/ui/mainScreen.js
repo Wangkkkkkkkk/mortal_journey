@@ -277,7 +277,7 @@
             failGate("缺少存档或命运抉择数据");
             return { ok: false };
           }
-          updateBootstrapGateRow("initState", { status: "已跳过（无需重复）" });
+          updateBootstrapGateRow("initState", { status: "已跳过" });
           return { ok: true };
         }
         if (res.ok === false) {
@@ -502,13 +502,7 @@
       }
       if (retryEl) {
         retryEl.addEventListener("click", function () {
-          var GG = global.MortalJourneyGame;
-          if (!GG) return;
-          if (GG.mjInitStateAiApplied === true && !chatHistoryHasUserAssistant(GG)) {
-            execStoryOnlyPipeline();
-          } else {
-            execFullPipeline();
-          }
+          execFullPipeline();
         });
       }
     }

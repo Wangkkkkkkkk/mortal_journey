@@ -300,6 +300,52 @@
       })
       .join("；");
   }
+  var REALM_EQUIP_BONUS_RATIO_MAP = {
+    练气初期: 1.25,
+    练气中期: 1.5,
+    练气后期: 2.0,
+    筑基初期: 2.5,
+    筑基中期: 3.0,
+    筑基后期: 3.5,
+    结丹初期: 4.0,
+    结丹中期: 5.0,
+    结丹后期: 6.0,
+    元婴初期: 7.0,
+    元婴中期: 8.0,
+    元婴后期: 9.0,
+    化神: 10.0,
+  };
+  function buildRealmStageKey(realm) {
+    var r = realm && typeof realm === "object" ? realm : {};
+    var major = r.major != null && String(r.major).trim() !== "" ? String(r.major).trim() : "练气";
+    if (major === "化神") return "化神";
+    var minor = r.minor != null && String(r.minor).trim() !== "" ? String(r.minor).trim() : "初期";
+    return major + minor;
+  }
+  function getEquipBonusRealmRatio(realm) {
+    var key = buildRealmStageKey(realm);
+    var ratio = REALM_EQUIP_BONUS_RATIO_MAP[key];
+    return typeof ratio === "number" && isFinite(ratio) && ratio > 0 ? ratio : 1.0;
+  }
+  function formatEquipBonusWithRealmDetail(bonusObj, realm) {
+    if (!bonusObj || typeof bonusObj !== "object") return "";
+    var keys = Object.keys(bonusObj);
+    if (!keys.length) return "";
+    var ratio = getEquipBonusRealmRatio(realm);
+    return keys
+      .map(function (k) {
+        var v = bonusObj[k];
+        if (typeof v === "number" && isFinite(v)) {
+          var baseV = Math.round(v);
+          var realmAdd = Math.round(v * (ratio - 1));
+          var baseTxt = baseV >= 0 ? k + " +" + baseV : k + " " + baseV;
+          var addTxt = realmAdd >= 0 ? "+" + realmAdd : String(realmAdd);
+          return baseTxt + "（境界加成 " + addTxt + "）";
+        }
+        return k + " " + String(v);
+      })
+      .join("；");
+  }
 
   /** 配置里 stuff 条目的 bonus 展示用（灵石只体现在 0 格数量） */
   function formatStuffBonusForDisplay(b) {
@@ -1274,7 +1320,18 @@
     if (!removeNFromBagSlot(G, bi, sellN)) return false;
     for (var i = 0; i < bd.payouts.length; i++) {
       var p = bd.payouts[i];
-      if (!tryPlaceItemInBag(G, { name: p.name, count: p.count })) {
+      var pPayload = { name: p.name, count: p.count };
+      var SS = global.MjDescribeSpiritStones;
+      if (SS && typeof SS === "object" && Object.prototype.hasOwnProperty.call(SS, p.name)) {
+        var ssR = SS[p.name];
+        if (ssR && typeof ssR === "object") {
+          if (ssR.grade != null && String(ssR.grade).trim() !== "") pPayload.grade = String(ssR.grade).trim();
+          if (typeof ssR.value === "number" && isFinite(ssR.value)) pPayload.value = Math.max(0, Math.floor(ssR.value));
+          if (ssR.desc != null && String(ssR.desc).trim() !== "") pPayload.desc = String(ssR.desc).trim();
+          pPayload.type = "材料";
+        }
+      }
+      if (!tryPlaceItemInBag(G, pPayload)) {
         if (global.GameLog && typeof global.GameLog.error === "function") {
           global.GameLog.error("售出后装入灵石失败，请重载存档或联系开发者。");
         }
@@ -1691,14 +1748,14 @@
     } else if (cfgDef && cfgDef.grade != null && String(cfgDef.grade).trim() !== "") {
       sections.push({ label: "品级", text: String(cfgDef.grade).trim() });
     }
-    var bonusLine = cfgDef && cfgDef.bonus ? formatZhBonusObject(cfgDef.bonus) : "";
+    var bonusLine = cfgDef && cfgDef.bonus ? formatEquipBonusWithRealmDetail(cfgDef.bonus, G && G.realm) : "";
     if (!bonusLine && item.bonus && typeof item.bonus === "object") {
-      bonusLine = formatZhBonusObject(item.bonus);
+      bonusLine = formatEquipBonusWithRealmDetail(item.bonus, G && G.realm);
     }
     if (bonusLine) sections.push({ label: "修炼加成", text: bonusLine });
     var gfMagLine = R.resolveGongfaMagnificationLine(name, item, cfgDef);
     if (gfMagLine) sections.push({ label: "伤害倍率", text: gfMagLine });
-    var gfManaCost = R.resolveGongfaManacostLine(name, item, cfgDef);
+    var gfManaCost = R.resolveGongfaManacostLine(name, item, cfgDef, G && G.realm, true);
     if (gfManaCost) sections.push({ label: "法力消耗", text: gfManaCost });
     var refNumGf =
       typeof item.value === "number" && isFinite(item.value)
@@ -1801,7 +1858,7 @@
       if (gfBonusLine) sections.push({ label: "修炼加成", text: gfBonusLine });
       var gfMagLine = R.resolveGongfaMagnificationLine(primary, it, gfMeta);
       if (gfMagLine) sections.push({ label: "伤害倍率", text: gfMagLine });
-      var gfManaCost = R.resolveGongfaManacostLine(primary, it, gfMeta);
+      var gfManaCost = R.resolveGongfaManacostLine(primary, it, gfMeta, G && G.realm, false);
       if (gfManaCost) sections.push({ label: "法力消耗", text: gfManaCost });
     }
     var refNum =
@@ -1928,9 +1985,9 @@
     } else if (meta && meta.grade != null && String(meta.grade).trim() !== "") {
       sections.push({ label: "品级", text: String(meta.grade).trim() });
     }
-    var bonusLine = meta && meta.bonus ? formatZhBonusObject(meta.bonus) : "";
+    var bonusLine = meta && meta.bonus ? formatEquipBonusWithRealmDetail(meta.bonus, G && G.realm) : "";
     if (!bonusLine && item.bonus && typeof item.bonus === "object") {
-      bonusLine = formatZhBonusObject(item.bonus);
+      bonusLine = formatEquipBonusWithRealmDetail(item.bonus, G && G.realm);
     }
     if (bonusLine) sections.push({ label: "属性加成", text: bonusLine });
     var magnificationLine = R.resolveEquipmentMagnificationLine(name, item, meta);
@@ -1953,7 +2010,7 @@
   }
 
   /** NPC 详情内：只读功法详情（无卸下等操作） */
-  function openReadOnlyGongfaItemDetail(item) {
+  function openReadOnlyGongfaItemDetail(item, realmForGongfaBonus) {
     if (!item || !(item.name != null ? item.name : item.label)) return;
     var name = String(item.name != null ? item.name : item.label);
     var cfgDef = R.lookupGongfaConfigDef(name);
@@ -1970,14 +2027,14 @@
     } else if (cfgDef && cfgDef.grade != null && String(cfgDef.grade).trim() !== "") {
       sections.push({ label: "品级", text: String(cfgDef.grade).trim() });
     }
-    var bonusLineRoGf = cfgDef && cfgDef.bonus ? formatZhBonusObject(cfgDef.bonus) : "";
+    var bonusLineRoGf = cfgDef && cfgDef.bonus ? formatEquipBonusWithRealmDetail(cfgDef.bonus, realmForGongfaBonus) : "";
     if (!bonusLineRoGf && item.bonus && typeof item.bonus === "object") {
-      bonusLineRoGf = formatZhBonusObject(item.bonus);
+      bonusLineRoGf = formatEquipBonusWithRealmDetail(item.bonus, realmForGongfaBonus);
     }
     if (bonusLineRoGf) sections.push({ label: "修炼加成", text: bonusLineRoGf });
     var gfMagLineRo = R.resolveGongfaMagnificationLine(name, item, cfgDef);
     if (gfMagLineRo) sections.push({ label: "伤害倍率", text: gfMagLineRo });
-    var gfManaCostRo = R.resolveGongfaManacostLine(name, item, cfgDef);
+    var gfManaCostRo = R.resolveGongfaManacostLine(name, item, cfgDef, realmForGongfaBonus, true);
     if (gfManaCostRo) sections.push({ label: "法力消耗", text: gfManaCostRo });
     var refNumRoGf =
       typeof item.value === "number" && isFinite(item.value)
@@ -1989,7 +2046,7 @@
   }
 
   /** NPC 详情内：只读装备详情 */
-  function openReadOnlyEquipItemDetail(item, slotIdx) {
+  function openReadOnlyEquipItemDetail(item, slotIdx, realmForEquipBonus) {
     if (!item || !(item.name != null ? item.name : item.label)) return;
     var name = String(item.name != null ? item.name : item.label);
     var meta = R.lookupEquipmentMetaByItemName(name);
@@ -2008,9 +2065,9 @@
     } else if (meta && meta.grade != null && String(meta.grade).trim() !== "") {
       sections.push({ label: "品级", text: String(meta.grade).trim() });
     }
-    var bonusLineRo = meta && meta.bonus ? formatZhBonusObject(meta.bonus) : "";
+    var bonusLineRo = meta && meta.bonus ? formatEquipBonusWithRealmDetail(meta.bonus, realmForEquipBonus) : "";
     if (!bonusLineRo && item.bonus && typeof item.bonus === "object") {
-      bonusLineRo = formatZhBonusObject(item.bonus);
+      bonusLineRo = formatEquipBonusWithRealmDetail(item.bonus, realmForEquipBonus);
     }
     if (bonusLineRo) sections.push({ label: "属性加成", text: bonusLineRo });
     var magnificationLineRo = R.resolveEquipmentMagnificationLine(name, item, meta);
@@ -2027,7 +2084,7 @@
   /**
    * NPC 详情内：只读物品详情（无穿戴/修炼）；fcForStoneEfficiency 传 { linggen } 用于灵石修为说明。
    */
-  function openReadOnlyBagItemDetail(it, fcForStoneEfficiency) {
+  function openReadOnlyBagItemDetail(it, fcForStoneEfficiency, realmForEquipBonus) {
     if (!it || !it.name) return;
     var cnt = typeof it.count === "number" ? it.count : 1;
     var stuffMeta = R.lookupStuffMetaByItemName(it.name);
@@ -2091,11 +2148,14 @@
       if (gfMeta.type != null && String(gfMeta.type).trim() !== "") {
         sections.push({ label: "功法类型", text: String(gfMeta.type).trim() });
       }
-      var gfBonusLine = gfMeta.bonus ? formatZhBonusObject(gfMeta.bonus) : "";
+      var gfBonusLine = gfMeta && gfMeta.bonus ? formatZhBonusObject(gfMeta.bonus) : "";
+      if (!gfBonusLine && it.bonus && typeof it.bonus === "object") {
+        gfBonusLine = formatZhBonusObject(it.bonus);
+      }
       if (gfBonusLine) sections.push({ label: "修炼加成", text: gfBonusLine });
       var gfMagLineBag = R.resolveGongfaMagnificationLine(String(it.name), it, gfMeta);
       if (gfMagLineBag) sections.push({ label: "伤害倍率", text: gfMagLineBag });
-      var gfManaCostBag = R.resolveGongfaManacostLine(String(it.name), it, gfMeta);
+      var gfManaCostBag = R.resolveGongfaManacostLine(String(it.name), it, gfMeta, realmForEquipBonus, false);
       if (gfManaCostBag) sections.push({ label: "法力消耗", text: gfManaCostBag });
     }
     var refNum =
@@ -2148,7 +2208,7 @@
       var eqIdx = parseInt(eqSlot.getAttribute("data-equip-slot"), 10);
       var eit = npc.equippedSlots && npc.equippedSlots[eqIdx];
       if (eit && (eit.name != null || eit.label)) {
-        openReadOnlyEquipItemDetail(eit, eqIdx);
+        openReadOnlyEquipItemDetail(eit, eqIdx, npc.realm);
       }
       return;
     }
@@ -2157,7 +2217,7 @@
     if (gfSlot && body.contains(gfSlot) && gfSlot.hasAttribute("data-gongfa-slot")) {
       var gi = parseInt(gfSlot.getAttribute("data-gongfa-slot"), 10);
       var git = npc.gongfaSlots && npc.gongfaSlots[gi];
-      if (git) openReadOnlyGongfaItemDetail(git);
+      if (git) openReadOnlyGongfaItemDetail(git, npc.realm);
       return;
     }
 
@@ -2171,7 +2231,7 @@
           npc.linggen != null && String(npc.linggen).trim() !== ""
             ? { linggen: String(npc.linggen) }
             : null;
-        openReadOnlyBagItemDetail(bit, fcLike);
+        openReadOnlyBagItemDetail(bit, fcLike, npc.realm);
       }
     }
   }

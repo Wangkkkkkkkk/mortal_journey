@@ -8,6 +8,111 @@
   var INIT_LOADOUT_TAG_OPEN = "<mj_init_loadout>";
   var INIT_LOADOUT_TAG_CLOSE = "</mj_init_loadout>";
 
+  /**
+   * 与 state_generate.js 保持一致的品阶与属性口径
+   */
+  var QUALITY_ATTR_BASELINE_MAP = {
+    下品: { 血量: [10, 50], 法力: [5, 25], 物攻: [5, 10], 物防: [1, 5], 法攻: [5, 10], 法防: [1, 5], 脚力: [5, 10], 神识: [5, 10] },
+    中品: { 血量: [50, 100], 法力: [25, 50], 物攻: [10, 20], 物防: [5, 10], 法攻: [10, 20], 法防: [5, 10], 脚力: [10, 20], 神识: [10, 25] },
+    上品: { 血量: [100, 200], 法力: [50, 100], 物攻: [20, 30], 物防: [10, 15], 法攻: [20, 30], 法防: [10, 15], 脚力: [20, 30], 神识: [25, 50] },
+    极品: { 血量: [200, 300], 法力: [100, 150], 物攻: [30, 40], 物防: [15, 20], 法攻: [30, 40], 法防: [15, 20], 脚力: [30, 40], 神识: [50, 75] },
+    仙品: { 血量: [300, 500], 法力: [150, 200], 物攻: [40, 50], 物防: [20, 25], 法攻: [40, 50], 法防: [20, 25], 脚力: [40, 50], 神识: [75, 100] },
+  };
+  var ITEM_GRADE_VALUE_MAP = {
+    下品: [10, 100],
+    中品: [100, 1000],
+    上品: [1000, 10000],
+    极品: [10000, 100000],
+    仙品: [100000, 1000000],
+  };
+  var ITEM_GRADE_DAMAGE_MULTIPLIER_MAP = {
+    下品: [1.0, 1.1],
+    中品: [1.1, 1.3],
+    上品: [1.3, 1.6],
+    极品: [1.6, 2.0],
+    仙品: [2.0, 2.5],
+  };
+  /** 突破丹药按品阶提供的概率加成区间（单位：%） */
+  var BREAKTHROUGH_PILL_GRADE_BONUS_RANGE_MAP = {
+    中品: [10, 15],
+    上品: [15, 20],
+    极品: [20, 25],
+    仙品: [25, 30],
+  };
+  /** 突破丹药按品阶对应的境界突破方向 */
+  var BREAKTHROUGH_PILL_ROUTE_BY_GRADE = {
+    中品: { from: "练气", to: "筑基" },
+    上品: { from: "筑基", to: "结丹" },
+    极品: { from: "结丹", to: "元婴" },
+    仙品: { from: "元婴", to: "化神" },
+  };
+
+  function randomIntInRange(min, max) {
+    var a = Math.floor(Number(min));
+    var b = Math.floor(Number(max));
+    if (!isFinite(a) || !isFinite(b)) return 0;
+    if (a > b) {
+      var t = a;
+      a = b;
+      b = t;
+    }
+    return a + Math.floor(Math.random() * (b - a + 1));
+  }
+
+  function randomFloatInRange(min, max, digits) {
+    var a = Number(min);
+    var b = Number(max);
+    if (!isFinite(a) || !isFinite(b)) return 0;
+    if (a > b) {
+      var t = a;
+      a = b;
+      b = t;
+    }
+    var n = a + Math.random() * (b - a);
+    var d = typeof digits === "number" && isFinite(digits) ? Math.max(0, Math.floor(digits)) : 2;
+    var p = Math.pow(10, d);
+    return Math.round(n * p) / p;
+  }
+
+  function fillRandomValueByGrade(grade) {
+    var g = grade != null ? String(grade).trim() : "";
+    var r = ITEM_GRADE_VALUE_MAP[g];
+    if (!Array.isArray(r) || r.length < 2) return undefined;
+    var base = Math.max(1, r[0]);
+    var lo = Math.ceil(r[0] / base);
+    var hi = Math.floor(r[1] / base);
+    if (lo > hi) hi = lo;
+    return randomIntInRange(lo, hi) * base;
+  }
+
+  function getAttrRandomByGrade(grade, key) {
+    var g = grade != null ? String(grade).trim() : "";
+    var row = QUALITY_ATTR_BASELINE_MAP[g];
+    if (!row || !row[key] || !Array.isArray(row[key])) return undefined;
+    return randomIntInRange(row[key][0], row[key][1]);
+  }
+  function getAttrRangeByGrade(grade, key) {
+    var g = grade != null ? String(grade).trim() : "";
+    var row = QUALITY_ATTR_BASELINE_MAP[g];
+    if (!row || !row[key] || !Array.isArray(row[key]) || row[key].length < 2) return null;
+    var a = Number(row[key][0]);
+    var b = Number(row[key][1]);
+    if (!isFinite(a) || !isFinite(b)) return null;
+    if (a > b) {
+      var t = a;
+      a = b;
+      b = t;
+    }
+    return [Math.floor(a), Math.floor(b)];
+  }
+
+  function getDamageMultiplierByGrade(grade) {
+    var g = grade != null ? String(grade).trim() : "";
+    var r = ITEM_GRADE_DAMAGE_MULTIPLIER_MAP[g];
+    if (!Array.isArray(r) || r.length < 2) return undefined;
+    return randomFloatInRange(r[0], r[1], 2);
+  }
+
   function panelRealm() {
     return global.MjMainScreenPanelRealm || {};
   }
@@ -261,6 +366,277 @@
     return Object.assign({}, m);
   }
 
+  function pickPositiveNumber(v) {
+    return typeof v === "number" && isFinite(v) && v > 0 ? v : null;
+  }
+
+  function toSubtypeText(v) {
+    var t = v != null ? String(v).trim() : "";
+    if (!t) return "";
+    if (t === "攻击功法" || t === "攻击") return "攻击";
+    if (t === "辅助功法" || t === "辅助") return "辅助";
+    return t;
+  }
+
+  function isSpiritStoneName(name) {
+    var nm = name != null ? String(name).trim() : "";
+    if (!nm) return false;
+    return /灵石$/.test(nm);
+  }
+
+  function buildInitDefaultDesc(cellLike) {
+    if (!cellLike || typeof cellLike !== "object") return "";
+    var name = cellLike.name != null ? String(cellLike.name).trim() : "";
+    var grade = cellLike.grade != null ? String(cellLike.grade).trim() : "";
+    var type = cellLike.type != null ? String(cellLike.type).trim() : "";
+    var equipType = cellLike.equipType != null ? String(cellLike.equipType).trim() : "";
+    var subtype = toSubtypeText(cellLike.subtype != null ? cellLike.subtype : cellLike.subType);
+
+    if (isSpiritStoneName(name)) {
+      var g = grade || name.replace(/灵石$/, "") || "下品";
+      return g + "灵石，内蕴灵气，可用于修炼与交易流通。";
+    }
+    if (type === "功法" || subtype === "攻击" || subtype === "辅助") {
+      var subText = subtype ? subtype + "类" : "";
+      var g0 = grade || "常见";
+      return g0 + subText + "功法，可供修士参悟修行。";
+    }
+    if (type === "丹药") {
+      if (
+        cellLike.effects &&
+        typeof cellLike.effects === "object" &&
+        Array.isArray(cellLike.effects.breakthrough) &&
+        cellLike.effects.breakthrough.length > 0
+      ) {
+        var br = cellLike.effects.breakthrough[0] || {};
+        var fromR = br.from != null ? String(br.from).trim() : "";
+        var toR = br.to != null ? String(br.to).trim() : "";
+        if (fromR && toR) return "用于" + fromR + "突破" + toR + "的丹药。";
+      }
+      return (grade || "常见") + "丹药，服用后可恢复气血与法力。";
+    }
+    if (equipType) {
+      return (grade || "常见") + equipType + "，可用于提升战斗能力。";
+    }
+    if (type === "材料") {
+      return "修行常用材料，可用于炼丹、炼器或交易。";
+    }
+    return "";
+  }
+
+  function ensureInitItemDesc(cellLike) {
+    if (!cellLike || typeof cellLike !== "object") return;
+    var hasDesc = cellLike.desc != null && String(cellLike.desc).trim() !== "";
+    var hasIntro = cellLike.intro != null && String(cellLike.intro).trim() !== "";
+    if (!hasDesc && hasIntro) cellLike.desc = String(cellLike.intro).trim();
+    if (hasDesc || hasIntro) return;
+    var fallback = buildInitDefaultDesc(cellLike);
+    if (fallback) cellLike.desc = fallback;
+  }
+
+  function isPillItemLike(cell) {
+    if (!cell || typeof cell !== "object") return false;
+    var ty = cell.type != null ? String(cell.type).trim() : "";
+    if (ty === "丹药") return true;
+    var name = cell.name != null ? String(cell.name).trim() : cell.label != null ? String(cell.label).trim() : "";
+    if (!name) return false;
+    var C = global.MjCreationConfig;
+    var st = C && typeof C.getStuffDescribe === "function" ? C.getStuffDescribe(name) : null;
+    var stType = st && st.type != null ? String(st.type).trim() : "";
+    return stType === "丹药";
+  }
+  function isBreakthroughPillLike(cell) {
+    if (!cell || typeof cell !== "object") return false;
+    var ty = cell.type != null ? String(cell.type).trim() : "";
+    return ty === "突破丹药";
+  }
+  function getBreakthroughBonusRangeByGrade(grade) {
+    var g = grade != null ? String(grade).trim() : "";
+    var r = BREAKTHROUGH_PILL_GRADE_BONUS_RANGE_MAP[g];
+    if (!Array.isArray(r) || r.length < 2) return null;
+    return [Math.floor(r[0]), Math.floor(r[1])];
+  }
+  function getBreakthroughRouteByGrade(grade) {
+    var g = grade != null ? String(grade).trim() : "";
+    if (!g) return null;
+    return BREAKTHROUGH_PILL_ROUTE_BY_GRADE[g] || null;
+  }
+  function ensureInitBreakthroughPillEffects(cell) {
+    if (!isBreakthroughPillLike(cell)) return;
+    var grade = cell.grade != null ? String(cell.grade).trim() : "";
+    var route = getBreakthroughRouteByGrade(grade);
+    var range = getBreakthroughBonusRangeByGrade(grade);
+    if (!route || !range) return;
+    var bonusPercent = randomIntInRange(range[0], range[1]);
+    var bonusRatio = bonusPercent / 100;
+    var eff = cell.effects && typeof cell.effects === "object" ? Object.assign({}, cell.effects) : {};
+    eff.breakthrough = [{ from: route.from, to: route.to, chanceBonus: bonusRatio }];
+    cell.effects = eff;
+    cell.breakthrough = eff.breakthrough;
+    cell.type = "丹药";
+    if (
+      (cell.desc == null || String(cell.desc).trim() === "") &&
+      (cell.intro == null || String(cell.intro).trim() === "")
+    ) {
+      cell.desc = "用于" + route.from + "突破" + route.to + "，可提升约" + bonusPercent + "%成功率。";
+    }
+  }
+
+  function ensureInitPillRecoverEffects(cell) {
+    if (!isPillItemLike(cell)) return;
+    var hasBreakthrough =
+      (Array.isArray(cell.breakthrough) && cell.breakthrough.length > 0) ||
+      (cell.effects &&
+        typeof cell.effects === "object" &&
+        Array.isArray(cell.effects.breakthrough) &&
+        cell.effects.breakthrough.length > 0);
+    if (hasBreakthrough) return;
+    var grade = cell.grade != null ? String(cell.grade).trim() : "";
+    if (!grade) return;
+    var hpRange = getAttrRangeByGrade(grade, "血量");
+    var mpRange = getAttrRangeByGrade(grade, "法力");
+    if (!hpRange && !mpRange) return;
+
+    var effObj = cell.effects && typeof cell.effects === "object" ? Object.assign({}, cell.effects) : {};
+    var recover = effObj.recover && typeof effObj.recover === "object" ? Object.assign({}, effObj.recover) : {};
+
+    if (!(typeof recover.hp === "number" && isFinite(recover.hp) && recover.hp > 0) && hpRange) {
+      recover.hp = randomIntInRange(hpRange[0], hpRange[1]);
+    }
+    if (!(typeof recover.mp === "number" && isFinite(recover.mp) && recover.mp > 0) && mpRange) {
+      recover.mp = randomIntInRange(mpRange[0], mpRange[1]);
+    }
+
+    if (
+      !((typeof recover.hp === "number" && isFinite(recover.hp) && recover.hp > 0) ||
+        (typeof recover.mp === "number" && isFinite(recover.mp) && recover.mp > 0))
+    ) {
+      return;
+    }
+    effObj.recover = recover;
+    cell.effects = effObj;
+  }
+  function normalizeInitInventoryAddOp(rawOp) {
+    if (!rawOp || typeof rawOp !== "object") return null;
+    var add = Object.assign({}, rawOp);
+    add.op = "add";
+    if (add.name == null && add.label != null) add.name = add.label;
+    if (add.desc == null && add.intro != null) add.desc = add.intro;
+    ensureInitBreakthroughPillEffects(add);
+    ensureInitPillRecoverEffects(add);
+    ensureInitItemDesc(add);
+    return add;
+  }
+
+  function ensureInitGeneratedItemStats(o) {
+    if (!o || typeof o !== "object") return o;
+    var g = o.grade != null ? String(o.grade).trim() : "";
+    if (!g) return o;
+    if (typeof o.value !== "number" || !isFinite(o.value)) {
+      var rv = fillRandomValueByGrade(g);
+      if (typeof rv === "number" && isFinite(rv)) o.value = rv;
+    }
+    if (!o.bonus || typeof o.bonus !== "object") o.bonus = {};
+
+    var et = o.equipType != null ? String(o.equipType).trim() : "";
+    var subtype = toSubtypeText(o.subtype != null ? o.subtype : o.subType);
+
+    if (et === "武器") {
+      if (!(typeof o.bonus.物攻 === "number" && isFinite(o.bonus.物攻) && o.bonus.物攻 > 0)) {
+        o.bonus.物攻 = getAttrRandomByGrade(g, "物攻") || 1;
+      }
+      if (!o.magnification || typeof o.magnification !== "object") o.magnification = {};
+      if (!(typeof o.magnification.物攻 === "number" && isFinite(o.magnification.物攻) && o.magnification.物攻 > 0)) {
+        o.magnification.物攻 = getDamageMultiplierByGrade(g) || 1.0;
+      }
+    } else if (et === "法器") {
+      if (!(typeof o.bonus.法攻 === "number" && isFinite(o.bonus.法攻) && o.bonus.法攻 > 0)) {
+        o.bonus.法攻 = getAttrRandomByGrade(g, "法攻") || 1;
+      }
+      if (!(typeof o.bonus.法力 === "number" && isFinite(o.bonus.法力) && o.bonus.法力 > 0)) {
+        o.bonus.法力 = getAttrRandomByGrade(g, "法力") || 1;
+      }
+    } else if (et === "防具") {
+      if (!(typeof o.bonus.物防 === "number" && isFinite(o.bonus.物防) && o.bonus.物防 > 0)) {
+        o.bonus.物防 = getAttrRandomByGrade(g, "物防") || 1;
+      }
+      if (!(typeof o.bonus.法防 === "number" && isFinite(o.bonus.法防) && o.bonus.法防 > 0)) {
+        o.bonus.法防 = getAttrRandomByGrade(g, "法防") || 1;
+      }
+    } else if (et === "载具") {
+      if (!(typeof o.bonus.脚力 === "number" && isFinite(o.bonus.脚力) && o.bonus.脚力 > 0)) {
+        o.bonus.脚力 = getAttrRandomByGrade(g, "脚力") || 1;
+      }
+    } else if (subtype === "攻击") {
+      if (!(typeof o.bonus.法攻 === "number" && isFinite(o.bonus.法攻) && o.bonus.法攻 > 0)) {
+        o.bonus.法攻 = getAttrRandomByGrade(g, "法攻") || 1;
+      }
+      if (!o.magnification || typeof o.magnification !== "object") o.magnification = {};
+      if (!(typeof o.magnification.法攻 === "number" && isFinite(o.magnification.法攻) && o.magnification.法攻 > 0)) {
+        o.magnification.法攻 = getDamageMultiplierByGrade(g) || 1.0;
+      }
+      var mpRangeAtk = getAttrRangeByGrade(g, "法力");
+      if (mpRangeAtk) {
+        if (!(typeof o.manacost === "number" && isFinite(o.manacost))) {
+          o.manacost = randomIntInRange(mpRangeAtk[0], mpRangeAtk[1]);
+        } else {
+          o.manacost = Math.max(mpRangeAtk[0], Math.min(mpRangeAtk[1], Math.round(o.manacost)));
+        }
+      } else if (!(typeof o.manacost === "number" && isFinite(o.manacost))) {
+        o.manacost = 1;
+      }
+    } else if (subtype === "辅助") {
+      if (!(typeof o.bonus.法力 === "number" && isFinite(o.bonus.法力) && o.bonus.法力 > 0)) {
+        o.bonus.法力 = getAttrRandomByGrade(g, "法力") || 1;
+      }
+      if (!(typeof o.bonus.神识 === "number" && isFinite(o.bonus.神识) && o.bonus.神识 > 0)) {
+        o.bonus.神识 = getAttrRandomByGrade(g, "神识") || 1;
+      }
+      delete o.manacost;
+    }
+
+    if (o.bonus && typeof o.bonus === "object" && !Object.keys(o.bonus).length) delete o.bonus;
+    return o;
+  }
+
+  /**
+   * 与 state_generate 的硬约束保持一致：
+   * - 武器仅允许物攻 bonus、仅允许物攻 magnification
+   * - 攻击类功法仅允许法攻 bonus、仅允许法攻 magnification
+   */
+  function enforceInitCombatStatConstraints(o) {
+    if (!o || typeof o !== "object") return o;
+    var equipType = o.equipType != null ? String(o.equipType).trim() : "";
+    var subtype = toSubtypeText(o.subtype != null ? o.subtype : o.subType);
+
+    if (equipType === "武器") {
+      var physicalAtk =
+        pickPositiveNumber(o.bonus && o.bonus.物攻) ||
+        pickPositiveNumber(o.bonus && o.bonus.法攻) ||
+        1;
+      o.bonus = { 物攻: Math.max(1, Math.round(physicalAtk)) };
+
+      var physicalMag =
+        pickPositiveNumber(o.magnification && o.magnification.物攻) ||
+        pickPositiveNumber(o.magnification && o.magnification.法攻) ||
+        1.0;
+      o.magnification = { 物攻: physicalMag };
+    } else if (subtype === "攻击") {
+      var magicAtk =
+        pickPositiveNumber(o.bonus && o.bonus.法攻) ||
+        pickPositiveNumber(o.bonus && o.bonus.物攻) ||
+        1;
+      o.bonus = { 法攻: Math.max(1, Math.round(magicAtk)) };
+
+      var magicMag =
+        pickPositiveNumber(o.magnification && o.magnification.法攻) ||
+        pickPositiveNumber(o.magnification && o.magnification.物攻) ||
+        1.0;
+      o.magnification = { 法攻: magicMag };
+    }
+    return o;
+  }
+
   /**
    * @param {Object} cell
    * @param {number} [slotIndex] 0～3 对应 武器/法器/防具/载具，用于补全 equipType 与是否保留 magnification
@@ -276,6 +652,7 @@
     if (!name) return null;
     var o = { name: name };
     if (cell.desc != null && String(cell.desc).trim() !== "") o.desc = String(cell.desc).trim();
+    else if (cell.intro != null && String(cell.intro).trim() !== "") o.desc = String(cell.intro).trim();
     var C = global.MjCreationConfig;
     var em =
       C && typeof C.getEquipmentDescribe === "function" ? C.getEquipmentDescribe(name) : null;
@@ -320,7 +697,7 @@
       var magUse = magCell || magEm;
       if (magUse) o.magnification = magUse;
     }
-    return o;
+    return enforceInitCombatStatConstraints(ensureInitGeneratedItemStats(o));
   }
 
   function normalizeGongfaFromAi(cell) {
@@ -334,18 +711,21 @@
     if (!name) return null;
     var o = { name: name, type: "功法" };
     if (cell.desc != null && String(cell.desc).trim() !== "") o.desc = String(cell.desc).trim();
+    else if (cell.intro != null && String(cell.intro).trim() !== "") o.desc = String(cell.intro).trim();
     var C = global.MjCreationConfig;
     var gi =
       C && typeof C.getGongfaDescribe === "function" ? C.getGongfaDescribe(name) : null;
     if (gi) {
       if ((!o.desc || o.desc === "") && gi.desc) o.desc = String(gi.desc);
     }
-    if (cell.subtype != null && String(cell.subtype).trim() !== "") o.subtype = String(cell.subtype).trim();
-    else if (cell.subType != null && String(cell.subType).trim() !== "") o.subType = String(cell.subType).trim();
-    else if (gi) {
-      if (gi.subtype != null && String(gi.subtype).trim() !== "") o.subtype = String(gi.subtype).trim();
-      else if (gi.subType != null && String(gi.subType).trim() !== "") o.subType = String(gi.subType).trim();
-      else if (gi.type === "攻击" || gi.type === "辅助") o.subtype = String(gi.type);
+    var subtype =
+      toSubtypeText(cell.subtype != null ? cell.subtype : cell.subType) ||
+      toSubtypeText(cell.type) ||
+      toSubtypeText(gi && (gi.subtype != null ? gi.subtype : gi.subType)) ||
+      toSubtypeText(gi && gi.type);
+    if (subtype) {
+      o.subtype = subtype;
+      o.subType = subtype;
     }
     if (cell.grade != null && String(cell.grade).trim() !== "") o.grade = String(cell.grade).trim();
     else if (gi && gi.grade != null && String(gi.grade).trim() !== "") o.grade = String(gi.grade).trim();
@@ -356,37 +736,43 @@
     }
     var bonusGf = mergeBonusObjects(cell.bonus, gi && gi.bonus);
     if (bonusGf) o.bonus = bonusGf;
-    var subKey =
-      o.subtype != null && String(o.subtype).trim() !== ""
-        ? String(o.subtype).trim()
-        : o.subType != null && String(o.subType).trim() !== ""
-          ? String(o.subType).trim()
-          : "";
+    var subKey = toSubtypeText(o.subtype != null ? o.subtype : o.subType);
     if (subKey === "攻击") {
       var mgf = copyMagnificationObject(cell.magnification) || copyMagnificationObject(gi && gi.magnification);
       if (mgf) o.magnification = mgf;
     } else if (subKey === "辅助") {
       delete o.magnification;
     }
-    var mc =
-      typeof cell.manacost === "number" && isFinite(cell.manacost)
-        ? cell.manacost
-        : gi && typeof gi.manacost === "number" && isFinite(gi.manacost)
-          ? gi.manacost
-          : null;
-    if (mc != null) o.manacost = Math.max(0, Math.round(mc));
-    return o;
+    if (subKey !== "辅助") {
+      var mc =
+        typeof cell.manacost === "number" && isFinite(cell.manacost)
+          ? cell.manacost
+          : gi && typeof gi.manacost === "number" && isFinite(gi.manacost)
+            ? gi.manacost
+            : null;
+      var mpRange = getAttrRangeByGrade(o.grade, "法力");
+      if (mc != null) {
+        var mcv = Math.round(mc);
+        if (mpRange) mcv = Math.max(mpRange[0], Math.min(mpRange[1], mcv));
+        o.manacost = Math.max(1, mcv);
+      }
+    } else {
+      delete o.manacost;
+    }
+    ensureInitItemDesc(o);
+    return enforceInitCombatStatConstraints(ensureInitGeneratedItemStats(o));
   }
 
   /**
    * @param {Object} G
    * @param {Object} patch
-   * @returns {{ appliedEquip: number, appliedGongfa: number }}
+   * @returns {{ appliedEquip: number, appliedGongfa: number, appliedInventory: number }}
    */
   function applyInitLoadoutPatch(G, patch) {
-    var out = { appliedEquip: 0, appliedGongfa: 0 };
+    var out = { appliedEquip: 0, appliedGongfa: 0, appliedInventory: 0 };
     if (!G || !patch || typeof patch !== "object") return out;
     var Pn = global.MjMainScreenPanel;
+    var SG = stateGen();
     var nEq = equipCount();
     var nGf = gongfaCount();
     if (Pn && typeof Pn.ensureEquippedSlots === "function") Pn.ensureEquippedSlots(G);
@@ -425,6 +811,21 @@
         }
       }
     }
+
+    var rawInv = Array.isArray(patch.inventorySlots) ? patch.inventorySlots : null;
+    if (rawInv && SG && typeof SG.applyInventoryOps === "function") {
+      var invOps = [];
+      for (var k = 0; k < rawInv.length; k++) {
+        var cell = rawInv[k];
+        if (!cell || typeof cell !== "object") continue;
+        var add = normalizeInitInventoryAddOp(cell);
+        if (add) invOps.push(add);
+      }
+      if (invOps.length) {
+        var invRes = SG.applyInventoryOps(G, invOps);
+        out.appliedInventory = Array.isArray(invRes && invRes.placed) ? invRes.placed.length : 0;
+      }
+    }
     return out;
   }
 
@@ -441,7 +842,21 @@
 
     if (SG && typeof SG.parseInventoryOpsFromText === "function" && typeof SG.applyInventoryOps === "function") {
       var pr = SG.parseInventoryOpsFromText(raw);
-      if (pr.ok) SG.applyInventoryOps(G, pr.ops);
+      if (pr.ok) {
+        var initOps = [];
+        for (var oi = 0; oi < pr.ops.length; oi++) {
+          var opRaw = pr.ops[oi];
+          if (!opRaw || typeof opRaw !== "object") continue;
+          var opn = opRaw.op != null ? String(opRaw.op).trim().toLowerCase() : "";
+          if (opn === "add") {
+            var normalized = normalizeInitInventoryAddOp(opRaw);
+            if (normalized) initOps.push(normalized);
+          } else {
+            initOps.push(opRaw);
+          }
+        }
+        SG.applyInventoryOps(G, initOps);
+      }
     }
     if (SG && typeof SG.parseWorldStateFromText === "function" && typeof SG.applyWorldStatePatch === "function") {
       var ws = SG.parseWorldStateFromText(raw);
@@ -485,6 +900,15 @@
     var o = opts || {};
     var messages =
       Array.isArray(o.messages) && o.messages.length > 0 ? o.messages : buildMessages(o);
+    if (global.GameLog && typeof global.GameLog.info === "function") {
+      try {
+        global.GameLog.info(
+          "[开局配置AI→发送] 最终 messages：\n" + JSON.stringify(messages, null, 2),
+        );
+      } catch (_eMsg) {
+        global.GameLog.info("[开局配置AI→发送] 最终 messages（序列化失败）");
+      }
+    }
     return TH.generateFromMessages({
       messages: messages,
       should_stream: o.shouldStream !== false,
@@ -554,6 +978,9 @@
     })
       .then(function (fullText) {
         var text = fullText != null ? String(fullText) : "";
+        if (global.GameLog && typeof global.GameLog.info === "function") {
+          global.GameLog.info("[开局配置AI←返回] 最终 AI 返回：\n" + text);
+        }
         applyInitStateFromAssistantText(G, fc, text);
         G.mjInitStateAiApplied = true;
         var Pn = global.MjMainScreenPanel;
@@ -574,6 +1001,12 @@
         try {
           console.warn("[开局配置AI] 请求或应用失败", err);
         } catch (_e5) {}
+        if (global.GameLog && typeof global.GameLog.error === "function") {
+          global.GameLog.error(
+            "[开局配置AI] 请求或应用失败：",
+            err && err.message ? String(err.message) : String(err),
+          );
+        }
         onDone();
         return { skipped: false, ok: false, error: err };
       });

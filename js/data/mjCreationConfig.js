@@ -1,6 +1,6 @@
 /**
  * 与 ref_html/js/data/creationConfig.js 对齐的开局数据（凡人修仙传独立页用）
- * 装备 / 杂物 / 功法详情见 js/stuff_describe/*.js，此处按名称引用。
+ * 说明：不再依赖 js/stuff_describe/* 参考表，物品细节以运行时生成数据为准。
  */
 (function (global) {
   "use strict";
@@ -46,13 +46,13 @@
     var r = Math.random() * 100;
     var count;
     var type;
-    if (r < 5) {
+    if (r < 20) {
       count = 1;
       type = "天灵根";
-    } else if (r < 20) {
+    } else if (r < 40) {
       count = 2;
       type = "真灵根";
-    } else if (r < 50) {
+    } else if (r < 60) {
       count = 3;
       type = "真灵根";
     } else {
@@ -168,31 +168,42 @@
     return out;
   }
 
-  /** @returns {{ desc: string, bonus: Object, type?: string } | null} */
+  /** @returns {null} 参考表已弃用 */
   cfg.getEquipmentDescribe = function getEquipmentDescribe(name) {
-    var w = name == null ? "" : String(name).trim();
-    if (!w) return null;
-    var t = global.MjDescribeEquipment;
-    return shallowDescribeClone(t && t[w]);
+    return null;
   };
 
-  /** @returns {{ desc: string, bonus: Object, type?: string } | null} */
+  /** @returns {null} 参考表已弃用 */
   cfg.getGongfaDescribe = function getGongfaDescribe(name) {
-    var w = name == null ? "" : String(name).trim();
-    if (!w) return null;
-    var t = global.MjDescribeGongfa;
-    return shallowDescribeClone(t && t[w]);
+    return null;
   };
 
-  /** @returns {{ desc: string, bonus: Object, type?: string } | null} */
+  function cloneObjectSafe(obj) {
+    if (!obj || typeof obj !== "object") return null;
+    try {
+      return JSON.parse(JSON.stringify(obj));
+    } catch (_e0) {
+      return Object.assign({}, obj);
+    }
+  }
+
+  function getSpiritStoneDescribeByName(name) {
+    var nm = name != null ? String(name).trim() : "";
+    if (!nm) return null;
+    var table = global.MjDescribeSpiritStones;
+    if (!table || typeof table !== "object") return null;
+    if (!Object.prototype.hasOwnProperty.call(table, nm)) return null;
+    var row = table[nm];
+    if (!row || typeof row !== "object") return null;
+    var out = cloneObjectSafe(row) || {};
+    out.name = nm;
+    if (out.type == null || String(out.type).trim() === "") out.type = "材料";
+    return out;
+  }
+
+  /** @returns {Object|null} 仅灵石使用默认表，其余参考表已弃用 */
   cfg.getStuffDescribe = function getStuffDescribe(name) {
-    var w = name == null ? "" : String(name).trim();
-    if (!w) return null;
-    var raw =
-      (global.MjDescribeSpiritStones && global.MjDescribeSpiritStones[w]) ||
-      (global.MjDescribePills && global.MjDescribePills[w]) ||
-      (global.MjDescribeStuff && global.MjDescribeStuff[w]);
-    return shallowDescribeClone(raw);
+    return getSpiritStoneDescribeByName(name);
   };
 
   /** 解析出身 stuff 键名：如「灵石*10」「令牌名」「丹药*3」 */
@@ -230,25 +241,23 @@
       parsed && parsed.kind === "lingshi" ? Math.max(0, parsed.amount || 0) : 0;
     var lingAmount = lingFromBonus > 0 ? lingFromBonus : lingFromKey;
     if (lingAmount > 0) {
-      var st = cfg.getStuffDescribe(LINGSHI_ITEM_NAME);
-      var d0 =
-        meta && meta.desc != null && String(meta.desc).trim() !== ""
-          ? String(meta.desc).trim()
-          : st && st.desc
-            ? String(st.desc)
-            : "";
-      var gStone =
-        meta && meta.grade != null && String(meta.grade).trim() !== ""
-          ? String(meta.grade).trim()
-          : st && st.grade != null && String(st.grade).trim() !== ""
-            ? String(st.grade).trim()
-            : "";
+      var stoneBase = getSpiritStoneDescribeByName(LINGSHI_ITEM_NAME) || {};
       return {
         type: "item",
         name: LINGSHI_ITEM_NAME,
         count: lingAmount,
-        desc: d0 || undefined,
-        grade: gStone || undefined,
+        desc:
+          stoneBase.desc != null && String(stoneBase.desc).trim() !== ""
+            ? String(stoneBase.desc).trim()
+            : undefined,
+        grade:
+          stoneBase.grade != null && String(stoneBase.grade).trim() !== ""
+            ? String(stoneBase.grade).trim()
+            : "下品",
+        value:
+          typeof stoneBase.value === "number" && isFinite(stoneBase.value)
+            ? Math.max(0, Math.floor(stoneBase.value))
+            : 10,
       };
     }
     var name;

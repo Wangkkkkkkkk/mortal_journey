@@ -96,9 +96,9 @@
    * @property {number} chance 成功概率
    */
   var MAJOR_BREAKTHROUGH_TABLE = Object.freeze([
-    { from: "练气", to: "筑基", chance: 0.75 },
-    { from: "筑基", to: "结丹", chance: 0.5 },
-    { from: "结丹", to: "元婴", chance: 0.3 },
+    { from: "练气", to: "筑基", chance: 0.5 },
+    { from: "筑基", to: "结丹", chance: 0.3 },
+    { from: "结丹", to: "元婴", chance: 0.2 },
     { from: "元婴", to: "化神", chance: 0.1 },
   ]);
 
@@ -107,19 +107,19 @@
    * @type {readonly RealmBaseStatsRow[]}
    */
   var TABLE = Object.freeze([
-    { realm: "练气", stage: "初期", hp: 100, mp: 50, patk: 10, pdef: 5, matk: 20, mdef: 5, foot: 5, sense: 10 },
-    { realm: "练气", stage: "中期", hp: 150, mp: 75, patk: 15, pdef: 5, matk: 30, mdef: 5, foot: 5, sense: 20 },
-    { realm: "练气", stage: "后期", hp: 200, mp: 100, patk: 20, pdef: 5, matk: 40, mdef: 5, foot: 5, sense: 30 },
-    { realm: "筑基", stage: "初期", hp: 300, mp: 150, patk: 30, pdef: 10, matk: 60, mdef: 10, foot: 20, sense: 50 },
-    { realm: "筑基", stage: "中期", hp: 350, mp: 175, patk: 35, pdef: 10, matk: 70, mdef: 10, foot: 20, sense: 70 },
-    { realm: "筑基", stage: "后期", hp: 400, mp: 200, patk: 40, pdef: 10, matk: 80, mdef: 10, foot: 20, sense: 90 },
-    { realm: "结丹", stage: "初期", hp: 500, mp: 250, patk: 50, pdef: 20, matk: 100, mdef: 20, foot: 50, sense: 120 },
-    { realm: "结丹", stage: "中期", hp: 650, mp: 325, patk: 65, pdef: 20, matk: 130, mdef: 20, foot: 50, sense: 150 },
-    { realm: "结丹", stage: "后期", hp: 800, mp: 400, patk: 80, pdef: 20, matk: 160, mdef: 20, foot: 50, sense: 180 },
-    { realm: "元婴", stage: "初期", hp: 1000, mp: 500, patk: 100, pdef: 50, matk: 200, mdef: 50, foot: 100, sense: 230 },
-    { realm: "元婴", stage: "中期", hp: 2000, mp: 1000, patk: 200, pdef: 50, matk: 400, mdef: 50, foot: 100, sense: 280 },
-    { realm: "元婴", stage: "后期", hp: 3000, mp: 1500, patk: 300, pdef: 50, matk: 600, mdef: 50, foot: 100, sense: 330 },
-    { realm: "化神", stage: null, hp: 5000, mp: 2500, patk: 500, pdef: 100, matk: 1000, mdef: 100, foot: 200, sense: 400 },
+    { realm: "练气", stage: "初期", hp: 200, mp: 50, patk: 10, pdef: 5, matk: 20, mdef: 5, foot: 5, sense: 10 },
+    { realm: "练气", stage: "中期", hp: 300, mp: 75, patk: 15, pdef: 5, matk: 30, mdef: 5, foot: 5, sense: 20 },
+    { realm: "练气", stage: "后期", hp: 400, mp: 100, patk: 20, pdef: 5, matk: 40, mdef: 5, foot: 5, sense: 30 },
+    { realm: "筑基", stage: "初期", hp: 600, mp: 150, patk: 30, pdef: 10, matk: 60, mdef: 10, foot: 20, sense: 50 },
+    { realm: "筑基", stage: "中期", hp: 700, mp: 175, patk: 35, pdef: 10, matk: 70, mdef: 10, foot: 20, sense: 70 },
+    { realm: "筑基", stage: "后期", hp: 800, mp: 200, patk: 40, pdef: 10, matk: 80, mdef: 10, foot: 20, sense: 90 },
+    { realm: "结丹", stage: "初期", hp: 1000, mp: 250, patk: 50, pdef: 20, matk: 100, mdef: 20, foot: 50, sense: 120 },
+    { realm: "结丹", stage: "中期", hp: 1300, mp: 325, patk: 65, pdef: 20, matk: 130, mdef: 20, foot: 50, sense: 150 },
+    { realm: "结丹", stage: "后期", hp: 1600, mp: 400, patk: 80, pdef: 20, matk: 160, mdef: 20, foot: 50, sense: 180 },
+    { realm: "元婴", stage: "初期", hp: 2000, mp: 500, patk: 100, pdef: 50, matk: 200, mdef: 50, foot: 100, sense: 230 },
+    { realm: "元婴", stage: "中期", hp: 4000, mp: 1000, patk: 200, pdef: 50, matk: 400, mdef: 50, foot: 100, sense: 280 },
+    { realm: "元婴", stage: "后期", hp: 6000, mp: 1500, patk: 300, pdef: 50, matk: 600, mdef: 50, foot: 100, sense: 330 },
+    { realm: "化神", stage: null, hp: 10000, mp: 2500, patk: 500, pdef: 100, matk: 1000, mdef: 100, foot: 200, sense: 400 },
   ]);
 
   var SEP = "\u0001";
