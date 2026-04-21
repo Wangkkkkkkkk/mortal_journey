@@ -1,0 +1,607 @@
+/**
+ * 主角左栏（PlayerInfoPanel）：与 mortal_journey/css/main.css 左栏 mj-* 对齐。
+ * 选择器均挂在 `.main-panel--player` 下；须在 `mainScreen.css` 之后加载。
+ */
+
+.main-panel--player.mj-pane--player {
+  --mj-border: rgba(140, 120, 83, 0.45);
+  --mj-gold: #e8c547;
+  --mj-gold-dim: #b89a4a;
+  --mj-text: #e8e4dc;
+  --mj-muted: #8a9088;
+  --mj-player-content-font: 0.9rem;
+}
+
+.main-panel--player .mj-player-body {
+  padding-top: 10px;
+  --mj-player-content-font: 0.9rem;
+}
+
+.main-panel--player .mj-player-avatar-wrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.main-panel--player .mj-player-name-vertical {
+  letter-spacing: 0.08em;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(232, 197, 71, 0.92);
+  line-height: 1.2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.main-panel--player .mj-player-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid var(--mj-border);
+}
+
+.main-panel--player .mj-player-avatar--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--mj-muted);
+  font-size: 0.78rem;
+  user-select: none;
+}
+
+.main-panel--player .mj-realm-line {
+  font-size: var(--mj-player-content-font);
+  color: var(--mj-text);
+  margin: 0 0 10px;
+  text-align: center;
+}
+
+.main-panel--player .mj-player-identity {
+  margin: 12px 0 14px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(140, 120, 83, 0.25);
+}
+
+.main-panel--player .mj-combat-stats {
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.main-panel--player .mj-resource-row {
+  margin-bottom: 10px;
+}
+
+.main-panel--player .mj-cultivation-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.main-panel--player .mj-resource-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--mj-player-content-font);
+  color: var(--mj-muted);
+  margin-bottom: 4px;
+}
+
+.main-panel--player .mj-resource-label--cultivation {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.main-panel--player .mj-major-breakthrough-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  border: 1px solid rgba(212, 175, 55, 0.55);
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--mj-gold);
+  cursor: pointer;
+}
+
+.main-panel--player .mj-major-breakthrough-btn:hover {
+  border-color: rgba(255, 215, 120, 0.85);
+  background: rgba(212, 175, 55, 0.12);
+}
+
+.main-panel--player .mj-resource-nums {
+  font-size: 1em;
+  color: var(--mj-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.main-panel--player .mj-bar {
+  height: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.main-panel--player .mj-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.main-panel--player .mj-bar-fill--cultivation {
+  background: linear-gradient(90deg, #5d4e37, var(--mj-gold));
+}
+
+.main-panel--player .mj-bar-fill--hp {
+  background: linear-gradient(90deg, #8b2942, #c62828);
+}
+
+.main-panel--player .mj-bar-fill--mp {
+  background: linear-gradient(90deg, #1565c0, #4fc3f7);
+}
+
+.main-panel--player .mj-attr-section-title {
+  margin: 16px 0 10px;
+  padding-bottom: 6px;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--mj-gold);
+  border-bottom: 1px solid var(--mj-border);
+}
+
+.main-panel--player .mj-attr-section-title--first {
+  margin-top: 4px;
+}
+
+.main-panel--player .mj-stat-pair-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  padding: 7px 0;
+  font-size: var(--mj-player-content-font);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  align-items: start;
+}
+
+.main-panel--player .mj-stat-cell {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.main-panel--player .mj-stat-k {
+  font-size: 1em;
+  color: var(--mj-muted);
+  flex-shrink: 0;
+}
+
+.main-panel--player .mj-stat-v {
+  font-size: 1em;
+  color: var(--mj-text);
+  text-align: right;
+  word-break: break-word;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.main-panel--player .mj-player-info-hint {
+  margin: -4px 0 8px;
+  font-size: 0.72rem;
+  color: var(--mj-muted);
+}
+
+.main-panel--player .mj-player-info-muted {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: var(--mj-muted);
+}
+
+.main-panel--player .mj-talent-block {
+  margin-top: 2px;
+  padding-top: 0;
+}
+
+.main-panel--player .mj-talent-row {
+  display: flex;
+  flex-direction: row;
+  gap: 5px;
+  width: 100%;
+  align-items: flex-start;
+}
+
+.main-panel--player .mj-trait-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 1;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 3px;
+  border-radius: 6px;
+  border: 1px solid rgba(140, 120, 83, 0.45);
+  background: rgba(0, 0, 0, 0.28);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.main-panel--player .mj-trait-slot--empty {
+  border-style: dashed;
+  opacity: 0.75;
+}
+
+.main-panel--player .mj-trait-slot--empty .mj-trait-slot-inner {
+  color: var(--mj-muted);
+  font-size: var(--mj-player-content-font);
+}
+
+.main-panel--player .mj-trait-slot-inner {
+  font-size: var(--mj-player-content-font);
+  line-height: 1.2;
+  text-align: center;
+  color: var(--mj-text);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.main-panel--player .mj-trait-slot[data-rarity="平庸"] {
+  border-color: #808080;
+  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.25);
+}
+.main-panel--player .mj-trait-slot[data-rarity="普通"] {
+  border-color: #4caf50;
+}
+.main-panel--player .mj-trait-slot[data-rarity="稀有"] {
+  border-color: #4fc3f7;
+}
+.main-panel--player .mj-trait-slot[data-rarity="史诗"] {
+  border-color: #ba68c8;
+}
+.main-panel--player .mj-trait-slot[data-rarity="传说"] {
+  border-color: #e8c547;
+}
+.main-panel--player .mj-trait-slot[data-rarity="神迹"] {
+  border-color: #ff5252;
+}
+
+.main-panel--player .mj-equip-block {
+  margin-top: 8px;
+}
+
+.main-panel--player .mj-equip-block .mj-attr-section-title {
+  margin-top: 14px;
+  margin-bottom: 10px;
+}
+
+.main-panel--player .mj-equip-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  width: 100%;
+}
+
+.main-panel--player .mj-equip-row--three {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.main-panel--player .mj-equip-slot {
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 1;
+  padding: 5px 4px;
+  border-radius: 6px;
+  border: 1px solid rgba(140, 120, 83, 0.45);
+  background: rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.main-panel--player .mj-equip-slot--empty {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.main-panel--player .mj-equip-slot--filled {
+  border-style: solid;
+  border-color: rgba(232, 197, 71, 0.55);
+  background: rgba(232, 197, 71, 0.06);
+}
+
+.main-panel--player .mj-equip-slot-k {
+  font-size: var(--mj-player-content-font);
+  color: var(--mj-muted);
+  letter-spacing: 0.04em;
+}
+
+.main-panel--player .mj-equip-slot-name {
+  font-size: var(--mj-player-content-font);
+  line-height: 1.2;
+  color: var(--mj-text);
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  word-break: break-word;
+}
+
+.main-panel--player .mj-equip-slot--empty .mj-equip-slot-name {
+  color: var(--mj-muted);
+}
+
+.main-panel--player .mj-player-bag-stack {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(140, 120, 83, 0.22);
+}
+
+.main-panel--player .mj-bag-grid-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin-bottom: 4px;
+  scrollbar-gutter: stable;
+}
+
+/** 储物袋：格数随 `getInventoryBagDisplaySlots` 增长（不足 12 补空，超过则多行），与功法区一样不单独做内部滚动条。 */
+.main-panel--player .mj-bag-grid-scroll--inventory {
+  overflow: visible;
+  scrollbar-gutter: auto;
+}
+
+.main-panel--player .mj-bag-grid-scroll--gongfa {
+  max-height: none;
+  overflow: visible;
+}
+
+.main-panel--player .mj-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.main-panel--player .mj-inventory-slot {
+  aspect-ratio: 1;
+  min-height: 36px;
+  border: 1px dashed rgba(140, 120, 83, 0.4);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 5px 18px;
+  box-sizing: border-box;
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot-label {
+  font-size: var(--mj-player-content-font);
+  line-height: 1.15;
+  text-align: center;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  color: var(--mj-text);
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--empty .mj-inventory-slot-label {
+  color: transparent;
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot-qty {
+  position: absolute;
+  bottom: 3px;
+  right: 4px;
+  font-size: var(--mj-player-content-font);
+  font-weight: 600;
+  color: var(--mj-gold-dim);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--lingshi {
+  border-style: solid;
+  border-color: rgba(180, 160, 90, 0.45);
+  background: rgba(232, 197, 71, 0.06);
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--lingshi .mj-inventory-slot-label {
+  color: var(--mj-text);
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--filled {
+  border-style: solid;
+  border-color: rgba(232, 197, 71, 0.35);
+  background: rgba(232, 197, 71, 0.05);
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--filled[data-rarity="平庸"] {
+  border-color: #808080;
+  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.25);
+  background: rgba(0, 0, 0, 0.28);
+}
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--filled[data-rarity="普通"] {
+  border-color: #4caf50;
+  background: rgba(0, 0, 0, 0.28);
+}
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--filled[data-rarity="稀有"] {
+  border-color: #4fc3f7;
+  background: rgba(79, 195, 247, 0.08);
+}
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--filled[data-rarity="史诗"] {
+  border-color: #ba68c8;
+  background: rgba(186, 104, 200, 0.1);
+}
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--filled[data-rarity="传说"] {
+  border-color: #e8c547;
+  background: rgba(232, 197, 71, 0.12);
+}
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--filled[data-rarity="神迹"] {
+  border-color: #ff5252;
+  background: rgba(255, 82, 82, 0.12);
+}
+
+.main-panel--player .mj-gongfa-grid .mj-inventory-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 5px;
+  box-sizing: border-box;
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-height: 100%;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-label {
+  width: 100%;
+  max-height: 100%;
+  font-size: var(--mj-player-content-font);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  color: var(--mj-text);
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-type {
+  font-size: 0.62rem;
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--mj-muted);
+  max-width: 100%;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-type--support {
+  color: #81c784;
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-type--attack {
+  color: #e57373;
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-type--other {
+  color: var(--mj-gold-dim);
+}
+
+.main-panel--player .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled {
+  border-style: solid;
+  border-color: rgba(232, 197, 71, 0.5);
+  background: rgba(232, 197, 71, 0.06);
+}
+
+.main-panel--player .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled[data-rarity="平庸"] {
+  border-color: #808080;
+  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.25);
+  background: rgba(0, 0, 0, 0.28);
+}
+.main-panel--player .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled[data-rarity="普通"] {
+  border-color: #4caf50;
+  background: rgba(0, 0, 0, 0.28);
+}
+.main-panel--player .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled[data-rarity="稀有"] {
+  border-color: #4fc3f7;
+  background: rgba(79, 195, 247, 0.08);
+}
+.main-panel--player .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled[data-rarity="史诗"] {
+  border-color: #ba68c8;
+  background: rgba(186, 104, 200, 0.1);
+}
+.main-panel--player .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled[data-rarity="传说"] {
+  border-color: #e8c547;
+  background: rgba(232, 197, 71, 0.12);
+}
+.main-panel--player .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled[data-rarity="神迹"] {
+  border-color: #ff5252;
+  background: rgba(255, 82, 82, 0.12);
+}
+
+.main-panel--player .mj-equip-slot--filled[data-rarity="平庸"] {
+  border-color: #808080;
+  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.25);
+  background: rgba(0, 0, 0, 0.22);
+}
+.main-panel--player .mj-equip-slot--filled[data-rarity="普通"] {
+  border-color: #4caf50;
+  background: rgba(0, 0, 0, 0.22);
+}
+.main-panel--player .mj-equip-slot--filled[data-rarity="稀有"] {
+  border-color: #4fc3f7;
+  background: rgba(79, 195, 247, 0.08);
+}
+.main-panel--player .mj-equip-slot--filled[data-rarity="史诗"] {
+  border-color: #ba68c8;
+  background: rgba(186, 104, 200, 0.1);
+}
+.main-panel--player .mj-equip-slot--filled[data-rarity="传说"] {
+  border-color: #e8c547;
+  background: rgba(232, 197, 71, 0.12);
+}
+.main-panel--player .mj-equip-slot--filled[data-rarity="神迹"] {
+  border-color: #ff5252;
+  background: rgba(255, 82, 82, 0.12);
+}
+
+/* 可点击槽位（详情弹窗） */
+.main-panel--player .mj-talent-block .mj-trait-slot--filled,
+.main-panel--player .mj-equip-slot--filled,
+.main-panel--player .mj-inventory-slot.mj-gongfa-slot--filled,
+.main-panel--player .mj-inventory-grid:not(.mj-gongfa-grid) .mj-inventory-slot--filled {
+  cursor: pointer;
+}
+
+.main-panel--player .mj-talent-block .mj-trait-slot--filled:focus-visible,
+.main-panel--player .mj-equip-slot--filled:focus-visible,
+.main-panel--player .mj-inventory-slot.mj-gongfa-slot--filled:focus-visible,
+.main-panel--player .mj-inventory-grid:not(.mj-gongfa-grid) .mj-inventory-slot--filled:focus-visible {
+  outline: 2px solid var(--mj-gold, #e8c547);
+  outline-offset: 1px;
+}

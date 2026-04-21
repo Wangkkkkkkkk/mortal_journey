@@ -1,0 +1,137 @@
+/**
+ * @fileoverview 逆天改命随机词条池（与命运抉择、PlayerBaseRuntime 中文 bonus 键一致）。
+ *
+ * 数据自 `mortal_journey/js/data/trait_samples.js` 的 `global.MjTraitSamples` 迁入。
+ *
+ * bonus 键：血量、法力、物攻、物防、法攻、法防、神识、脚力、魅力、气运
+ */
+
+/** 词条稀有度，与主工程随机池一致。 */
+export type TraitRarity = "平庸" | "普通" | "稀有" | "史诗" | "传说" | "神迹";
+
+/** 单条天赋样本：名称、稀有度、描述。 */
+export interface TraitSample {
+  name: string;
+  rarity: TraitRarity;
+  desc: string;
+}
+
+/**
+ * 合并为 {@link TraitSample} 时使用的行数据（不含 `rarity`，由分组函数注入）。
+ */
+type TraitRow = Pick<TraitSample, "name" | "desc">;
+
+/**
+ * 为同一稀有度下的多行描述批量补上 `rarity` 字段。
+ *
+ * @param rarity 该组词条的稀有度。
+ * @param rows 仅含名称与描述的行列表。
+ * @return 只读的 {@link TraitSample} 列表。
+ */
+function defineTraits(rarity: TraitRarity, rows: readonly TraitRow[]): readonly TraitSample[] {
+  return rows.map((row) => ({ name: row.name, desc: row.desc, rarity }));
+}
+
+/** 平庸词条池。 */
+export const traitSamplesPingyong = defineTraits("平庸", [
+  { name: "天生高傲", desc: "高傲自负，目中无人，不愿与人交流。" },
+  { name: "胆小如鼠", desc: "胆小怕事，不愿冒险，喜欢稳妥行事。" },
+  { name: "酒中仙", desc: "千杯不醉，越喝越清醒，但清醒后啥也记不住。" },
+  { name: "乌鸦嘴", desc: "说啥来啥，好的不灵坏的灵，对他人也有效。" },
+  { name: "天生路痴", desc: "天生方向感极差，经常迷路，但有时也能误入奇景。" },
+  { name: "背锅侠", desc: "啥坏事都赖你头上，但每次背锅都能捞到好处。" },
+  { name: "话痨附体", desc: "嘴比脑子快，套话一流，经常可以通过聊天获取到重要情报。" },
+  { name: "眉头一皱", desc: "遇事眉头一皱，本能退到队友身后，等队友打完再去收拾残局，深谙生存之道。" },
+  { name: "散修命", desc: "不适合加入宗门，作为散修更容易获得机缘。" },
+  { name: "煞气缠身", desc: "杀伐太重，煞气外露，低阶修士见了绕道走，但容易被正道修士盯上，但更容易获得邪道修士的青睐。" },
+  { name: "反派出身", desc: "出身反派家族，但心地善良，就是总被人当坏人，解释不清就懒得解释了。" },
+  { name: "亦正亦邪", desc: "行事随心所欲，正邪两道都不得罪，也都不待见，活得最自在。" },
+]);
+
+/** 普通词条池。 */
+export const traitSamplesPutong = defineTraits("普通", [
+  { name: "砍价高手", desc: "斤斤计较，慧眼识珍，买东西总能买到最便宜的。" },
+  { name: "戏精上身", desc: "演技精湛，说谎脸不红心不跳，装高人骗人、装弱者骗敌，全看心情。" },
+  { name: "天生谨慎", desc: "谨慎小心，不愿冒险，喜欢稳妥行事，难以被他人欺骗或陷害。" },
+  { name: "替身使者", desc: "总有人和你长得像，被认错时蹭好处，就是仇家也找上门，分不清是福是祸。" },
+  { name: "团灭光环", desc: "组队探险时，队友总是莫名其妙倒霉，但你总能全身而退，顺便捡漏。" },
+  { name: "化名狂魔", desc: "出门在外爱用化名，身份暴露概率降低三成。" },
+  { name: "师门团宠", desc: "师父师兄师姐都宠你，资源不用愁，就是责任也重，门派有难你得顶上。" },
+  { name: "因果缠身", desc: "身上因果线特别多，走到哪都有事，但因果了结后奖励也丰厚。" },
+  { name: "天赋异禀", desc: "天赋极高，学啥都快，就是骄傲自满，容易翻车。" },
+]);
+
+/** 稀有词条池。 */
+export const traitSamplesXiyou = defineTraits("稀有", [
+  { name: "驭兽通灵", desc: "灵兽亲近，驭之有方，遇到妖兽不容易受到攻击。" },
+  { name: "绝世神偷", desc: "身手敏捷，偷窃技艺精湛，在人多地方总能偷到一些东西。" },
+  { name: "贫穷光环", desc: "穷到叮当响，但总能捡到别人掉的钱。" },
+  { name: "抱大腿", desc: "天生会找大腿抱，总能遇到高人愿意罩你。" },
+  { name: "捡破烂", desc: "别人不要的废品你全收，捣鼓捣鼓竟然能修好。" },
+  { name: "医术传人", desc: "学习了一点医术，可以给他人治疗一些伤势。" },
+]);
+
+/** 史诗词条池（仅 `rarity` 为「史诗」的条目）。 */
+export const traitSamplesShishi = defineTraits("史诗", [
+  { name: "福缘深厚", desc: "气运加身，机缘自来，秘境探宝，常有意外之喜。" },
+  { name: "百毒不侵", desc: "万毒辟易，邪祟难近，以毒攻毒，无惧毒害。" },
+  { name: "隐灵匿踪", desc: "气息内敛，形迹难觅，隐匿潜行，纵是强敌亦难察。" },
+  { name: "药灵之体", desc: "草木有情，灵药自现，采摘炼丹，所得远超常人。" },
+]);
+
+/**
+ * 传说词条池。
+ *
+ * 含原脚本「史诗」注释块中 `rarity` 为「传说」的三项，顺序与 `trait_samples.js` 一致。
+ */
+export const traitSamplesChuanshuo = defineTraits("传说", [
+  { name: "剑心通明", desc: "对剑诀领悟略快，剑术天赋异禀，会遇到更多剑术机缘。" },
+  { name: "摸尸圣手", desc: "每战必摸尸，总能从敌人储物袋翻出意外之财，杀人夺宝，发家致富。" },
+  { name: "傀儡师", desc: "喜欢钻研炼傀之道，更容易遇到炼傀相关的机缘。" },
+  { name: "天眼通明", desc: "目透虚妄，洞彻本源，能容易看出禁制幻阵的破绽。" },
+  { name: "寻宝灵瞳", desc: "宝光自现，灵物难藏，秘境之中，比他人更容易发现宝物。" },
+  { name: "化形易容", desc: "千面百相，真假难辨，改头换面，隐匿身份无忧。" },
+  { name: "帝王引擎", desc: "与人对峙时常常发出震慑气势，常常能吓退敌人。" },
+  { name: "灵界通讯", desc: "跟灵界的祖上能偶尔通个信，祖上给点指点，就是信号不好，经常断。" },
+  { name: "主角光环", desc: "运气好到离谱，摔悬崖捡秘籍、掉河里摸宝器、迷路撞机缘。" },
+]);
+
+/** 神迹词条池。 */
+export const traitSamplesShenji = defineTraits("神迹", [
+  { name: "逆天改命", desc: "命数无常，我自争锋，绝境逢生，屡屡化险为夷，同时更容易获得逆天机缘。" },
+  { name: "掌天灵液", desc: "随身带个小瓶，每天能产一滴灵液，可以极快加速草药树木的生长。" },
+]);
+
+/**
+ * 稀有度展示与合并顺序（从低到高）。
+ */
+export const TRAIT_RARITY_ORDER: readonly TraitRarity[] = [
+  "平庸",
+  "普通",
+  "稀有",
+  "史诗",
+  "传说",
+  "神迹",
+];
+
+/**
+ * 按稀有度索引的只读映射，便于按档筛选或权重抽样。
+ */
+export const traitsByRarity: Record<TraitRarity, readonly TraitSample[]> = {
+  平庸: traitSamplesPingyong,
+  普通: traitSamplesPutong,
+  稀有: traitSamplesXiyou,
+  史诗: traitSamplesShishi,
+  传说: traitSamplesChuanshuo,
+  神迹: traitSamplesShenji,
+};
+
+/**
+ * 全量词条池：按 {@link TRAIT_RARITY_ORDER} 拼接各档，顺序与旧版单一数组及 `trait_samples.js` 一致。
+ */
+export const traitSamples: readonly TraitSample[] = TRAIT_RARITY_ORDER.flatMap((r) => [...traitsByRarity[r]]);
+
+/**
+ * 与主工程 `global.MjTraitSamples` 同构的只读别名，便于对照旧脚本命名。
+ */
+export const MjTraitSamples = traitSamples;

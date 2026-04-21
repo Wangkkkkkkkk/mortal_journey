@@ -1,31 +1,25 @@
-# 凡人修仙传-AI文字游戏
+# 凡人修仙传 · Vue3 启动页
 
-[![在线试玩](https://img.shields.io/badge/在线试玩-GitHub%20Pages-24292f?style=flat-square&logo=github)](https://wangkkkkkkkk.github.io/mortal_journey/)
-## 项目介绍
+独立 Vue 3 + Vite 项目：启动闪屏、API 设置、存档列表（读取时写入 `sessionStorage`，主界面后续再接）。
 
-基于浏览器的 AI 文字修仙游戏：剧情与世界状态由大模型生成，角色数值、背包与战斗在本地按规则结算，存档与 API 配置保存在本机浏览器中。
+## 运行
 
-## 主要特点
+```bash
+cd vue
+npm install
+npm run dev
+```
 
-- **完全独立前端**  
-  核心玩法、存档、战斗与面板逻辑均在浏览器内运行，通过 OpenAI 兼容接口调用大模型即可开玩，无需自建游戏后端。
+默认开发地址：`http://localhost:5173`。
 
-- **独立属性计算**  
-  境界、修为以及主角攻防、血蓝等由游戏规则独立计算与展示，与 AI 叙事相互配合，避免纯对话与面板状态长期脱节。
+## 构建
 
-- **装备、功法可自由装配拆卸**  
-  多槽位装备与功法栏支持随时更换，直接影响局内属性；储物袋与功法状态可与剧情/状态同步，便于长期养成与构筑。
+```bash
+npm run build
+npm run preview
+```
 
-- **独立战斗系统**  
-  进入战斗后为本地回合制结算（法力与伤害、胜负、战后敌我状态等），结果可反馈到剧情与周围 NPC，与「只讲故事不打表」的模式解耦。
+## 说明
 
-- **适配手机端界面**  
-  布局针对小屏与触控优化，便于在手机浏览器中随时打开、断点续玩。
-
-## 本地运行
-
-使用任意静态 HTTP 服务打开项目目录中的页面即可（例如从 `index.html` 或你实际使用的入口页进入）；API 可在游戏内「API 设置」中填写（数据仅存本机，不上传 GitHub Pages）。
-
-## 测试模型
-
-联调或试用时主要使用轻量模型 **`gemini-3-flash-preview`**
+- 启动页背景图为 `public/splash-bg.png`（与 `mortal_journey/assets/splash-bg.png` 一致），由 `src/styles/start_frame.css` 中 `#splash-bg` 引用。
+- 存档仍使用浏览器 `localStorage` 中 `MJ_SAVES_INDEX_V1` / `MJ_SAVE_V1:*` 等键（与旧版存档格式兼容，便于日后对接主工程）。

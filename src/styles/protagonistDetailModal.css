@@ -1,0 +1,478 @@
+/**
+ * 主角详情弹窗：与 mortal_journey `main.css` 中 `.mj-trait-modal*` 对齐（Teleport 到 body，需全局类名）。
+ */
+
+.mj-protagonist-detail-root.mj-trait-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 380px;
+  max-height: min(72vh, 520px);
+  overflow: auto;
+  padding: 18px 20px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--mj-border, rgba(140, 120, 83, 0.45));
+  background: linear-gradient(180deg, rgba(32, 38, 34, 0.98), rgba(18, 22, 20, 0.98));
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  color: var(--mj-text, #e8e4dc);
+}
+
+.mj-protagonist-detail-root .mj-trait-modal-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--mj-muted, #8a9088);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal-close:hover {
+  color: var(--mj-text, #e8e4dc);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.mj-protagonist-detail-root .mj-trait-modal-title {
+  margin: 0 36px 6px 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--mj-gold, #e8c547);
+  line-height: 1.35;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal-rarity {
+  font-size: 0.78rem;
+  color: var(--mj-gold-dim, #b89a4a);
+  margin-bottom: 12px;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal-body {
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--mj-text, #e8e4dc);
+}
+
+.mj-protagonist-detail-root .mj-trait-modal-section {
+  margin-top: 12px;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal-section:first-child {
+  margin-top: 0;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal-k {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--mj-muted, #8a9088);
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal-v {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 品质描边：与 mortal_journey 左栏天赋 / 物品一致 */
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="平庸"] {
+  border-color: #808080;
+  box-shadow:
+    0 0 0 1px rgba(128, 128, 128, 0.35),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 32px rgba(128, 128, 128, 0.12);
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="平庸"] .mj-trait-modal-title {
+  color: #b0b0b0;
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="平庸"] .mj-trait-modal-rarity {
+  color: #9e9e9e;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="普通"] {
+  border-color: #4caf50;
+  box-shadow:
+    0 0 0 1px rgba(76, 175, 80, 0.45),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 28px rgba(76, 175, 80, 0.14);
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="普通"] .mj-trait-modal-title {
+  color: #66bb6a;
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="普通"] .mj-trait-modal-rarity {
+  color: #9ccc65;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="稀有"] {
+  border-color: #4fc3f7;
+  box-shadow:
+    0 0 0 1px rgba(79, 195, 247, 0.45),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 36px rgba(79, 195, 247, 0.2);
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="稀有"] .mj-trait-modal-title {
+  color: #81d4fa;
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="稀有"] .mj-trait-modal-rarity {
+  color: #b3e5fc;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="史诗"] {
+  border-color: #ba68c8;
+  box-shadow:
+    0 0 0 1px rgba(186, 104, 200, 0.5),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 40px rgba(186, 104, 200, 0.28);
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="史诗"] .mj-trait-modal-title {
+  color: #ce93d8;
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="史诗"] .mj-trait-modal-rarity {
+  color: #e1bee7;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="传说"] {
+  border-color: #e8c547;
+  box-shadow:
+    0 0 0 1px rgba(232, 197, 71, 0.45),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 36px rgba(232, 197, 71, 0.22);
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="传说"] .mj-trait-modal-title {
+  color: #ffe082;
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="传说"] .mj-trait-modal-rarity {
+  color: #fff9c4;
+}
+
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="神迹"] {
+  border-color: #ff5252;
+  box-shadow:
+    0 0 0 1px rgba(255, 82, 82, 0.5),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 40px rgba(255, 82, 82, 0.25);
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="神迹"] .mj-trait-modal-title {
+  color: #ff8a80;
+}
+.mj-protagonist-detail-root .mj-trait-modal[data-rarity="神迹"] .mj-trait-modal-rarity {
+  color: #ffcdd2;
+}
+
+/* 与 mortal_journey `.mj-item-detail-actions` 一致 */
+.mj-protagonist-detail-root .mj-item-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mj-protagonist-detail-root .mj-item-detail-action-btn {
+  flex: 1 1 auto;
+  min-width: 88px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--mj-text, #e8e4dc);
+  cursor: pointer;
+}
+
+.mj-protagonist-detail-root .mj-item-detail-action-btn:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mj-protagonist-detail-root .mj-item-detail-action-btn--primary {
+  border-color: rgba(129, 199, 132, 0.55);
+  background: rgba(129, 199, 132, 0.12);
+}
+
+.mj-protagonist-detail-root .mj-item-detail-action-btn--primary:hover {
+  border-color: rgba(129, 199, 132, 0.85);
+  background: rgba(129, 199, 132, 0.2);
+}
+
+/* 灵石修炼：与 mortal_journey `main.css` `.mj-item-detail-cultivate-*` 一致 */
+.mj-protagonist-detail-root .mj-item-detail-cultivate-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mj-protagonist-detail-root .mj-item-detail-cultivate-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mj-protagonist-detail-root .mj-item-detail-cultivate-label {
+  font-size: 0.78rem;
+  color: var(--mj-muted, #8a9088);
+  white-space: nowrap;
+}
+
+.mj-protagonist-detail-root .mj-item-detail-cultivate-input {
+  flex: 1;
+  min-width: 72px;
+  max-width: 160px;
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--mj-text, #e8e4dc);
+}
+
+.mj-protagonist-detail-root .mj-item-detail-cultivate-input:focus {
+  outline: none;
+  border-color: rgba(129, 199, 132, 0.55);
+}
+
+.mj-protagonist-detail-root .mj-item-detail-actions--stack {
+  flex-direction: column;
+  align-items: stretch;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mj-protagonist-detail-root .mj-item-detail-actions--stack .mj-item-detail-action-btn {
+  flex: 1 1 auto;
+  width: 100%;
+}
+
+.mj-protagonist-detail-root .mj-item-detail-use-elixir {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mj-protagonist-detail-root .mj-item-detail-actions + .mj-item-detail-use-elixir {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.mj-protagonist-detail-root .mj-item-detail-action-btn--use-elixir {
+  width: 100%;
+}
+
+.mj-protagonist-detail-root .mj-item-detail-sell {
+  margin-top: 8px;
+}
+
+.mj-protagonist-detail-root .mj-item-detail-action-btn--sell {
+  width: 100%;
+}
+
+/* 售卖确认（固定层叠在详情之上） */
+.mj-sell-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9010;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+.mj-sell-confirm-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 320px;
+  padding: 16px 18px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--mj-border, rgba(140, 120, 83, 0.45));
+  background: linear-gradient(180deg, rgba(32, 38, 34, 0.99), rgba(18, 22, 20, 0.99));
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  color: var(--mj-text, #e8e4dc);
+  cursor: default;
+}
+
+.mj-sell-confirm-title {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--mj-gold, #e8c547);
+}
+
+.mj-sell-confirm-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.mj-sell-confirm-label {
+  font-size: 0.78rem;
+  color: var(--mj-muted, #8a9088);
+  white-space: nowrap;
+}
+
+.mj-sell-confirm-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--mj-text, #e8e4dc);
+}
+
+.mj-sell-confirm-input:focus {
+  outline: none;
+  border-color: rgba(129, 199, 132, 0.55);
+}
+
+.mj-sell-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.mj-sell-confirm-actions .mj-item-detail-action-btn {
+  flex: 1 1 auto;
+  min-width: 100px;
+}
+
+/* 大境界突破弹窗（与 mortal_journey `main.css` `.mj-major-break-*` 对齐，根节点同详情弹窗 Teleport） */
+.mj-protagonist-detail-root .mj-major-break-modal .mj-major-break-subtitle {
+  font-size: 0.88rem;
+  color: var(--mj-muted, #8a9088);
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.mj-protagonist-detail-root .mj-major-break-modal .mj-major-break-chance {
+  font-size: 1rem;
+  color: var(--mj-gold, #e8c547);
+  text-align: center;
+  margin-bottom: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mj-protagonist-detail-root .mj-major-break-slots {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.mj-protagonist-detail-root .mj-major-break-slot {
+  width: 72px;
+  min-height: 64px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  border: 1px solid rgba(140, 120, 83, 0.45);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--mj-text, #e8e4dc);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.mj-protagonist-detail-root .mj-major-break-slot:hover {
+  border-color: rgba(212, 175, 55, 0.55);
+}
+
+.mj-protagonist-detail-root .mj-major-break-slot--filled {
+  border-color: rgba(129, 199, 132, 0.45);
+}
+
+.mj-protagonist-detail-root .mj-major-break-slot-k {
+  font-size: 0.65rem;
+  color: var(--mj-muted, #8a9088);
+}
+
+.mj-protagonist-detail-root .mj-major-break-slot-name {
+  font-size: 0.75rem;
+  word-break: break-all;
+  line-height: 1.2;
+  max-height: 2.4em;
+  overflow: hidden;
+}
+
+.mj-protagonist-detail-root .mj-major-break-pick {
+  margin-bottom: 12px;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.mj-protagonist-detail-root .mj-major-break-pick-hint {
+  font-size: 0.78rem;
+  color: var(--mj-muted, #8a9088);
+  margin-bottom: 8px;
+}
+
+.mj-protagonist-detail-root .mj-major-break-pick-btn {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  text-align: left;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--mj-text, #e8e4dc);
+  cursor: pointer;
+}
+
+.mj-protagonist-detail-root .mj-major-break-pick-btn:hover {
+  border-color: rgba(212, 175, 55, 0.45);
+}
+
+.mj-protagonist-detail-root .mj-major-break-pick-empty {
+  font-size: 0.8rem;
+  color: var(--mj-muted, #8a9088);
+}
+
+.mj-protagonist-detail-root .mj-major-break-confirm {
+  width: 100%;
+  margin-top: 8px;
+}
