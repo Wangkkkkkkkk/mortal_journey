@@ -5,6 +5,7 @@ import "./styles/start_frame.css";
 import "./styles/logPanel.css";
 import "./styles/fateChoice.css";
 import "./styles/mainScreen.css";
+import "./styles/worldMapModal.css";
 import "./styles/mainScreenPlayerPanel.css";
 import "./styles/protagonistDetailModal.css";
 

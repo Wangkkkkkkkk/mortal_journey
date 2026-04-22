@@ -26,8 +26,8 @@ export type FiveElement = (typeof ELEMENT_CHARS)[number];
  * 各灵根影响的属性键（与 `PlayerBaseStats` / CharacterAttribute base 一致）。
  */
 export const ELEMENT_TO_STATS = {
-  金: ["patk", "matk"],
-  木: ["sense"],
+  金: ["patk"],
+  木: ["matk"],
   水: ["mp"],
   火: ["hp"],
   土: ["pdef", "mdef"],

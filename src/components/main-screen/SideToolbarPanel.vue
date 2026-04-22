@@ -5,6 +5,8 @@
  */
 import { ref, computed } from "vue";
 import { worldLocationSnapshots } from "../../lib/npcManager";
+import { formatRealmLine } from "../../lib/protagonistPanelDisplay";
+import type { NpcPlayInfo } from "../../types/playInfo";
 
 const showWorldMap = ref(false);
 const selectedLocation = ref<string | null>(null);
@@ -32,6 +34,16 @@ function closeWorldMap() {
 
 function selectLocation(name: string) {
   selectedLocation.value = name;
+}
+
+function npcHpPct(npc: NpcPlayInfo): number {
+  const max = Math.max(1, npc.maxHp);
+  return Math.max(0, Math.min(100, (npc.currentHp / max) * 100));
+}
+
+function npcMpPct(npc: NpcPlayInfo): number {
+  const max = Math.max(1, npc.maxMp);
+  return Math.max(0, Math.min(100, (npc.currentMp / max) * 100));
 }
 
 function onNpcClick(_npcName: string) {
@@ -74,15 +86,39 @@ function onNpcClick(_npcName: string) {
               </aside>
               <section class="map-panel__npcs">
                 <template v-if="selectedNpcs.length > 0">
-                  <button
+                  <div
                     v-for="npc in selectedNpcs"
                     :key="npc.id"
-                    type="button"
-                    class="map-npc-btn"
+                    class="map-npc-card"
                     @click="onNpcClick(npc.displayName)"
                   >
-                    {{ npc.displayName }}
-                  </button>
+                    <div class="map-npc-avatar">
+                      <span class="map-npc-avatar-placeholder">像</span>
+                    </div>
+                    <div class="map-npc-info">
+                      <div class="map-npc-top">
+                        <span class="map-npc-name">{{ npc.displayName }}</span>
+                        <span class="map-npc-realm">{{ formatRealmLine(npc.realm) }}</span>
+                      </div>
+                      <div class="map-npc-identity">{{ npc.identity || '—' }}</div>
+                    </div>
+                    <div class="map-npc-bars">
+                      <div class="map-npc-bar-row">
+                        <span class="map-npc-bar-label">血量</span>
+                        <div class="map-npc-bar">
+                          <div class="map-npc-bar-fill map-npc-bar-fill--hp" :style="{ width: npcHpPct(npc) + '%' }" />
+                        </div>
+                        <span class="map-npc-bar-nums">{{ npc.currentHp }}/{{ npc.maxHp }}</span>
+                      </div>
+                      <div class="map-npc-bar-row">
+                        <span class="map-npc-bar-label">法力</span>
+                        <div class="map-npc-bar">
+                          <div class="map-npc-bar-fill map-npc-bar-fill--mp" :style="{ width: npcMpPct(npc) + '%' }" />
+                        </div>
+                        <span class="map-npc-bar-nums">{{ npc.currentMp }}/{{ npc.maxMp }}</span>
+                      </div>
+                    </div>
+                  </div>
                 </template>
                 <p v-else-if="selectedLocation" class="map-panel__empty">该地点暂无NPC</p>
                 <p v-else class="map-panel__empty">请选择一个地点</p>

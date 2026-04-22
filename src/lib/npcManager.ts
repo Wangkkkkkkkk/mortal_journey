@@ -126,7 +126,7 @@ export function mergeNearbyNpcs(entries: NpcNearbyEntry[], worldLocation?: strin
   const result: NpcPlayInfo[] = [];
 
   for (const entry of entries) {
-    if (entry.isDead || !entry.isVisible) continue;
+    if (entry.isDead) continue;
 
     const existing = nearbyNpcs.value.find(
       (n) => n.displayName === entry.displayName,
@@ -134,7 +134,6 @@ export function mergeNearbyNpcs(entries: NpcNearbyEntry[], worldLocation?: strin
 
     if (existing) {
       existing.favorability = entry.favorability;
-      existing.isVisible = entry.isVisible;
       existing.isDead = entry.isDead;
       if (typeof entry.currentHp === "number") existing.currentHp = entry.currentHp;
       if (typeof entry.currentMp === "number") existing.currentMp = entry.currentMp;
@@ -150,7 +149,7 @@ export function mergeNearbyNpcs(entries: NpcNearbyEntry[], worldLocation?: strin
 
       result.push({
         role: "npc",
-        id: entry.id || `npc_${entry.displayName}`,
+        id: `npc_${entry.displayName}`,
         displayName: entry.displayName,
         identity: entry.identity || "",
         isVisible: true,

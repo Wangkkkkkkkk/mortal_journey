@@ -72,7 +72,6 @@ const TAG_NPC_NEARBY_CLOSE = "</NPC_NEARBY_TAG>";
 export interface NpcNearbyEntry {
   displayName: string;
   identity: string;
-  isVisible: boolean;
   isDead: boolean;
   favorability: number;
   currentStageGoal: string;
@@ -88,7 +87,6 @@ export interface NpcNearbyEntry {
   currentMp: number;
   maxHp: number;
   maxMp: number;
-  id: string;
   [key: string]: unknown;
 }
 
@@ -222,7 +220,6 @@ function parseNearbyNpcs(raw: string): NpcNearbyEntry[] {
       const parsed: NpcNearbyEntry = {
         displayName,
         identity: String(o.identity || ""),
-        isVisible: o.isVisible !== false,
         isDead: o.isDead === true,
         favorability: typeof o.favorability === "number" ? o.favorability : 0,
         currentStageGoal: String(o.currentStageGoal || ""),
@@ -238,7 +235,6 @@ function parseNearbyNpcs(raw: string): NpcNearbyEntry[] {
         currentMp: typeof o.currentMp === "number" ? o.currentMp : 50,
         maxHp: typeof o.maxHp === "number" ? o.maxHp : 100,
         maxMp: typeof o.maxMp === "number" ? o.maxMp : 50,
-        id: String(o.id || `npc_${displayName}`),
       };
       return parsed;
     })

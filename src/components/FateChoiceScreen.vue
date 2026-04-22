@@ -350,7 +350,7 @@ function customBirthSummary(): string {
               </button>
             </div>
             <p class="muted creation-linggen-hint">
-              金灵根提升物攻与法攻；木灵根提升神识；水灵根提升法力；火灵根提升血量；土灵根提升物防与法防。灵根越多，修炼越慢。
+              金灵根提升物攻；木灵根提升法攻；水灵根提升法力；火灵根提升血量；土灵根提升物防与法防。灵根越多，修炼越慢。
             </p>
           </div>
 

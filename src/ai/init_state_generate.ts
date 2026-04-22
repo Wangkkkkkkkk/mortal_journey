@@ -211,7 +211,7 @@ function safeGrade(val: unknown, fallback: ItemGrade): ItemGrade {
 
 function safeCount(val: unknown): number {
   const n = typeof val === "number" ? val : parseInt(String(val), 10);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 1;
 }
 
 const ALIAS_TO_STANDARD: Readonly<Record<string, ZhPlayerStatBonusKey>> = {
@@ -533,6 +533,7 @@ export function buildInventoryFromParsed(parsed: InitStateParsed, realmMajor: st
   const items: InventoryStackItem[] = [];
 
   for (const item of parsed.storage) {
+    if (item.count <= 0) continue;
     if (item.type === "灵石") {
       const stoneIdx = SPIRIT_STONE_TABLE_KEYS_ORDERED.indexOf(item.name as SpiritStoneName);
       if (stoneIdx >= 0 && stoneIdx <= maxIdx) {
