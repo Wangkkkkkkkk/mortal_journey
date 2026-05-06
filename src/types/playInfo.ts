@@ -14,7 +14,7 @@ import type {
   InventoryStackItem,
   WeaponItemDefinition,
 } from "./itemInfo";
-import type { NarrationPerson } from "./fateChoice";
+import type { NarrationPerson } from "../fate_choice/types";
 import type { PlayerStatBonusKey } from "./zhPlayerStats";
 
 // ---------------------------------------------------------------------------

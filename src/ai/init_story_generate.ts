@@ -5,7 +5,7 @@
 import { INIT_STORY_SYSTEM_PRESET } from "./init_preset";
 import { completeChatWithMessagesJson, type JsonChatRequestPayload } from "../lib/openAiChatBridge";
 import { formatLinggenElements, formatRealmLine } from "../lib/protagonistPanelDisplay";
-import type { NarrationPerson } from "../types/fateChoice";
+import type { NarrationPerson } from "../fate_choice/types";
 import type { ProtagonistPlayInfo, TraitEntry } from "../types/playInfo";
 
 /** 调用网关所需字段 + 生成参数；`messages` 由本模块拼装，不必传入。 */

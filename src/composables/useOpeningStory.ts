@@ -15,7 +15,7 @@ import {
   type WorldTime,
 } from "../lib/worldTime";
 import { clearProtagonist, loadFromFateChoice, protagonist } from "../lib/protagonistManager";
-import type { FateChoiceResult } from "../types/fateChoice";
+import type { FateChoiceResult } from "../fate_choice/types";
 
 export type OpeningStoryPhase = "idle" | "loading" | "ready" | "error";
 

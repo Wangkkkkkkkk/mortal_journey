@@ -11,7 +11,7 @@ import {
 } from "../lib/openAiChatBridge";
 import { formatLinggenElements, formatRealmLine } from "../lib/protagonistPanelDisplay";
 import type { ProtagonistPlayInfo, EquippedSlotsState, GongfaSlotsState, InventoryStackItem } from "../types/playInfo";
-import type { NarrationPerson } from "../types/fateChoice";
+import type { NarrationPerson } from "../fate_choice/types";
 
 export interface StateApiConfig {
   apiUrl: string;

@@ -4,7 +4,7 @@
  */
 
 import { ref, type Ref } from "vue";
-import type { FateChoiceResult } from "../types/fateChoice";
+import type { FateChoiceResult } from "../fate_choice/types";
 import type {
   ArmorItemDefinition,
   FaqiItemDefinition,
@@ -41,7 +41,7 @@ import {
   type MajorBreakModalSlotSelection,
 } from "./majorBreakthrough";
 import { rollBreakthroughWithProbability } from "../config/realm_state";
-import type { NarrationPerson } from "../types/fateChoice";
+import type { NarrationPerson } from "../fate_choice/types";
 import type { EquipSlotKey } from "./protagonistPanelDisplay";
 
 /** 当前主角运行时状态；无主角时为 `null`。 */

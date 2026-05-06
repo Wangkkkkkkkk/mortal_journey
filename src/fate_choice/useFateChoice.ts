@@ -12,7 +12,10 @@ import {
   rollRandomLinggenName,
   TRAIT_RARITY_WEIGHTS,
 } from "../config/creation";
-import type { CustomBirthPayload, FateChoiceResult, NarrationPerson } from "../types/fateChoice";
+import type { CustomBirthPayload, FateChoiceResult, NarrationPerson } from "./types";
+import "./fateChoice.css";
+
+export type { NarrationPerson, CustomBirthPayload, FateChoiceTrait, FateChoiceBasics, FateChoiceResult } from "./types";
 
 const START_REALM_MAJOR = "练气";
 const START_REALM_STAGE = "初期";

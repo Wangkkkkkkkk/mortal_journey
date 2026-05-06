@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useFateChoice } from "../composables/useFateChoice";
-import type { CustomBirthPayload, FateChoiceResult, NarrationPerson } from "../types/fateChoice";
-import { parseRealmFromCustomText, type TraitOption } from "../composables/useFateChoice";
+import { useFateChoice } from "./useFateChoice";
+import type { CustomBirthPayload, FateChoiceResult, NarrationPerson } from "./types";
+import { parseRealmFromCustomText, type TraitOption } from "./useFateChoice";
 
 const props = defineProps<{ visible: boolean }>();
 
@@ -60,7 +60,6 @@ const linggenParts = computed(() => {
   return { type, elements };
 });
 
-/** 自定义出身弹窗：出身地点与出身背景均非空白才可确定。 */
 const customBirthFormValid = computed(
   () =>
     String(customLoc.value || "").trim() !== "" && String(customBg.value || "").trim() !== "",
@@ -382,7 +381,6 @@ function customBirthSummary(): string {
         </div>
       </div>
 
-      <!-- 词条详情 -->
       <div
         v-show="traitDetailTrait"
         class="mj-trait-modal-root"
@@ -410,7 +408,6 @@ function customBirthSummary(): string {
         </div>
       </div>
 
-      <!-- 自定义出身 -->
       <div
         v-show="customModalOpen"
         class="mj-trait-modal-root"

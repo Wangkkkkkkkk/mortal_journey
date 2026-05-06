@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import DebugLogPanel from "./components/DebugLogPanel.vue";
-import FateChoiceScreen from "./components/FateChoiceScreen.vue";
+import FateChoiceScreen from "./fate_choice/FateChoiceScreen.vue";
 import MainScreen from "./components/main-screen/MainScreen.vue";
 import { useSplash } from "./composables/useSplash";
 import { gameLog } from "./lib/gameLog";
-import type { FateChoiceResult } from "./types/fateChoice";
+import type { FateChoiceResult } from "./fate_choice/types";
 
 const {
   apiModalOpen,

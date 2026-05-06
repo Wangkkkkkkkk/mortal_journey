@@ -3,7 +3,7 @@
  * 字段严格符合 `playInfo`；储物袋含丹药 / 突破丹药 / 五档灵石 / 材料 / 杂物示例；功法栏前两格为攻击 / 辅助示例；三佩戴为 `EXAMPLE_EQUIPPED_*` 示例装备便于测试。
  */
 
-import type { FateChoiceResult } from "../types/fateChoice";
+import type { FateChoiceResult } from "../fate_choice/types";
 import type {
   ArmorItemDefinition,
   AssistGongfaDefinition,

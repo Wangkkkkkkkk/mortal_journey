@@ -2,7 +2,7 @@
 import { computed, toRef } from "vue";
 import { useOpeningStoryFromFateChoice } from "../../composables/useOpeningStory";
 import { protagonist } from "../../lib/protagonistManager";
-import type { FateChoiceResult } from "../../types/fateChoice";
+import type { FateChoiceResult } from "../../fate_choice/types";
 import SideToolbarPanel from "./SideToolbarPanel.vue";
 import PlayerInfoPanel from "./PlayerInfoPanel.vue";
 import StoryChatPanel from "./StoryChatPanel.vue";
