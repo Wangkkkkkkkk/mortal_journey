@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref } from "vue";
-import type { GameLogLine } from "../lib/gameLog";
-import { gameLog } from "../lib/gameLog";
+import type { GameLogLine } from "./gameLog";
+import { gameLog } from "./gameLog";
 
 const showPanel = ref(gameLog.showPanel);
 const lines = ref<GameLogLine[]>(gameLog.getLines());

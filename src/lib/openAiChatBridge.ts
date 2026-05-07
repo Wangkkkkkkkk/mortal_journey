@@ -4,7 +4,7 @@
  * 供启动页「测试连接」与后续游戏逻辑复用。
  */
 
-import { gameLog } from "./gameLog";
+import { gameLog } from "../log/gameLog";
 
 /**
  * 非流式请求的整段超时上限（毫秒），含连接与读取完整 JSON 正文；与 `bridge.js` 中 `DEFAULT_CFG.timeouts.nonStreamMs` 一致。

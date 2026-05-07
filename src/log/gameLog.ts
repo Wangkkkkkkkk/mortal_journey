@@ -89,9 +89,6 @@ function pushLine(level: string, message: string): void {
 export const gameLog = {
   maxLines: MAX_LINES,
 
-  /**
-   * 是否显示左下角调试日志面板：只改这一处即可。true = 显示，false = 不显示（日志仍会进控制台与内存缓冲）。
-   */
   showPanel: true,
 
   getLines(): GameLogLine[] {

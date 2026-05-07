@@ -24,7 +24,7 @@ import {
   INVENTORY_SLOT_EXPAND_STEP,
 } from "./protagonistFromFateChoice";
 import type { ProtagonistDetailAction } from "./protagonistDetailPayload";
-import { gameLog } from "./gameLog";
+import { gameLog } from "../log/gameLog";
 import {
   applyRealmBreakthroughs,
   clampXiuweiToLateStageCapIfNeeded,

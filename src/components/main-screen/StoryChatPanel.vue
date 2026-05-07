@@ -15,7 +15,7 @@ import {
 import type { ProtagonistPlayInfo } from "../../types/playInfo";
 import { createSpiritStoneInventoryStack, mjDescribeSpiritStones, type SpiritStoneName, SPIRIT_STONE_TABLE_KEYS_ORDERED } from "../../types/spiritStone";
 import { mergeNearbyNpcs } from "../../lib/npcManager";
-import { gameLog } from "../../lib/gameLog";
+import { gameLog } from "../../log/gameLog";
 
 const props = withDefaults(
   defineProps<{

@@ -8,7 +8,7 @@ import { generateInitState } from "../ai/init_state_generate";
 import { generateState } from "../ai/state_generate";
 import { applyInitStateToProtagonist } from "../lib/protagonistFromFateChoice";
 import { mergeNearbyNpcs } from "../lib/npcManager";
-import { gameLog } from "../lib/gameLog";
+import { gameLog } from "../log/gameLog";
 import {
   cloneWorldTime,
   createDefaultWorldTime,
