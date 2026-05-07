@@ -5,7 +5,7 @@
  */
 
 import { computed, onMounted, type ComputedRef, type Ref, ref } from "vue";
-import { safeJsonParse, callChatCompletionNonStream } from "../lib/openAiChatBridge";
+import { safeJsonParse, callChatCompletionNonStream } from "../ai/openAiChatBridge";
 
 /**
  * `localStorage` 中保存的 OpenAI 兼容网关覆盖配置（URL / Key / 模型）的键名。

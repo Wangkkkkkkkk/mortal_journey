@@ -1,7 +1,8 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 
-import "./styles/start_frame.css";
+import "./styles/base.css";
+import "./start_frame/start_frame.css";
 import "./log/logPanel.css";
 import "./fate_choice/fateChoice.css";
 import "./styles/mainScreen.css";

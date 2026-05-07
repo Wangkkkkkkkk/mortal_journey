@@ -1,5 +1,5 @@
 import { INIT_STORY_SYSTEM_PRESET } from "./init_state";
-import { completeChatWithMessagesJson, type JsonChatRequestPayload } from "../lib/openAiChatBridge";
+import { completeChatWithMessagesJson, type JsonChatRequestPayload } from "./openAiChatBridge";
 import { formatLinggenElements, formatRealmLine } from "../lib/protagonistPanelDisplay";
 import { ITEM_GRADE_ATTRI_TABLE, MAGIFICATION_TABLE } from "../config/item_grade_attri";
 import {

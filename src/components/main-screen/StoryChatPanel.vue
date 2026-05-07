@@ -3,7 +3,7 @@
  * 中栏：剧情与对话 — 展示开局剧情，支持玩家输入并调用 AI 继续生成后续剧情。
  */
 import { ref, watch } from "vue";
-import type { OpeningStoryPhase } from "../../composables/useOpeningStory";
+import type { OpeningStoryPhase } from "../../ai/useOpeningStory";
 import { generateStory, type StoryChatEntry, type StoryParsed } from "../../ai/story_generate";
 import { generateState, type StateParsed } from "../../ai/state_generate";
 import {

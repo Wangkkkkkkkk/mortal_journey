@@ -3,7 +3,7 @@
  */
 
 import { INIT_STORY_SYSTEM_PRESET } from "./init_preset";
-import { completeChatWithMessagesJson, type JsonChatRequestPayload } from "../lib/openAiChatBridge";
+import { completeChatWithMessagesJson, type JsonChatRequestPayload } from "./openAiChatBridge";
 import { formatLinggenElements, formatRealmLine } from "../lib/protagonistPanelDisplay";
 import type { NarrationPerson, ProtagonistPlayInfo, TraitEntry } from "../types/playInfo";
 

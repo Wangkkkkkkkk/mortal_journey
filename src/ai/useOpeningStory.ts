@@ -3,9 +3,9 @@
  */
 
 import { ref, watch, type ComputedRef, type Ref } from "vue";
-import { generateInitStory } from "../ai/init_story_generate";
-import { generateInitState } from "../ai/init_state_generate";
-import { generateState } from "../ai/state_generate";
+import { generateInitStory } from "./init_story_generate";
+import { generateInitState } from "./init_state_generate";
+import { generateState } from "./state_generate";
 import { applyInitStateToProtagonist } from "../lib/protagonistFromFateChoice";
 import { mergeNearbyNpcs } from "../lib/npcManager";
 import { gameLog } from "../log/gameLog";

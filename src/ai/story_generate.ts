@@ -8,7 +8,7 @@ import {
   completeChatWithMessagesJson,
   type JsonChatRequestPayload,
   type ChatMessage,
-} from "../lib/openAiChatBridge";
+} from "./openAiChatBridge";
 import { formatLinggenElements, formatRealmLine } from "../lib/protagonistPanelDisplay";
 import type { NarrationPerson, ProtagonistPlayInfo, EquippedSlotsState, GongfaSlotsState, InventoryStackItem } from "../types/playInfo";
 
