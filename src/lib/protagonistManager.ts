@@ -41,7 +41,7 @@ import {
   type MajorBreakModalSlotSelection,
 } from "./majorBreakthrough";
 import { rollBreakthroughWithProbability } from "../config/realm_state";
-import type { NarrationPerson } from "../fate_choice/types";
+import type { NarrationPerson } from "../types/playInfo";
 import type { EquipSlotKey } from "./protagonistPanelDisplay";
 
 /** 当前主角运行时状态；无主角时为 `null`。 */

@@ -10,8 +10,7 @@ import {
   type ChatMessage,
 } from "../lib/openAiChatBridge";
 import { formatLinggenElements, formatRealmLine } from "../lib/protagonistPanelDisplay";
-import type { NarrationPerson } from "../fate_choice/types";
-import type { ProtagonistPlayInfo, EquippedSlotsState, GongfaSlotsState, InventoryStackItem } from "../types/playInfo";
+import type { NarrationPerson, ProtagonistPlayInfo, EquippedSlotsState, GongfaSlotsState, InventoryStackItem } from "../types/playInfo";
 
 export interface StoryApiConfig {
   apiUrl: string;

@@ -39,32 +39,60 @@ const {
   resolveBirthLocationDescFromDef,
 } = useFateChoice();
 
+/**
+ * 根据出身 key 取出卡片简介文案。
+ *
+ * @param {string} birthKey `CREATION_BIRTHS` 中的 key。
+ * @return {string} 出身描述文案；key 无效时为空串。
+ */
 function birthCardBlurb(birthKey: string): string {
   const bd = CREATION_BIRTHS[birthKey];
   return bd ? resolveBirthLocationDescFromDef(bd) : "";
 }
 
+/** 当前正在查看详情的词条；为 `null` 时详情弹窗隐藏。 */
 const traitDetailTrait = ref<TraitOption | null>(null);
+
+/** 自定义出身弹窗是否可见。 */
 const customModalOpen = ref(false);
+
+/** 自定义出身弹窗：出身地点输入。 */
 const customLoc = ref("");
+
+/** 自定义出身弹窗：大境界选择。 */
 const customRealmMajor = ref<string>(CUSTOM_REALM_MAJORS[0]!);
+
+/** 自定义出身弹窗：小阶段选择。 */
 const customRealmMinor = ref<string>(CUSTOM_REALM_MINORS[0]!);
+
+/** 自定义出身弹窗：出身背景输入。 */
 const customBg = ref("");
 
+/**
+ * 将当前灵根文案拆分为「类型」与「元素列表」两部分，供模板展示灵根球。
+ *
+ * 例如 `"真灵根 金, 火"` → `{ type: "真灵根", elements: ["金", "火"] }`。
+ */
 const linggenParts = computed(() => {
   const name = selectedLinggen.value;
   if (!name) return { type: "", elements: [] as string[] };
   const parts = name.split(/\s+/);
   const type = parts[0] || "";
+  // 去掉逗号，只保留元素名。
   const elements = parts.slice(1).map((el) => el.replace(/,/g, ""));
   return { type, elements };
 });
 
+/** 自定义出身弹窗表单校验：出身地点与出身背景均非空白才可提交。 */
 const customBirthFormValid = computed(
   () =>
     String(customLoc.value || "").trim() !== "" && String(customBg.value || "").trim() !== "",
 );
 
+/**
+ * 监听 `visible` 变化：面板打开时重置所有状态并执行首次随机。
+ * 使用 `immediate: true` 确保首次挂载即触发。
+ */
 watch(
   () => props.visible,
   (v) => {
@@ -79,6 +107,12 @@ watch(
   { immediate: true },
 );
 
+/**
+ * 全局键盘事件处理：按 Escape 时按优先级关闭最上层弹窗。
+ * 优先关闭词条详情弹窗，其次关闭自定义出身弹窗。
+ *
+ * @param {KeyboardEvent} e 原生键盘事件。
+ */
 function onBackdropKeydown(e: KeyboardEvent) {
   if (e.key === "Escape") {
     if (traitDetailTrait.value) {
@@ -94,13 +128,21 @@ function onBackdropKeydown(e: KeyboardEvent) {
   }
 }
 
+/**
+ * 打开自定义出身弹窗，并回填已有数据（若当前已是自定义出身）。
+ * 若当前为预设出身，则各字段重置为默认值。
+ */
 function openCustomModal(): void {
   const cb = customBirth.value;
+  // 仅在当前选中「自定义」且存在有效载荷时回填。
   const fill = selectedBirth.value === "自定义" && cb && !cb.presetBirthKey;
   customLoc.value = fill && cb && cb.location != null ? String(cb.location) : "";
+
   let maj: string = CUSTOM_REALM_MAJORS[0]!;
   let mino: string = CUSTOM_REALM_MINORS[0]!;
   const cb0 = fill ? cb : null;
+
+  // 优先使用显式的大/小境界字段，回退到解析 realmText。
   if (cb0 && cb0.realmMajor && (CUSTOM_REALM_MAJORS as readonly string[]).includes(cb0.realmMajor)) {
     maj = cb0.realmMajor;
     if (cb0.realmMinor && (CUSTOM_REALM_MINORS as readonly string[]).includes(cb0.realmMinor)) {
@@ -113,12 +155,17 @@ function openCustomModal(): void {
       if (parsed.minor && (CUSTOM_REALM_MINORS as readonly string[]).includes(parsed.minor)) mino = parsed.minor;
     }
   }
+
   customRealmMajor.value = maj;
   customRealmMinor.value = mino;
   customBg.value = fill && cb0 && cb0.background != null ? String(cb0.background) : "";
   customModalOpen.value = true;
 }
 
+/**
+ * 自定义出身弹窗点击「确定」：校验表单后组装 {@link CustomBirthPayload} 并应用。
+ * 校验不通过时静默忽略（按钮已 disabled）。
+ */
 function confirmCustomBirth(): void {
   if (!customBirthFormValid.value) return;
   const loc = String(customLoc.value || "").trim();
@@ -139,6 +186,11 @@ function confirmCustomBirth(): void {
   customModalOpen.value = false;
 }
 
+/**
+ * 出身卡片点击事件分发：点击「自定义」时打开弹窗，其余交给 `selectBirth`。
+ *
+ * @param {string} name 出身卡片显示名，与 `CREATION_BIRTHS` key 一致或为 `"自定义"`。
+ */
 function onBirthCardClick(name: string): void {
   if (name === "自定义") {
     openCustomModal();
@@ -147,6 +199,10 @@ function onBirthCardClick(name: string): void {
   selectBirth(name);
 }
 
+/**
+ * 点击「确认选择」按钮：校验就绪状态后组装结果并触发 `complete` 事件。
+ * 未就绪时在界面显示提示文案。
+ */
 function onConfirm(): void {
   if (!isReady.value) {
     statusMessage.value = "请完成姓名、叙事人称、性别、出身、灵根与天赋词条。";
@@ -156,18 +212,34 @@ function onConfirm(): void {
   emit("complete", payload);
 }
 
+/**
+ * 返回叙事人称的展示文案，供模板在卡片副标题中使用。
+ *
+ * @param {string} key 人称 key（`"first"` / `"second"` / `"third"`）。
+ * @return {string} 展示文案，例如 `"我"`、`"你"` 或玩家姓名。
+ */
 function narrationDesc(key: string): string {
   if (key === "first") return "我";
   if (key === "second") return "你";
   return String(playerName.value || "韩立");
 }
 
+/**
+ * 设置叙事人称，仅接受合法 key 值，忽略其余输入。
+ *
+ * @param {string} key 人称 key（`"first"` / `"second"` / `"third"`）。
+ */
 function setNarrationPerson(key: string): void {
   if (key === "first" || key === "second" || key === "third") {
     narrationPerson.value = key as NarrationPerson;
   }
 }
 
+/**
+ * 自定义出身卡片的摘要文案：已填写时显示「地点 · 境界」，未填写时提示点击操作。
+ *
+ * @return {string} 摘要文案，例如 `"越国 · 练气初期"` 或 `"点击填写出身地点、境界与背景"`。
+ */
 function customBirthSummary(): string {
   if (selectedBirth.value !== "自定义" || !customBirth.value) {
     return "点击填写出身地点、境界与背景";

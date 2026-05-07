@@ -7,6 +7,8 @@
  * 物品与储物袋格的类型定义见 `itemInfo`；本文件在文末按相同模块顺序再导出，便于业务单点引用。
  */
 
+export type NarrationPerson = "first" | "second" | "third";
+
 import type {
   ArmorItemDefinition,
   FaqiItemDefinition,
@@ -14,7 +16,6 @@ import type {
   InventoryStackItem,
   WeaponItemDefinition,
 } from "./itemInfo";
-import type { NarrationPerson } from "../fate_choice/types";
 import type { PlayerStatBonusKey } from "./zhPlayerStats";
 
 // ---------------------------------------------------------------------------

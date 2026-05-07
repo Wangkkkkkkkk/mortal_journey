@@ -3,94 +3,29 @@
  */
 
 import { computed, ref } from "vue";
-import type { TraitRarity, TraitSample } from "../config/traits";
-import { traitSamples } from "../config/traits";
-import type { BirthDefinition, TraitRarityWeightRow } from "../config/creation";
+import type { TraitRarity, TraitSample } from "./traits";
+import { traitSamples } from "./traits";
+import type { BirthDefinition, TraitRarityWeightRow } from "./types";
 import {
   CREATION_BIRTHS,
   CREATION_GENDERS,
+  CUSTOM_REALM_MAJORS,
+  CUSTOM_REALM_MINORS,
+  LINGGEN_TYPE_PREFIXES,
   rollRandomLinggenName,
+  START_REALM_MAJOR,
+  START_REALM_STAGE,
   TRAIT_RARITY_WEIGHTS,
-} from "../config/creation";
+} from "./types";
 import type { CustomBirthPayload, FateChoiceResult, NarrationPerson } from "./types";
 import "./fateChoice.css";
 
-export type { NarrationPerson, CustomBirthPayload, FateChoiceTrait, FateChoiceBasics, FateChoiceResult } from "./types";
-
-const START_REALM_MAJOR = "练气";
-const START_REALM_STAGE = "初期";
-
-const CUSTOM_REALM_MAJORS = ["练气", "筑基", "结丹", "元婴", "化神"] as const;
-const CUSTOM_REALM_MINORS = ["初期", "中期", "后期"] as const;
+// ---------------------------------------------------------------------------
+// 公共类型与工具函数
+// ---------------------------------------------------------------------------
 
 export interface TraitOption extends TraitSample {
   locked: boolean;
-}
-
-/** 与 `rollRandomLinggenName()` 返回串中首段类型一致，用于从结果里剥掉前缀只保留元素。 */
-const LINGGEN_TYPE_PREFIXES = new Set(["天灵根", "真灵根", "伪灵根", "无灵根"]);
-
-/**
- * 从完整灵根文案中取出五行元素部分（去掉首段类型词）。
- *
- * @param {string|null|undefined} roll 完整灵根文案，例如 `天灵根 木`、`真灵根 金, 水`；空则视为无内容。
- * @return {string} 元素串，例如 `木`、`金, 水`；仅类型无元素或无法解析时为 `""`。
- */
-export function linggenElementsFromRoll(roll: string | null | undefined): string {
-  const s = String(roll ?? "").trim();
-  if (!s) return "";
-  const spaceIdx = s.indexOf(" ");
-  if (spaceIdx === -1) {
-    return LINGGEN_TYPE_PREFIXES.has(s) ? "" : s;
-  }
-  const first = s.slice(0, spaceIdx).trim();
-  const rest = s.slice(spaceIdx + 1).trim();
-  if (rest) return rest;
-  return LINGGEN_TYPE_PREFIXES.has(first) ? "" : s;
-}
-
-/**
- * 与 {@link linggenElementsFromRoll} 语义一致，将元素段按逗号拆成数组（去空白、去空项）。
- *
- * @param {string|null|undefined} roll 完整灵根文案，例如 `真灵根 金, 火`。
- * @return {string[]} 元素名数组，例如 `["金", "火"]`；无元素时为 `[]`。
- */
-export function linggenElementsArrayFromRoll(roll: string | null | undefined): string[] {
-  const part = linggenElementsFromRoll(roll);
-  if (!part) return [];
-  return part
-    .split(",")
-    .map((x) => x.trim())
-    .filter((x) => x.length > 0);
-}
-
-/**
- * 从自定义境界文案中解析大境界与小阶段（按出现优先级匹配）。
- *
- * @param {string} text 用户或配置中的境界描述字符串。
- * @return {{major: string, minor: string|null}|null} 解析到的大/小境界；无法识别大境界时为 `null`。
- */
-export function parseRealmFromCustomText(text: string): { major: string; minor: string | null } | null {
-  const s = String(text || "").trim();
-  if (!s) return null;
-  const majors = ["化神", "元婴", "结丹", "筑基", "练气"];
-  const stages = ["后期", "中期", "初期"];
-  let major = "";
-  for (let mi = 0; mi < majors.length; mi++) {
-    if (s.includes(majors[mi]!)) {
-      major = majors[mi]!;
-      break;
-    }
-  }
-  if (!major) return null;
-  let minor = "初期";
-  for (let si = 0; si < stages.length; si++) {
-    if (s.includes(stages[si]!)) {
-      minor = stages[si]!;
-      break;
-    }
-  }
-  return { major, minor };
 }
 
 /**
@@ -116,52 +51,70 @@ function resolveBirthLocationDescFromDef(bd: BirthDefinition | undefined): strin
 }
 
 /**
- * 构造界面用的出生选项 key 顺序：`自定义` 插在 `黄枫谷弟子` 之后，其余保持配置 key 顺序。
+ * 从自定义境界文案中解析大境界与小阶段（按出现优先级匹配）。
  *
- * @return {string[]} 排序后的出生 key 列表。
+ * @param {string} text 用户或配置中的境界描述字符串。
+ * @return {{major: string, minor: string|null}|null} 解析到的大/小境界；无法识别大境界时为 `null`。
  */
-function buildOrderedBirthKeys(): string[] {
-  const raw = Object.keys(CREATION_BIRTHS);
-  const out: string[] = [];
-  for (let i = 0; i < raw.length; i++) {
-    if (raw[i] !== "自定义") out.push(raw[i]!);
+export function parseRealmFromCustomText(text: string): { major: string; minor: string | null } | null {
+  const s = String(text || "").trim();
+  if (!s) return null;
+  let major = "";
+  for (let mi = 0; mi < CUSTOM_REALM_MAJORS.length; mi++) {
+    if (s.includes(CUSTOM_REALM_MAJORS[mi]!)) {
+      major = CUSTOM_REALM_MAJORS[mi]!;
+      break;
+    }
   }
-  const idx = out.indexOf("黄枫谷弟子");
-  if (idx >= 0) out.splice(idx + 1, 0, "自定义");
-  else out.push("自定义");
-  return out;
+  if (!major) return null;
+  let minor = "";
+  for (let si = 0; si < CUSTOM_REALM_MINORS.length; si++) {
+    if (s.includes(CUSTOM_REALM_MINORS[si]!)) {
+      minor = CUSTOM_REALM_MINORS[si]!;
+      break;
+    }
+  }
+  return { major, minor };
 }
 
 /**
- * 将预设出生 key 转为自定义出生载荷（默认练气初期、地点与背景来自配置）。
+ * 从完整灵根文案中取出五行元素部分（去掉首段类型词）。
  *
- * @param {string} birthKey `CREATION_BIRTHS` 中的 key。
- * @return {CustomBirthPayload|null} 成功时为载荷；key 无效时为 `null`。
+ * @param {string|null|undefined} roll 完整灵根文案，例如 `天灵根 木`、`真灵根 金, 水`；空则视为无内容。
+ * @return {string} 元素串，例如 `木`、`金, 水`；仅类型无元素或无法解析时为 `""`。
  */
-function makePresetCustomBirth(birthKey: string): CustomBirthPayload | null {
-  const bd = CREATION_BIRTHS[birthKey];
-  if (!bd) return null;
-  const loc = resolveBirthLocationNameFromDef(bd) || "";
-  const locDesc = resolveBirthLocationDescFromDef(bd) || "";
-  const bg = locDesc;
-  return {
-    tag: loc || birthKey,
-    name: loc || birthKey,
-    location: loc,
-    realmMajor: START_REALM_MAJOR,
-    realmMinor: START_REALM_STAGE,
-    realmText: START_REALM_MAJOR + START_REALM_STAGE,
-    background: bg,
-    presetBirthKey: birthKey,
-  };
+export function linggenElementsFromRoll(roll: string | null | undefined): string {
+  const s = String(roll ?? "").trim();
+  if (!s) return "";
+  const spaceIdx = s.indexOf(" ");
+  if (spaceIdx === -1) {
+    return LINGGEN_TYPE_PREFIXES.has(s) ? "" : s;
+  }
+  const first = s.slice(0, spaceIdx).trim();
+  const rest = s.slice(spaceIdx + 1).trim();
+  if (rest) return rest;
+  return LINGGEN_TYPE_PREFIXES.has(first) ? "" : s;
 }
 
 /**
- * 按权重加权随机抽取一条词条稀有度；忽略非正或非有限权重。
+ * 将灵根元素段按逗号拆成数组（去空白、去空项）。
  *
- * @param {readonly TraitRarityWeightRow[]} rows 稀有度与权重行。
- * @return {TraitRarity} 抽中的稀有度；无有效权重时回退为第一行或 `平庸`。
+ * @param {string|null|undefined} roll 完整灵根文案，例如 `真灵根 金, 火`。
+ * @return {string[]} 元素名数组，例如 `["金", "火"]`；无元素时为 `[]`。
  */
+export function linggenElementsArrayFromRoll(roll: string | null | undefined): string[] {
+  const part = linggenElementsFromRoll(roll);
+  if (!part) return [];
+  return part
+    .split(",")
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0);
+}
+
+// ---------------------------------------------------------------------------
+// 词条随机内部工具
+// ---------------------------------------------------------------------------
+
 function rollTraitRarityFromWeights(rows: readonly TraitRarityWeightRow[]): TraitRarity {
   if (!rows.length) return "平庸";
   let sum = 0;
@@ -182,79 +135,107 @@ function rollTraitRarityFromWeights(rows: readonly TraitRarityWeightRow[]): Trai
   return rows[rows.length - 1]!.rarity || "平庸";
 }
 
-/**
- * 将样本词条复制为选项行（初始未锁定）。
- *
- * @param {TraitSample} t 词条样本。
- * @return {TraitOption} 带 `locked: false` 的选项副本。
- */
 function cloneTraitForOption(t: TraitSample): TraitOption {
-  return {
-    name: t.name,
-    rarity: t.rarity,
-    desc: t.desc,
-    locked: false,
-  };
+  return { name: t.name, rarity: t.rarity, desc: t.desc, locked: false };
 }
 
-/**
- * 从池中不放回地随机抽取若干词条，先按稀有度权重抽档再在该档或全池中取一条。
- *
- * @param {readonly TraitSample[]} pool 候选词条池。
- * @param {string[]} excludeNames 按名称排除（通常已锁定词条）。
- * @param {number} count 需要抽取的数量。
- * @return {TraitOption[]} 抽取结果列表（长度不超过 `count` 与可用池大小）。
- */
 function pickRandomTraits(pool: readonly TraitSample[], excludeNames: string[], count: number): TraitOption[] {
   let bag = pool.filter((t) => t && t.name && excludeNames.indexOf(t.name) === -1);
   const out: TraitOption[] = [];
-  const weights = TRAIT_RARITY_WEIGHTS;
   for (let i = 0; i < count && bag.length; i++) {
-    const rarity = rollTraitRarityFromWeights(weights);
-    let candidates = bag.filter((x) => x.rarity === rarity);
+    const rarity = rollTraitRarityFromWeights(TRAIT_RARITY_WEIGHTS);
+    const candidates = bag.filter((x) => x.rarity === rarity);
     const pickFrom = candidates.length ? candidates : bag;
     const idx = Math.floor(Math.random() * pickFrom.length);
-    const t = pickFrom[idx]!;
-    const pickedName = t.name;
+    const pickedName = pickFrom[idx]!.name;
     bag = bag.filter((x) => !x || x.name !== pickedName);
-    out.push(cloneTraitForOption(t));
+    out.push(cloneTraitForOption(pickFrom[idx]!));
   }
   return out;
 }
 
-/**
- * 浅拷贝当前展示中的词条选项（含 `locked` 状态）。
- *
- * @param {TraitOption[]} options 界面上的词条选项。
- * @return {TraitOption[]} 新数组，元素为浅拷贝。
- */
-function getAllDisplayedTraitsCloned(options: TraitOption[]): TraitOption[] {
-  return options.map((t) => ({ ...t, locked: !!t.locked }));
+// ---------------------------------------------------------------------------
+// 出身内部工具
+// ---------------------------------------------------------------------------
+
+function buildOrderedBirthKeys(): string[] {
+  const raw = Object.keys(CREATION_BIRTHS);
+  const out: string[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] !== "自定义") out.push(raw[i]!);
+  }
+  const idx = out.indexOf("黄枫谷弟子");
+  if (idx >= 0) out.splice(idx + 1, 0, "自定义");
+  else out.push("自定义");
+  return out;
 }
 
+function makePresetCustomBirth(birthKey: string): CustomBirthPayload | null {
+  const bd = CREATION_BIRTHS[birthKey];
+  if (!bd) return null;
+  const loc = resolveBirthLocationNameFromDef(bd) || "";
+  const bg = resolveBirthLocationDescFromDef(bd) || "";
+  return {
+    tag: loc || birthKey,
+    name: loc || birthKey,
+    location: loc,
+    realmMajor: START_REALM_MAJOR,
+    realmMinor: START_REALM_STAGE,
+    realmText: START_REALM_MAJOR + START_REALM_STAGE,
+    background: bg,
+    presetBirthKey: birthKey,
+  };
+}
+
+// ===========================================================================
+// useFateChoice：按 UI 选择顺序组织
+// ===========================================================================
+
 /**
- * 命运抉择表单与随机逻辑：refs、计算属性与构建提交载荷的方法。
- *
- * @return {object} 状态 refs、有序出生 key、配置常量及同步/随机/重置/组包等方法。
+ * 命运抉择表单与随机逻辑。
+ * 内部状态按 UI 选择顺序排列：姓名 → 叙事人称 → 性别 → 出身 → 词条 → 灵根 → 提交。
  */
 export function useFateChoice() {
+  // ── 1. 姓名 ──────────────────────────────────────────────────────────────
+  const playerName = ref("韩立");
+
+  // ── 2. 叙事人称 ──────────────────────────────────────────────────────────
+  const narrationPerson = ref<NarrationPerson>("first");
+
+  // ── 3. 性别 ──────────────────────────────────────────────────────────────
+  const selectedGender = ref<string>(CREATION_GENDERS[0]!);
+
+  // ── 4. 出身 ──────────────────────────────────────────────────────────────
   const selectedBirth = ref("凡人");
   const customBirth = ref<CustomBirthPayload | null>(null);
-  const selectedGender = ref<string>(CREATION_GENDERS[0]!);
-  const narrationPerson = ref<NarrationPerson>("first");
-  const playerName = ref("韩立");
-  const currentTraitOptions = ref<TraitOption[]>([]);
-  const selectedLinggen = ref<string | null>(null);
   const birthLocation = ref<string | null>(null);
-  const statusMessage = ref("");
-
   const birthKeysOrdered = buildOrderedBirthKeys();
 
-  /**
-   * 根据当前自定义出生载荷解析有效起始大/小境界；无有效自定义时返回默认练气初期。
-   *
-   * @return {{major: string, minor: string|null}} 大境界与小阶段（小阶段可能为 `null`）。
-   */
+  /** 非「自定义」时，用当前选中的预设出生同步 `customBirth` 与 `birthLocation`。 */
+  function syncCustomBirthForCurrentSelection(): void {
+    if (selectedBirth.value === "自定义") return;
+    const bd = CREATION_BIRTHS[selectedBirth.value];
+    if (!bd) return;
+    customBirth.value = makePresetCustomBirth(selectedBirth.value);
+    const locName = resolveBirthLocationNameFromDef(bd);
+    birthLocation.value = locName ? String(locName).trim() : null;
+  }
+
+  /** 选择预设出生（忽略名为 `自定义` 的调用）。 */
+  function selectBirth(name: string): void {
+    if (name === "自定义") return;
+    selectedBirth.value = name;
+    syncCustomBirthForCurrentSelection();
+  }
+
+  /** 应用用户自定义出生。 */
+  function applyCustomBirth(payload: CustomBirthPayload): void {
+    selectedBirth.value = "自定义";
+    birthLocation.value = payload.location;
+    customBirth.value = payload;
+  }
+
+  /** 根据当前出生载荷解析有效起始大/小境界。 */
   function getEffectiveStartRealm(): { major: string; minor: string | null } {
     const cb = customBirth.value;
     if (cb) {
@@ -273,111 +254,7 @@ export function useFateChoice() {
     return { major: START_REALM_MAJOR, minor: START_REALM_STAGE };
   }
 
-  /**
-   * 非「自定义」时，用当前选中的预设出生同步 `customBirth` 与 `birthLocation`。
-   *
-   * @return {void}
-   */
-  function syncCustomBirthForCurrentSelection(): void {
-    if (selectedBirth.value === "自定义") return;
-    const bd = CREATION_BIRTHS[selectedBirth.value];
-    if (!bd) return;
-    customBirth.value = makePresetCustomBirth(selectedBirth.value);
-    const locName = resolveBirthLocationNameFromDef(bd);
-    birthLocation.value = locName ? String(locName).trim() : null;
-  }
-
-  /**
-   * 随机roll一条灵根文案并写入 `selectedLinggen`。
-   *
-   * @return {void}
-   */
-  function applyRandomLinggen(): void {
-    selectedLinggen.value = rollRandomLinggenName();
-  }
-
-  /**
-   * 在未锁定格子数量允许时，保留已锁定词条并随机刷新其余槽位（共五格）。
-   *
-   * @return {void}
-   */
-  function randomizeTraits(): void {
-    const locked = (currentTraitOptions.value || []).filter((t) => t && t.locked);
-    if (locked.length >= 5) return;
-    const need = Math.max(0, 5 - locked.length);
-    const exclude = locked.map((t) => t.name);
-    const fresh = pickRandomTraits(traitSamples, exclude, need);
-    currentTraitOptions.value = locked.concat(fresh);
-  }
-
-  /**
-   * 按词条名切换对应选项的锁定状态。
-   *
-   * @param {string} traitName 词条名称。
-   * @return {void}
-   */
-  function toggleTraitLock(traitName: string): void {
-    const opts = currentTraitOptions.value || [];
-    const idx = opts.findIndex((t) => t.name === traitName);
-    if (idx <= -1) return;
-    const next = opts.slice();
-    const row = next[idx]!;
-    next[idx] = { ...row, locked: !row.locked };
-    currentTraitOptions.value = next;
-  }
-
-  /**
-   * 将表单与随机状态恢复为默认值，并同步当前预设出生的自定义载荷。
-   *
-   * @return {void}
-   */
-  function reset(): void {
-    selectedBirth.value = "凡人";
-    customBirth.value = null;
-    selectedGender.value = CREATION_GENDERS[0]!;
-    narrationPerson.value = "first";
-    playerName.value = "韩立";
-    currentTraitOptions.value = [];
-    selectedLinggen.value = null;
-    birthLocation.value = null;
-    statusMessage.value = "";
-    syncCustomBirthForCurrentSelection();
-  }
-
-  /**
-   * 若尚无灵根或词条，则各执行一次随机，便于首次进入界面即有展示。
-   *
-   * @return {void}
-   */
-  function prepareInitialRolls(): void {
-    if (!selectedLinggen.value) applyRandomLinggen();
-    if (!currentTraitOptions.value.length) {
-      currentTraitOptions.value = pickRandomTraits(traitSamples, [], 5);
-    }
-  }
-
-  const isReady = computed(
-    () =>
-      !!selectedBirth.value &&
-      !!selectedGender.value &&
-      !!selectedLinggen.value &&
-      (currentTraitOptions.value?.length ?? 0) > 0,
-  );
-
-  const traitRandomizeDisabled = computed(() => {
-    const locked = (currentTraitOptions.value || []).filter((t) => t?.locked).length;
-    return locked >= 5;
-  });
-
-  const traitRandomizeTitle = computed(() =>
-    traitRandomizeDisabled.value ? "五格均已锁定，请先解锁至少一格后再刷新。" : "",
-  );
-
-  /**
-   * 解析出生地展示名：优先 `birthLocation`，否则当前预设出生的配置地点。
-   *
-   * @return {string} 去空白后的地点名；无则为 `""`。
-   */
+  /** 解析出生地展示名。 */
   function resolveStartBirthLocation(): string {
     if (birthLocation.value != null && String(birthLocation.value).trim() !== "") {
       return String(birthLocation.value).trim();
@@ -390,11 +267,7 @@ export function useFateChoice() {
     return "";
   }
 
-  /**
-   * 解析出身故事/背景：来自自定义出生载荷的 `background`。
-   *
-   * @return {string} 去空白后的背景文案；无则为 `""`。
-   */
+  /** 解析出身故事/背景。 */
   function resolveOriginStory(): string {
     const cb = customBirth.value;
     if (cb != null && String(cb.background || "").trim() !== "") {
@@ -403,11 +276,59 @@ export function useFateChoice() {
     return "";
   }
 
-  /**
-   * 根据当前表单状态组装提交用的 {@link FateChoiceResult}（不计算数值属性）。
-   *
-   * @return {FateChoiceResult} 基础信息与词条列表。
-   */
+  // ── 5. 天赋词条 ──────────────────────────────────────────────────────────
+  const currentTraitOptions = ref<TraitOption[]>([]);
+
+  /** 保留已锁定词条并随机刷新其余槽位（共五格）。 */
+  function randomizeTraits(): void {
+    const locked = (currentTraitOptions.value || []).filter((t) => t && t.locked);
+    if (locked.length >= 5) return;
+    const need = Math.max(0, 5 - locked.length);
+    const exclude = locked.map((t) => t.name);
+    const fresh = pickRandomTraits(traitSamples, exclude, need);
+    currentTraitOptions.value = locked.concat(fresh);
+  }
+
+  /** 按词条名切换对应选项的锁定状态。 */
+  function toggleTraitLock(traitName: string): void {
+    const opts = currentTraitOptions.value || [];
+    const idx = opts.findIndex((t) => t.name === traitName);
+    if (idx <= -1) return;
+    const next = opts.slice();
+    const row = next[idx]!;
+    next[idx] = { ...row, locked: !row.locked };
+    currentTraitOptions.value = next;
+  }
+
+  const traitRandomizeDisabled = computed(() => {
+    const locked = (currentTraitOptions.value || []).filter((t) => t?.locked).length;
+    return locked >= 5;
+  });
+
+  const traitRandomizeTitle = computed(() =>
+    traitRandomizeDisabled.value ? "五格均已锁定，请先解锁至少一格后再刷新。" : "",
+  );
+
+  // ── 6. 灵根 ──────────────────────────────────────────────────────────────
+  const selectedLinggen = ref<string | null>(null);
+
+  /** 随机 roll 一条灵根文案。 */
+  function applyRandomLinggen(): void {
+    selectedLinggen.value = rollRandomLinggenName();
+  }
+
+  // ── 7. 状态与提交 ────────────────────────────────────────────────────────
+  const statusMessage = ref("");
+
+  const isReady = computed(
+    () =>
+      !!selectedBirth.value &&
+      !!selectedGender.value &&
+      !!selectedLinggen.value &&
+      (currentTraitOptions.value?.length ?? 0) > 0,
+  );
+
+  /** 根据当前表单状态组装提交用的 {@link FateChoiceResult}。 */
   function buildPayload(): FateChoiceResult {
     const er = getEffectiveStartRealm();
     const np: NarrationPerson =
@@ -425,7 +346,7 @@ export function useFateChoice() {
         originStory: resolveOriginStory(),
         linggen: linggenElementsArrayFromRoll(selectedLinggen.value),
       },
-      traits: getAllDisplayedTraitsCloned(currentTraitOptions.value || []).map((t) => ({
+      traits: (currentTraitOptions.value || []).map((t) => ({
         name: t.name,
         rarity: t.rarity,
         desc: t.desc,
@@ -434,28 +355,28 @@ export function useFateChoice() {
     };
   }
 
-  /**
-   * 选择预设出生（忽略名为 `自定义` 的调用）；会更新 `selectedBirth` 并同步自定义载荷。
-   *
-   * @param {string} name 预设出生的显示名或 key，与 `CREATION_BIRTHS` 一致。
-   * @return {void}
-   */
-  function selectBirth(name: string): void {
-    if (name === "自定义") return;
-    selectedBirth.value = name;
+  // ── 生命周期：重置与初始化 ────────────────────────────────────────────────
+
+  /** 将表单恢复为默认值。 */
+  function reset(): void {
+    playerName.value = "韩立";
+    narrationPerson.value = "first";
+    selectedGender.value = CREATION_GENDERS[0]!;
+    selectedBirth.value = "凡人";
+    customBirth.value = null;
+    birthLocation.value = null;
+    currentTraitOptions.value = [];
+    selectedLinggen.value = null;
+    statusMessage.value = "";
     syncCustomBirthForCurrentSelection();
   }
 
-  /**
-   * 应用用户自定义出生：切换为「自定义」并写入地点与完整载荷。
-   *
-   * @param {CustomBirthPayload} payload 自定义出生数据。
-   * @return {void}
-   */
-  function applyCustomBirth(payload: CustomBirthPayload): void {
-    selectedBirth.value = "自定义";
-    birthLocation.value = payload.location;
-    customBirth.value = payload;
+  /** 若尚无灵根或词条，则各执行一次随机。 */
+  function prepareInitialRolls(): void {
+    if (!selectedLinggen.value) applyRandomLinggen();
+    if (!currentTraitOptions.value.length) {
+      currentTraitOptions.value = pickRandomTraits(traitSamples, [], 5);
+    }
   }
 
   return {
@@ -464,29 +385,25 @@ export function useFateChoice() {
     CUSTOM_REALM_MAJORS,
     CUSTOM_REALM_MINORS,
     birthKeysOrdered,
+    playerName,
+    narrationPerson,
+    selectedGender,
     selectedBirth,
     customBirth,
-    selectedGender,
-    narrationPerson,
-    playerName,
-    currentTraitOptions,
-    selectedLinggen,
-    birthLocation,
-    statusMessage,
-    isReady,
-    traitRandomizeDisabled,
-    traitRandomizeTitle,
-    getEffectiveStartRealm,
-    syncCustomBirthForCurrentSelection,
-    applyRandomLinggen,
-    randomizeTraits,
-    toggleTraitLock,
-    reset,
-    prepareInitialRolls,
-    buildPayload,
     selectBirth,
     applyCustomBirth,
-    resolveBirthLocationNameFromDef,
+    currentTraitOptions,
+    randomizeTraits,
+    toggleTraitLock,
+    traitRandomizeDisabled,
+    traitRandomizeTitle,
+    selectedLinggen,
+    applyRandomLinggen,
+    statusMessage,
+    isReady,
+    buildPayload,
+    reset,
+    prepareInitialRolls,
     resolveBirthLocationDescFromDef,
   };
 }
