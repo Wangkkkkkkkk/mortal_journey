@@ -37,7 +37,7 @@ import {
 } from "./protagonistPanelDisplay";
 import ProtagonistDetailModal from "./ProtagonistDetailModal.vue";
 import GongfaCultivateModal from "./GongfaCultivateModal.vue";
-import type { CultivationInput, CultivationConfirmPayload } from "../ai/cultivation_types";
+import type { CultivationInput, CultivationConfirmPayload } from "../ai_core";
 import {
   calendarYearsElapsed,
   formatWorldTimeZhDisplay,

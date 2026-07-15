@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { toRef, computed, ref } from "vue";
-import { useOpeningStoryFromFateChoice } from "../ai/useOpeningStory";
-import { useApiConfig } from "../ai/useApiConfig";
+import { useOpeningStoryFromFateChoice } from "../ai_core";
+import { useApiConfig } from "../ai_core";
 import { protagonist } from "../role_core/Protagonist";
 import { Npc } from "../role_core/Npc";
 import { npcStore } from "../role_core/npcStore";
 import { getRow } from "../role_core/realmUtils";
 import type { NpcPlayInfo } from "../role_core/types/playInfo";
 import type { FateChoiceResult } from "../fate_choice/types";
-import type { BattleTriggerEntry } from "../ai/state_generate";
-import type { CultivationInput } from "../ai/cultivation_types";
+import type { BattleTriggerEntry } from "../ai_core";
+import type { CultivationInput } from "../ai_core";
 import type { BattleResult } from "../battle_engine/types";
 import type { WorldLocation } from "../role_core/types/worldLocation";
 import SideToolbarPanel from "./SideToolbarPanel.vue";

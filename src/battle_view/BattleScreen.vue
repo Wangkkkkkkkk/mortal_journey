@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, watch } from "vue";
-import type { BattleTriggerEntry } from "../ai/state_generate";
+import type { BattleTriggerEntry } from "../ai_core/types/npcEvents";
 import type { BattleAction, BattleCombatant, BattleResult, SkillActionItem, ElixirActionItem, FloatingText, BattleEffect } from "../battle_engine/types";
 import { useBattle } from "./useBattle";
 import { gameLog } from "../log/gameLog";

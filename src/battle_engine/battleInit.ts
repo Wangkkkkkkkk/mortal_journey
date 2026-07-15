@@ -1,5 +1,5 @@
 import type { BattleCombatant, BattleSkill, BattleElixir, BattleEffect, SkillEffect, DamageType, ModifierType, CcType, StatusType, SummonTrigger } from "./types";
-import type { BattleTriggerEntry } from "../ai/state_generate";
+import type { BattleTriggerEntry } from "../ai_core";
 import type { GongfaSlotsState, EquippedSlotsState } from "../role_core/types/playInfo";
 import type { InventoryStackItem, ElixirItemDefinition } from "../role_core/types/itemInfo";
 import type { GongfaBattleEffect, LayerValue } from "../role_core/types/gongfa";

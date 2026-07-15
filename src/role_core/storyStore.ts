@@ -11,8 +11,8 @@
  */
 
 import { ref } from "vue";
-import type { OpeningStoryPhase } from "../ai/useOpeningStory";
-import type { ActionSuggestions } from "../ai/state_generate";
+import type { OpeningStoryPhase } from "../ai_core";
+import type { ActionSuggestions } from "../ai_core";
 import type { WorldLocation } from "./types/worldLocation";
 import type { WorldTime } from "./worldTime";
 import { cloneWorldTime, createDefaultWorldTime } from "./worldTime";

@@ -1,7 +1,7 @@
 import { ref, type Ref } from "vue";
 import { Npc } from "./Npc";
 import type { NpcPlayInfo, PowerTier } from "./types/playInfo";
-import type { NpcNearbyEntry } from "../ai/state_generate";
+import type { NpcNearbyEntry, NpcSnapshotEntry } from "../ai_core";
 import type { NpcCoreChangeEvent } from "./npcCoreChange";
 import { applyCoreChange } from "./npcCoreChange";
 import type { WorldLocation } from "./types/worldLocation";
@@ -15,6 +15,8 @@ const npcMap: Ref<Map<string, Npc>> = ref(new Map());
 export interface ApplyNpcUpdatesOptions {
   /** AI 声明的核心字段变更事件（来自 <MJ_NPC_CORE_CHANGE_TAG>）。 */
   coreChangeEvents?: NpcCoreChangeEvent[];
+  /** 本轮有显著行为 NPC 的近况快照（来自 <mj_npc_snapshots>），追加到 npc.storySnapshot。 */
+  snapshots?: NpcSnapshotEntry[];
   /** 当前所在地点，用于为新建 NPC 合成稳定的 npcId 并作为 currentLocation 回退。 */
   currentLocation?: WorldLocation | null;
   /** 当前世界时间，用于写入 NPC.lastSeenWorldTime。 */
@@ -100,8 +102,8 @@ export function useNpcStore() {
   }
 
   /**
-   * 主角进入某地点时调用：把该地点所有 dormant 的 NPC 唤醒为 active（不触发重评估，
-   * 重评估由 onEnterLocation 钩子在 P3 单独处理）。
+   * 主角进入某地点时调用：把该地点所有 dormant 的 NPC 唤醒为 active。
+   * NPC 的境界/装备/功法演进完全交由剧情 + 状态更新驱动。
    */
   function wakeDormantAtLocation(loc: WorldLocation | null | undefined, worldTime: WorldTime | null | undefined): Npc[] {
     if (!loc) return [];
@@ -177,21 +179,15 @@ export function useNpcStore() {
       }
     }
 
-    return createdThisRound;
-  }
-
-  /**
-   * 批量应用重评估结果（核心层整体替换）。
-   *
-   * 由 onEnterLocation 钩子在主角回到长期未见的 dormant NPC 所在地时调用。
-   * 按 entry.npcId 查找目标 NPC，调 {@link Npc.applyReevaluation} 整体替换境界/装备/功法/储物袋。
-   */
-  function applyReevaluation(entries: NpcNearbyEntry[], protagonistLinggen?: string[]): void {
-    for (const entry of entries) {
-      if (!entry.npcId) continue;
-      const npc = findByNpcId(entry.npcId);
-      if (npc) npc.applyReevaluation(entry, protagonistLinggen);
+    // 追加本轮 NPC 近况快照（按 npcId 匹配）。
+    if (options?.snapshots && options.snapshots.length > 0) {
+      for (const snap of options.snapshots) {
+        const npc = findByNpcId(snap.npcId);
+        if (npc) npc.appendStorySnapshot(snap.snapshot);
+      }
     }
+
+    return createdThisRound;
   }
 
   function serializeNpcs(): NpcPlayInfo[] {
@@ -235,7 +231,6 @@ export function useNpcStore() {
     markActive,
     markDormantAtLocation,
     wakeDormantAtLocation,
-    applyReevaluation,
     serializeNpcs,
     restoreNpcs,
     clearNpcs,

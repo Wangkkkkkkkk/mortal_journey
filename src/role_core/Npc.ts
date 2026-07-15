@@ -15,8 +15,8 @@ import {
 import { DEFAULT_INVENTORY_SLOT_COUNT, compactInventorySlotsInPlace } from "./CharacterInventory";
 import { getRealmPrimaryStats, getShouyuanForRealm, applyNpcGongfaMasteryByRealm } from "./realmUtils";
 import type { InventoryStackItem, TreasureItemDefinition, GongfaItemDefinition } from "./types/itemInfo";
-import type { NpcNearbyEntry } from "../ai/state_generate";
-import { parseEquipObject, parseGongfaObject, parseStorageObject } from "../ai/parseAiItem";
+import type { NpcNearbyEntry } from "../ai_core";
+import { parseEquipObject, parseGongfaObject, parseStorageObject } from "../ai_core/shared/parseItems";
 import { resolveNpcId } from "./npcId";
 import type { WorldLocation } from "./types/worldLocation";
 import type { WorldTime } from "./worldTime";
@@ -35,6 +35,22 @@ const VALID_RACES = new Set<string>(["修仙者", "人形妖兽", "妖兽"]);
 function parseRace(raw: unknown): NpcRace {
   if (typeof raw === "string" && VALID_RACES.has(raw)) return raw as NpcRace;
   return "修仙者";
+}
+
+const NPC_SNAPSHOT_SEP = "；";
+const NPC_SNAPSHOT_MAX_LEN = 200;
+
+/**
+ * 追加一句近况到 NPC 快照；超限时保留尾部（最近优先），保证有界。
+ * 纯字符串工具，供状态更新/应用层使用。
+ */
+export function appendNpcSnapshot(prev: string, addition: string): string {
+  const a = (prev ?? "").trim();
+  const b = (addition ?? "").trim();
+  if (!b) return a;
+  const merged = a ? `${a}${NPC_SNAPSHOT_SEP}${b}` : b;
+  if (merged.length <= NPC_SNAPSHOT_MAX_LEN) return merged;
+  return merged.slice(merged.length - NPC_SNAPSHOT_MAX_LEN);
 }
 
 export class Npc extends Character {
@@ -62,6 +78,8 @@ export class Npc extends Character {
   encounterCount: number;
   /** 立绘候选池（dataURL）：所有生成过的立绘，玩家可在弹窗中切换/删除。 */
   avatarCandidates: string[];
+  /** 剧情近况快照（追加+限长）：跨轮 NPC 记忆，供状态/剧情 AI 延续上下文。 */
+  storySnapshot: string;
 
   constructor(data: NpcPlayInfo) {
     super(data);
@@ -89,6 +107,7 @@ export class Npc extends Character {
     if (this.avatarUrl && this.avatarCandidates.length === 0) {
       this.avatarCandidates = [this.avatarUrl];
     }
+    this.storySnapshot = typeof data.storySnapshot === "string" ? data.storySnapshot : "";
   }
 
   static fromAiData(
@@ -197,7 +216,7 @@ export class Npc extends Character {
    * - 核心层（realm/equippedSlots/gongfaSlots/inventorySlots/race/appearance/clothing）：
    *   **默认完全忽略**，即便 AI 返回了也不动。核心层变化必须走显式的
    *   `<MJ_NPC_CORE_CHANGE_TAG>` 事件通道（由 npcStore.applyNpcUpdates 统一应用），
-   *   或在重评估管线（applyReevaluation）中整体替换，以此杜绝「数据漂移」。
+   *   以此杜绝「数据漂移」。
    *   race/appearance/clothing 属核心层（文生图一致性要求长相稳定）。检测到 AI 违规
    *   返回核心字段时会告警，便于定位 prompt 问题。
    * - 不重算 maxHp/maxMp：核心层未变 ⇒ 主属性未变 ⇒ 上限稳定。
@@ -230,13 +249,13 @@ export class Npc extends Character {
       );
     }
     if (entry.race && entry.race !== this.race) {
-      gameLog.warn(`[Npc.mergeFromAi] 忽略 ${this.displayName} 的 race 变更（须走核心变更事件/重评估）。`);
+      gameLog.warn(`[Npc.mergeFromAi] 忽略 ${this.displayName} 的 race 变更（须走核心变更事件）。`);
     }
     if (entry.appearance) {
-      gameLog.warn(`[Npc.mergeFromAi] 忽略 ${this.displayName} 的 appearance 变更（须走核心变更事件/重评估）。`);
+      gameLog.warn(`[Npc.mergeFromAi] 忽略 ${this.displayName} 的 appearance 变更（须走核心变更事件）。`);
     }
     if (entry.clothing) {
-      gameLog.warn(`[Npc.mergeFromAi] 忽略 ${this.displayName} 的 clothing 变更（须走核心变更事件/重评估）。`);
+      gameLog.warn(`[Npc.mergeFromAi] 忽略 ${this.displayName} 的 clothing 变更（须走核心变更事件）。`);
     }
     if (Array.isArray(entry.equippedSlots) && entry.equippedSlots.length > 0) {
       gameLog.warn(`[Npc.mergeFromAi] 忽略 ${this.displayName} 的 equippedSlots 变更（须走核心变更事件）。`);
@@ -247,73 +266,6 @@ export class Npc extends Character {
     if (Array.isArray(entry.inventorySlots) && entry.inventorySlots.length > 0) {
       gameLog.warn(`[Npc.mergeFromAi] 忽略 ${this.displayName} 的 inventorySlots 变更（须走核心变更事件）。`);
     }
-  }
-
-  /**
-   * 核心层整体替换（重评估专用）。
-   *
-   * 当主角长时间（≥ {@link NPC_REEVALUATION_THRESHOLD_YEARS}）未见到某 NPC 后重新回到
-   * 其归属地点，前端会批量请求 AI 推进这些 NPC 的境界/装备/功法，再用本方法把演进结果
-   * 整体写回。这是「严格事件驱动」策略的受控例外——低频、批量、整体性更新，与 AI 实时
-   * 声明的单点事件不同。
-   *
-   * identity/好感等 dynamic 字段保持不变，只替换核心战斗数据与文生图数据。
-   * race/appearance/clothing 也在此整体替换（长岁月可能改变外貌，如妖兽化形、修士衰老）。
-   */
-  applyReevaluation(entry: NpcNearbyEntry, protagonistLinggen?: string[]): void {
-    if (this.isDead) return;
-
-    if (entry.realm) {
-      this.setRealm(entry.realm.major || this.realm.major, entry.realm.minor || this.realm.minor);
-    }
-
-    // 文生图核心层：种族/外貌/服装（重评估整体替换）。
-    if (entry.race) this.race = parseRace(entry.race);
-    if (entry.appearance) this.appearance = entry.appearance;
-    if (entry.clothing) this.clothing = entry.clothing;
-
-    if (Array.isArray(entry.equippedSlots) && entry.equippedSlots.length > 0) {
-      const newSlots: EquippedSlotsState = Array.from({ length: EQUIP_SLOT_COUNT }, () => null);
-      let idx = 0;
-      for (const raw of entry.equippedSlots) {
-        if (!raw || typeof raw !== "object") continue;
-        if (idx >= EQUIP_SLOT_COUNT) break;
-        newSlots[idx] = parseEquipObject(raw, this.realm.major, this.realm.minor);
-        idx++;
-      }
-      this.equippedSlots = newSlots;
-    }
-
-    if (Array.isArray(entry.gongfaSlots) && entry.gongfaSlots.length > 0) {
-      const newSlots: GongfaSlotsState = [null, null, null, null, null, null, null, null];
-      let idx = 0;
-      for (const raw of entry.gongfaSlots) {
-        if (!raw || typeof raw !== "object") continue;
-        if (idx >= GONGFA_SLOT_COUNT) break;
-        newSlots[idx] = parseGongfaObject(raw, this.realm.major, this.realm.minor, protagonistLinggen);
-        idx++;
-      }
-      // 重评估后境界可能提升，功法层数按新境界重新推算。
-      applyNpcGongfaMasteryByRealm(newSlots, this.realm.major, this.realm.minor);
-      this.gongfaSlots = newSlots;
-    }
-
-    if (Array.isArray(entry.inventorySlots) && entry.inventorySlots.length > 0) {
-      const items: InventoryStackItem[] = [];
-      for (const raw of entry.inventorySlots) {
-        if (!raw || typeof raw !== "object") continue;
-        const item = parseStorageObject(raw, this.realm.major, this.realm.minor, protagonistLinggen);
-        if (item) items.push(item);
-      }
-      this.inventorySlots = [
-        ...items,
-        ...Array.from({ length: Math.max(0, DEFAULT_INVENTORY_SLOT_COUNT - items.length) }, () => null),
-      ];
-      compactInventorySlotsInPlace(this);
-    }
-
-    const { maxHp, maxMp } = this.computeMaxHpMp();
-    this.setMaxHpMp(maxHp, maxMp);
   }
 
   /** 追加一张新立绘到候选池，并自动选为当前立绘。 */
@@ -346,6 +298,11 @@ export class Npc extends Character {
     }
   }
 
+  /** 追加一句本轮近况到 storySnapshot（自动限长保尾部）。 */
+  appendStorySnapshot(addition: string): void {
+    this.storySnapshot = appendNpcSnapshot(this.storySnapshot, addition);
+  }
+
   toData(): NpcPlayInfo {
     const base = this.toCommonData();
     return {
@@ -365,6 +322,7 @@ export class Npc extends Character {
       lastSeenWorldTime: cloneWorldTime(this.lastSeenWorldTime),
       encounterCount: this.encounterCount,
       avatarCandidates: [...this.avatarCandidates],
+      storySnapshot: this.storySnapshot,
     };
   }
 
@@ -453,6 +411,7 @@ export class Npc extends Character {
       avatarCandidates: Array.isArray(o.avatarCandidates)
         ? o.avatarCandidates.filter((u: unknown): u is string => typeof u === "string")
         : [],
+      storySnapshot: typeof o.storySnapshot === "string" ? o.storySnapshot : "",
       elixirBonuses: normalizeElixirBonuses(o.elixirBonuses),
     };
 

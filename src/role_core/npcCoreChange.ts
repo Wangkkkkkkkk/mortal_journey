@@ -17,7 +17,7 @@
 import type { Npc } from "./Npc";
 import { EQUIP_SLOT_COUNT, type GongfaSlotsState, type EquippedSlotsState } from "./types/playInfo";
 import type { InventoryStackItem } from "./types/itemInfo";
-import { parseEquipObject, parseGongfaObject, parseStorageObject } from "../ai/parseAiItem";
+import { parseEquipObject, parseGongfaObject, parseStorageObject } from "../ai_core/shared/parseItems";
 import {
   DEFAULT_INVENTORY_SLOT_COUNT,
   compactInventorySlotsInPlace,

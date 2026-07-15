@@ -1,36 +1,36 @@
 /**
- * 命运抉择确认后：同步写入主角、请求开局剧情 AI、维护剧情正文与阶段状态。
+ * Composable: useOpeningStory
  *
- * 全部持久化剧情状态存放在 {@link storyStore} 模块单例（与世界地图/NPC 单例对齐），
- * 本 composable 只负责「开局 AI 流程」并把结果写入 storyStore。`errorMessage` 为
- * 非持久化的 UI 状态，留在本地。
+ * 命运抉择确认后：创建主角 → 请求开局剧情 AI → 请求开局状态 AI →
+ * 应用装备/功法/储物袋/HP → 创建 NPC → 注册地点 → 结算天赋 → 注入聊天 → 保存。
  *
- * 读档会话下（`storyStore.restored === true`）本 composable 既不清空状态也不重跑 AI。
+ * 全部持久化状态写入 storyStore 单例；返回 storyStore 的 ref 给 MainScreen/StoryChatPanel。
  */
 
-import { ref, watch, type ComputedRef, type Ref } from "vue";
-import { generateInitStory } from "./init_story_generate";
-import { generateInitState } from "./init_state_generate";
-import type { ActionSuggestions } from "./state_generate";
-import { gameLog } from "../log/gameLog";
+import { ref, watch, type Ref, type ComputedRef } from "vue";
+import { generateInitStory, type InitStoryInput } from "../pipelines/initStory";
+import { generateInitState, type InitStateInput, type InitStateParsed } from "../pipelines/initState";
+import type { ActionSuggestions } from "../types/stateDiff";
+import type { WorldTime } from "../../role_core/worldTime";
 import {
   cloneWorldTime,
   createDefaultWorldTime,
-  type WorldTime,
-} from "../role_core/worldTime";
-import { Protagonist, protagonist } from "../role_core/Protagonist";
-import { npcStore } from "../role_core/npcStore";
-import { worldMapStore } from "../role_core/worldMapStore";
-import { storyStore } from "../role_core/storyStore";
-import { writeActiveSave } from "../save/gameSave";
-import { autoGeneratePortraits } from "../image_generate";
-import type { FateChoiceResult } from "../fate_choice/types";
-import type { WorldLocation } from "../role_core/types/worldLocation";
-import { isEmptyWorldLocation } from "../role_core/types/worldLocation";
+} from "../../role_core/worldTime";
+import type { WorldLocation } from "../../role_core/types/worldLocation";
+import { isEmptyWorldLocation } from "../../role_core/types/worldLocation";
+import { Protagonist, protagonist } from "../../role_core/Protagonist";
+import { npcStore } from "../../role_core/npcStore";
+import { worldMapStore } from "../../role_core/worldMapStore";
+import { storyStore } from "../../role_core/storyStore";
+import { writeActiveSave } from "../../save/gameSave";
+import { autoGeneratePortraits } from "../../image_generate";
+import type { FateChoiceResult } from "../../fate_choice/types";
+import type { NpcNearbyEntry } from "../types/npcEvents";
+import type { NpcEvent } from "../types/npcEvents";
+import { gameLog } from "../../log/gameLog";
 
 export type OpeningStoryPhase = "idle" | "loading" | "ready" | "error" | "ended";
 
-/** 与启动页 API 表单对应的网关参数（空串表示未填）。 */
 export interface OpeningStoryApiSlice {
   apiUrl: string;
   apiKey: string;
@@ -38,13 +38,39 @@ export interface OpeningStoryApiSlice {
 }
 
 /**
- * 监听 `fateChoice`：非空时 `Protagonist.loadFromFateChoice` 并拉取开局剧情；空时清空主角与剧情 UI。
- *
- * 读档会话下（`storyStore.restored`）直接返回——状态已由 `restoreSave` 灌满。
- *
- * @param fateChoice - 通常 `toRef(props, "fateChoice")`
- * @param api - 通常 `computed(() => ({ apiUrl, apiKey, apiModel }))`，在发起请求时读取最新值
+ * 把 InitStateParsed.npcEvents (NpcEvent[]) 转换为 NpcNearbyEntry[]，
+ * 供 npcStore.applyNpcUpdates 使用。
  */
+function npcEventsToNearbyEntries(events: NpcEvent[]): NpcNearbyEntry[] {
+  const entries: NpcNearbyEntry[] = [];
+  for (const event of events) {
+    if (event.kind === "npc_appeared") {
+      const n = event.npc;
+      entries.push({
+        npcId: n.npcId,
+        displayName: n.displayName,
+        identity: n.identity,
+        isDead: false,
+        favorability: n.favorability,
+        race: n.race,
+        appearance: n.appearance,
+        clothing: n.clothing,
+        gender: n.gender,
+        age: n.age,
+        linggen: n.linggen,
+        realm: n.realm,
+        hpPercent: n.hpPercent,
+        mpPercent: n.mpPercent,
+        currentLocation: n.currentLocation ?? undefined,
+        equippedSlots: n.equippedSlots,
+        gongfaSlots: n.gongfaSlots,
+        inventorySlots: n.inventorySlots,
+      });
+    }
+  }
+  return entries;
+}
+
 export function useOpeningStoryFromFateChoice(
   fateChoice: Ref<FateChoiceResult | null | undefined>,
   api: Ref<OpeningStoryApiSlice> | ComputedRef<OpeningStoryApiSlice>,
@@ -79,7 +105,6 @@ export function useOpeningStoryFromFateChoice(
     resetWorldClock();
   }
 
-  /** 开局状态完成后：把开局正文灌入 chatMessages[0]（携带开局快照）。 */
   function seedOpeningChatMessage(): void {
     const body = storyStore.storyBody.value.trim();
     if (!body) return;
@@ -134,13 +159,16 @@ export function useOpeningStoryFromFateChoice(
       storyStore.phase.value = "loading";
 
       try {
-        const storyResult = await generateInitStory({
+        // ── 1. 开局剧情 ──
+        const storyInput: InitStoryInput = {
           apiUrl: url,
           apiKey: String(apiKey || "").trim() || undefined,
           model,
-          protagonist: p,
           signal: ac.signal,
-        });
+          protagonist: p,
+        };
+
+        const storyResult = await generateInitStory(storyInput);
         if (abortCtl !== ac) return;
 
         if (!storyResult.storyBody.trim()) {
@@ -151,58 +179,68 @@ export function useOpeningStoryFromFateChoice(
 
         storyStore.storyBody.value = storyResult.storyBody;
 
+        // ── 2. 开局状态 ──
         try {
-          const stateResult = await generateInitState({
+          const stateInput: InitStateInput = {
             apiUrl: url,
             apiKey: String(apiKey || "").trim() || undefined,
             model,
+            signal: ac.signal,
             storyBody: storyResult.storyBody,
             protagonist: p,
-            signal: ac.signal,
-          });
+          };
+
+          const stateResult: InitStateParsed = await generateInitState(stateInput);
           if (abortCtl !== ac) return;
 
+          // 写入 storyStore
           if (stateResult.worldLocation && !isEmptyWorldLocation(stateResult.worldLocation)) {
             storyStore.worldLocation.value = stateResult.worldLocation;
           }
-
           if (stateResult.storySnapshot.trim()) {
             storyStore.initSnapshot.value = stateResult.storySnapshot.trim();
           }
-
           if (stateResult.actionOptions) {
             storyStore.actionOptions.value = stateResult.actionOptions;
           }
 
+          // ── 3. 应用开局状态到主角（装备/功法/储物袋/HP/年龄）──
           const current = protagonist.value;
           if (current) {
             current.applyInitState(stateResult);
           }
-          if (stateResult.nearbyNpcs.length > 0) {
-            const createdNpcs = npcStore.applyNpcUpdates(stateResult.nearbyNpcs, p.linggen, {
+
+          // ── 4. 创建 NPC ──
+          const nearbyEntries = npcEventsToNearbyEntries(stateResult.npcEvents);
+          if (nearbyEntries.length > 0) {
+            const createdNpcs = npcStore.applyNpcUpdates(nearbyEntries, p.linggen, {
               currentLocation: stateResult.worldLocation ?? null,
               currentWorldTime: storyStore.worldTime.value,
             });
             autoGeneratePortraits(createdNpcs);
           }
 
+          // ── 5. 注册地点到世界地图 ──
           if (stateResult.worldLocation && !isEmptyWorldLocation(stateResult.worldLocation)) {
             worldMapStore.addLocation(stateResult.worldLocation);
           }
+
+          gameLog.info("[OpeningStory] 开局状态生成完成");
         } catch (stateErr) {
           gameLog.error("[OpeningStory] 状态生成失败：" + (stateErr instanceof Error ? stateErr.message : String(stateErr)));
         }
 
-        // 无论开局状态生成成功与否，统一结算天赋效果（物品/灵石/属性）：
-        // 成功时叠加在 applyInitState 之上；失败时也保住天赋物品与属性加成。
+        // ── 6. 结算天赋效果（无论状态生成成功与否）──
         const traitsOwner = protagonist.value;
         if (traitsOwner) {
           traitsOwner.applyTraitEffects();
         }
 
+        // ── 7. 注入开局剧情到聊天 + 设为 ready ──
         seedOpeningChatMessage();
         storyStore.phase.value = "ready";
-        // 开局完成：把完整初始状态写入当前活动存档（覆盖命运抉择时的占位载荷）。
+
+        // ── 8. 保存 ──
         writeActiveSave();
       } catch (e) {
         if (ac.signal.aborted) return;

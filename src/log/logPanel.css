@@ -100,6 +100,20 @@
   width: 150px;
 }
 
+#mj-log-panel.mj-log-panel--enlarged {
+  width: min(840px, calc(100vw - 24px));
+  max-height: min(92vh, 820px);
+  font-size: 13px;
+}
+
+#mj-log-panel.mj-log-panel--enlarged #mj-log-body {
+  min-height: 240px;
+}
+
+#mj-log-panel.mj-log-panel--enlarged .mj-log-ai-content {
+  max-height: 560px;
+}
+
 .mj-log-line {
   margin: 0 0 4px;
   padding: 2px 0;
@@ -156,6 +170,79 @@
 
 .mj-log-ai-toggle:hover {
   color: #b8e8ff;
+}
+
+/* ── AI 行：分类徽章 + 方向标签 ── */
+.mj-log-badge {
+  display: inline-block;
+  margin: 0 6px 0 2px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #d8d4cc;
+  white-space: nowrap;
+}
+
+.mj-log-badge--story {
+  background: rgba(142, 202, 230, 0.16);
+  border-color: rgba(142, 202, 230, 0.45);
+  color: #aedff2;
+}
+.mj-log-badge--state {
+  background: rgba(255, 183, 77, 0.16);
+  border-color: rgba(255, 183, 77, 0.45);
+  color: #ffcf8a;
+}
+.mj-log-badge--cultivation {
+  background: rgba(165, 214, 167, 0.16);
+  border-color: rgba(165, 214, 167, 0.45);
+  color: #b8e6bb;
+}
+.mj-log-badge--aux {
+  background: rgba(206, 147, 216, 0.16);
+  border-color: rgba(206, 147, 216, 0.45);
+  color: #e1b7e8;
+}
+.mj-log-badge--image {
+  background: rgba(244, 143, 177, 0.16);
+  border-color: rgba(244, 143, 177, 0.45);
+  color: #f7b6cb;
+}
+.mj-log-badge--api,
+.mj-log-badge--default {
+  background: rgba(189, 189, 189, 0.14);
+  border-color: rgba(189, 189, 189, 0.4);
+  color: #c4c4c4;
+}
+
+.mj-log-dir {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+  color: #c8c4bc;
+  white-space: nowrap;
+}
+
+.mj-log-dir--out {
+  color: #8ecae6;
+}
+.mj-log-dir--in {
+  color: #b8e8c0;
+}
+.mj-log-dir--tool {
+  color: #ce93d8;
+}
+.mj-log-dir--error {
+  background: rgba(239, 154, 154, 0.16);
+  color: #ef9a9a;
 }
 
 .mj-log-ai-content {

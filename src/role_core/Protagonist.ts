@@ -18,7 +18,7 @@ import { rollTreasureFunction, rollTreasureSpecialEffect } from "./types/treasur
 import type { GongfaSpecialEffect, GongfaSystem } from "./types/gongfa";
 import { rollGongfaFunction, normalizeGongfaSystem, normalizeGongfaRole } from "./types/gongfa";
 import { GONGFA_GRADE_ATTRI_TABLE, rollGradeAttriValue, getItemSellPrice } from "./types/gameConstants";
-import { parseStorageObject } from "../ai/parseAiItem";
+import { parseStorageObject } from "../ai_core/shared/parseItems";
 
 type SpecialEffect = TreasureSpecialEffect | GongfaSpecialEffect;
 
@@ -53,13 +53,13 @@ import type { ElixirItemDefinition } from "./types/elixir";
 import { elixirEffectToStatKey, applyLinggenElixirBoost } from "./types/elixir";
 import { craftElixirDef } from "./alchemy";
 import type { MaterialItemDefinition } from "./types/itemInfo";
-import type { InitStateParsed } from "../ai/init_state_generate";
-import type { StateParsed } from "../ai/state_generate";
+import type { InitStateParsed } from "../ai_core";
+import type { StateParsed } from "../ai_core";
 import {
   buildEquippedSlotsFromParsed,
   buildGongfaSlotsFromParsed,
   buildInventoryFromParsed,
-} from "../ai/init_state_generate";
+} from "../ai_core";
 import { Character, normalizeElixirBonuses } from "./Character";
 import {
   DEFAULT_INVENTORY_SLOT_COUNT,

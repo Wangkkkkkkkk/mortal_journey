@@ -1,3 +1,12 @@
+/**
+ * Preset: story
+ *
+ * 剧情 AI preset。STORY_SYSTEM_PRESET 为 system prompt 主体；getStoryPreset 按需拼接
+ * 全局 PRESET / 之前的剧情 / 世界书 / 叙事方向。
+ */
+
+import { PRESET } from "./globalPreset";
+
 export const STORY_SYSTEM_PRESET = `
 [输出契约-最重要]
 你必须按以下顺序输出，不得颠倒：
@@ -162,3 +171,25 @@ export const STORY_SYSTEM_PRESET = `
   16.3 篇幅必须与层级匹配——跨 region 的长途旅行严禁一笔带过（如"经过长途跋涉终于到达"），detail 内的短距离移动也不宜长篇大论。
   16.4 旅途剧情必须留下时间流逝的痕迹（如"一路风餐露宿，数月后……""寒来暑往，转眼已是一载……"），为状态 AI 推导时间提供叙事依据。
 `;
+
+/**
+ * 构建 story pipeline 的 system prompt。
+ * worldBookContext 与 narrativeDirection 由调用方传入。
+ */
+export function getStoryPreset(
+  worldBookContext?: string,
+  narrativeDirection?: string,
+  previousStory?: string,
+): string {
+  const parts = [PRESET, STORY_SYSTEM_PRESET];
+  if (previousStory) {
+    parts.push("【之前的剧情】\n" + previousStory);
+  }
+  if (worldBookContext) {
+    parts.push(worldBookContext);
+  }
+  if (narrativeDirection) {
+    parts.push(narrativeDirection);
+  }
+  return parts.filter(Boolean).join("\n\n");
+}

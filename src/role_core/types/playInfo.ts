@@ -254,12 +254,14 @@ export interface NpcPlayInfo extends CharacterPlayInfoCommon {
   currentLocation?: WorldLocation | null;
   /** 在场状态机。 */
   presence?: NpcPresence;
-  /** 上次被主角见到的世界时间（时间驱动重评估用）。 */
+  /** 上次被主角见到的世界时间（用于地点唤醒/在场判定/简表显示）。 */
   lastSeenWorldTime?: WorldTime | null;
   /** 累计相遇次数。 */
   encounterCount?: number;
   /** 立绘候选池（dataURL）：所有生成过的立绘都保留，玩家可切换/删除。旧存档缺省为空。 */
   avatarCandidates?: string[];
+  /** 剧情近况快照（追加+限长）：状态 AI 每轮为有显著行为的 NPC 追加一句话，用于跨轮记忆。旧存档缺省为空。 */
+  storySnapshot?: string;
 }
 
 export type EquipSlotKey = number;

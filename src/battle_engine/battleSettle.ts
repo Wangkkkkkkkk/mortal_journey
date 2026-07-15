@@ -3,7 +3,7 @@ import { protagonist } from "../role_core/Protagonist";
 import { npcStore } from "../role_core/npcStore";
 import type { Npc } from "../role_core/Npc";
 import type { InventoryStackItem, TreasureItemDefinition, GongfaItemDefinition } from "../role_core/types/itemInfo";
-import type { BattleTriggerEntry } from "../ai/state_generate";
+import type { BattleTriggerEntry } from "../ai_core";
 import { gameLog } from "../log/gameLog";
 
 /**

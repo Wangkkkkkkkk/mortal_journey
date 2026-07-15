@@ -6,7 +6,7 @@ import type {
   ActionOptions,
 } from "../battle_engine/types";
 
-import type { BattleTriggerEntry } from "../ai/state_generate";
+import type { BattleTriggerEntry } from "../ai_core/types/npcEvents";
 import { BattleEngine } from "../battle_engine/BattleEngine";
 import { createBattleCombatants } from "../battle_engine/battleInit";
 import { settleBattle } from "../battle_engine/battleSettle";

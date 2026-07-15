@@ -4,7 +4,7 @@ import type { GongfaItemDefinition } from "../role_core/types/itemInfo";
 import { GONGFA_GRADE_CULTIVATION_MULT, LINGGEN_CULTIVATION_MULT } from "../role_core/types/gameConstants";
 import { getGongfaMasteryProgress } from "./protagonistPanelDisplay";
 import { useScrollLock } from "../composables/useScrollLock";
-import type { CultivationConfirmPayload } from "../ai/cultivation_types";
+import type { CultivationConfirmPayload } from "../ai_core";
 
 const EXP_PER_STONE = 100;
 

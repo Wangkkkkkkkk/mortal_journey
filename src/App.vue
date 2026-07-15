@@ -10,7 +10,7 @@ import { npcStore } from "./role_core/npcStore";
 import { storyStore } from "./role_core/storyStore";
 import { ALL_TEST_DUMMY_NAMES } from "./main-screen/testBattle";
 import type { FateChoiceResult } from "./fate_choice/types";
-import type { BattleTriggerEntry } from "./ai/state_generate";
+import type { BattleTriggerEntry } from "./ai_core";
 import type { BattleResult } from "./battle_engine/types";
 import {
   resetAllGameState,

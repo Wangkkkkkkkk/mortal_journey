@@ -9,7 +9,7 @@
  */
 
 import { gameLog } from "../log/gameLog";
-import { safeJsonParse } from "../ai/openAiChatBridge";
+import { safeJsonParse } from "../ai_core/shared/parseJson";
 import { IMAGE_GEN_TIMEOUT_MS } from "./types";
 
 /**
@@ -93,8 +93,7 @@ export async function generateImageSync(params: GenerateImageParams): Promise<st
     sequential_image_generation: "disabled",
   };
 
-  gameLog.info(`[图 →] ${params.model} size=${params.size}`);
-  gameLog.info(`[图 prompt] ${params.prompt}`);
+  gameLog.ai("图片生成", "out", `${params.model} size=${params.size} prompt: ${params.prompt}`);
 
   const data = await Promise.race([
     (async () => {
@@ -106,7 +105,7 @@ export async function generateImageSync(params: GenerateImageParams): Promise<st
       });
       if (!res.ok) {
         const text = await res.text();
-        gameLog.error(`[图 失败 HTTP ${res.status}] prompt: ${params.prompt}`);
+        gameLog.ai("图片生成", "error", `HTTP ${res.status} prompt: ${params.prompt}`);
         const hint =
           res.status === 401 || res.status === 403
             ? "\n\n提示：API Key 无权限或填错，请检查「API设置」中的文生图 API Key 与模型。"
@@ -136,7 +135,7 @@ export async function generateImageSync(params: GenerateImageParams): Promise<st
   if (d.error && typeof d.error === "object") {
     const msg = d.error.message != null ? String(d.error.message) : "生成失败";
     const code = d.error.code != null ? String(d.error.code) : "?";
-    gameLog.error(`[图 失败] code=${code} msg=${msg} prompt: ${params.prompt}`);
+    gameLog.ai("图片生成", "error", `code=${code} msg=${msg} prompt: ${params.prompt}`);
     throw new Error(`${msg}（code=${code}）`);
   }
 
@@ -151,7 +150,7 @@ export async function generateImageSync(params: GenerateImageParams): Promise<st
   }
 
   const dataUrl = b64.startsWith("data:") ? b64 : `data:image/jpeg;base64,${b64}`;
-  gameLog.info(`[图 ←] done -> base64 dataURL`);
+  gameLog.ai("图片生成", "in", "done -> base64 dataURL");
   return dataUrl;
 }
 

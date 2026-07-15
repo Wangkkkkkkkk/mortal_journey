@@ -27,15 +27,6 @@ const DAYS_PER_MONTH = 30;
 const MONTHS_PER_YEAR = 12;
 export const DAYS_PER_YEAR = DAYS_PER_MONTH * MONTHS_PER_YEAR; // 360
 
-/**
- * NPC 长期间隔触发「核心层重评估」的阈值（年）。
- *
- * 当主角重新回到某地点，对一个 dormant NPC 计算 `worldTimeYearsBetween(lastSeen, now)`，
- * 若 ≥ 该阈值，则批量请求 AI 合理推进该 NPC 的境界/装备/功法（闭关突破、历练寻宝等）。
- * 全局统一阈值（不按 powerTier 分级）。
- */
-export const NPC_REEVALUATION_THRESHOLD_YEARS = 1;
-
 export function createDefaultWorldTime(): WorldTime {
   return { year: 1, month: 1, day: 1, hour: 8 };
 }

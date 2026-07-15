@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from "vue";
-import type { OpeningStoryPhase } from "../ai/useOpeningStory";
-import { useApiConfig } from "../ai/useApiConfig";
-import { generateStory, type StoryChatEntry } from "../ai/story_generate";
-import { generateState, type StateParsed, type BattleTriggerEntry } from "../ai/state_generate";
-import { generateCultivationStory } from "../ai/cultivation_story_generate";
-import { generateFinaleStory } from "../ai/finale_story_generate";
-import { generateGrandSummary } from "../ai/grand_summary_generate";
-import { generateNpcReevaluation } from "../ai/npc_reevaluation_generate";
-import type { CultivationInput } from "../ai/cultivation_types";
+import type { OpeningStoryPhase } from "../ai_core";
+import { useApiConfig } from "../ai_core";
+import { generateStory, type StoryChatEntry } from "../ai_core";
+import { generateState, type StateParsed, type BattleTriggerEntry, npcEventsToLegacyFormat } from "../ai_core";
+import { generateCultivationStory } from "../ai_core";
+import { generateFinaleStory } from "../ai_core";
+import { generateGrandSummary } from "../ai_core";
+import type { CultivationInput } from "../ai_core";
 import { protagonist, Protagonist } from "../role_core/Protagonist";
 import { npcStore } from "../role_core/npcStore";
 import { worldMapStore, type WorldMapSerialData } from "../role_core/worldMapStore";
@@ -21,9 +20,7 @@ import { gameLog } from "../log/gameLog";
 import {
   advanceWorldTime,
   formatWorldTimeZhDisplay,
-  worldTimeYearsBetween,
   calendarYearsElapsed,
-  NPC_REEVALUATION_THRESHOLD_YEARS,
   type WorldTime,
 } from "../role_core/worldTime";
 import type { BattleResult } from "../battle_engine/types";
@@ -286,55 +283,16 @@ watch(generating, (val) => {
 });
 
 /**
- * 主角进入新地点时：唤醒该地点 dormant NPC，并对长期未见的（≥ NPC_REEVALUATION_THRESHOLD_YEARS）
- * 批量触发 AI 核心层重评估。低频、批量、整体性更新，是「严格事件驱动」的受控例外。
+ * 主角进入新地点时：唤醒该地点 dormant NPC 为 active。
+ * NPC 的境界/装备/功法演进完全交由剧情 + 状态更新驱动（不再有单独的重评估模块）。
  */
-async function handleLocationEnter(
+function handleLocationEnter(
   newLocation: WorldLocation,
   worldTime: WorldTime,
-  linggen: string[],
-): Promise<void> {
-  // wake 前先收集 dormant 列表（此时 lastSeen 仍是旧值，用于算 gap）。
+): void {
   const dormantHere = npcStore.getDormantNpcsAt(newLocation);
   if (dormantHere.length === 0) return;
-
-  // 计算每个 dormant NPC 的间隔年数，筛出需重评估者。
-  const reevaluationBatch: Array<{ npc: Npc; gap: number }> = [];
-  let maxGap = 0;
-  for (const npc of dormantHere) {
-    const gap = worldTimeYearsBetween(npc.lastSeenWorldTime, worldTime);
-    if (gap >= NPC_REEVALUATION_THRESHOLD_YEARS) {
-      reevaluationBatch.push({ npc, gap });
-      if (gap > maxGap) maxGap = gap;
-    }
-  }
-
-  // 唤醒（更新 presence + lastSeen=now）。
   npcStore.wakeDormantAtLocation(newLocation, worldTime);
-
-  if (reevaluationBatch.length === 0) return;
-
-  const url = String(apiUrl.value || "").trim();
-  const model = String(apiModel.value || "").trim();
-  if (!url || !model) return;
-
-  const p = protagonist.value;
-  try {
-    gameLog.info(`[StoryChat] 重评估 ${reevaluationBatch.length} 名长期未见的 NPC（间隔约 ${maxGap.toFixed(1)} 年）…`);
-    const results = await generateNpcReevaluation({
-      apiUrl: url,
-      apiKey: String(apiKey.value || "").trim() || undefined,
-      model,
-      yearsElapsed: maxGap,
-      currentWorldTime: worldTime,
-      protagonistRealm: p ? { major: p.realm.major, minor: p.realm.minor } : { major: "练气", minor: "初期" },
-      npcs: reevaluationBatch.map(b => b.npc),
-      signal: undefined,
-    });
-    npcStore.applyReevaluation(results, linggen);
-  } catch (e) {
-    gameLog.error("[StoryChat] NPC 重评估失败：" + (e instanceof Error ? e.message : String(e)));
-  }
 }
 
 async function applyStateResult(stateResult: StateParsed, linggen: string[]): Promise<{ gameOverReason?: string }> {
@@ -397,10 +355,10 @@ async function applyStateResult(stateResult: StateParsed, linggen: string[]): Pr
     }
   }
 
-  // ④ 地点切换：唤醒新地点 dormant NPC，并对长期未见的批量重评估。
+  // ④ 地点切换：唤醒新地点 dormant NPC（NPC 演进完全交由剧情 + 状态更新驱动）。
   try {
     if (locationChanged && newLocation && newWorldTime) {
-      await handleLocationEnter(newLocation, newWorldTime, linggen);
+      handleLocationEnter(newLocation, newWorldTime);
     }
   } catch (e) {
     gameLog.error("[StoryChat] 地点进入处理失败：" + (e instanceof Error ? e.message : String(e)));
@@ -438,9 +396,10 @@ async function applyStateResult(stateResult: StateParsed, linggen: string[]): Pr
       }
     }
 
-    if (nearbyNpcsToApply.length > 0 || stateResult.npcCoreChanges.length > 0) {
+    if (nearbyNpcsToApply.length > 0 || stateResult.npcCoreChanges.length > 0 || stateResult.npcSnapshots.length > 0) {
       const createdNpcs = npcStore.applyNpcUpdates(nearbyNpcsToApply, linggen, {
         coreChangeEvents: stateResult.npcCoreChanges,
+        snapshots: stateResult.npcSnapshots,
         currentLocation: newLocation,
         currentWorldTime: newWorldTime ?? null,
       });
@@ -627,7 +586,7 @@ async function runStoryGenerationRound(ctx: RoundContext): Promise<void> {
         protagonist: p,
         currentWorldLocation: props.currentWorldLocation ?? undefined,
         currentWorldTime: props.worldTime,
-        npcSnapshot: npcSnapshot || undefined,
+        npcSnapshot: buildStateNpcSnapshot() || undefined,
         signal: ac.signal,
       });
 
@@ -751,7 +710,12 @@ const retryableUserIdx = computed(() => {
  * 已故 NPC 不再出现。token 开销相比「全表灌入」大幅下降，也杜绝了 AI 因看到无关
  * NPC 而误改其数据。
  */
-function formatNpcFullLine(npc: Npc): string {
+function truncateText(s: string, max: number): string {
+  const t = (s ?? "").trim();
+  return t.length > max ? t.slice(0, max) + "…" : t;
+}
+
+function npcBaseLine(npc: Npc): string {
   const favor = npc.favorability;
   const hp = `${npc.currentHp}/${npc.maxHp}`;
   const mp = `${npc.currentMp}/${npc.maxMp}`;
@@ -761,10 +725,43 @@ function formatNpcFullLine(npc: Npc): string {
   return `${npc.displayName}（npcId:${npc.id}，${npc.identity}${race}，${Character.formatRealm(npc.realm)}，当前:${cur}，好感${favor}，HP ${hp}，MP ${mp}）${dead}`;
 }
 
+function formatNpcFullLine(npc: Npc): string {
+  const snap = truncateText(npc.storySnapshot, 30);
+  return snap ? `${npcBaseLine(npc)} 近况:${snap}` : npcBaseLine(npc);
+}
+
 function formatNpcBriefLine(npc: Npc): string {
   const lastSeen = npc.lastSeenWorldTime ? formatWorldTimeZhDisplay(npc.lastSeenWorldTime) : "未知";
   const cur = npc.currentLocation ? formatWorldLocationDash(npc.currentLocation) : "未知";
-  return `${npc.displayName}（npcId:${npc.id}，${npc.identity}，${Character.formatRealm(npc.realm)}，当前:${cur}，好感${npc.favorability}，上次见面:${lastSeen}）`;
+  const base = `${npc.displayName}（npcId:${npc.id}，${npc.identity}，${Character.formatRealm(npc.realm)}，当前:${cur}，好感${npc.favorability}，上次见面:${lastSeen}）`;
+  const snap = truncateText(npc.storySnapshot, 30);
+  return snap ? `${base} 近况:${snap}` : base;
+}
+
+function joinSlotNames(slots: ReadonlyArray<{ name?: string } | null> | undefined): string {
+  if (!slots) return "";
+  return slots
+    .map((s) => (s && typeof s.name === "string" ? s.name : ""))
+    .filter(Boolean)
+    .join("、");
+}
+
+/**
+ * 状态更新专用：在场 NPC 的完整现状——含储物袋/装备/功法的物品名 + 完整近况。
+ * 让状态 AI 知道每个 NPC 现有什么，从而能准确按 itemName 输出 equipment_lost，
+ * 并延续其近况快照。
+ */
+function formatNpcStateLine(npc: Npc): string {
+  const extra: string[] = [];
+  const equip = joinSlotNames(npc.equippedSlots);
+  const gongfa = joinSlotNames(npc.gongfaSlots);
+  const inventory = joinSlotNames(npc.inventorySlots);
+  if (equip) extra.push(`法宝:${equip}`);
+  if (gongfa) extra.push(`功法:${gongfa}`);
+  if (inventory) extra.push(`储物:${inventory}`);
+  const snap = npc.storySnapshot.trim();
+  if (snap) extra.push(`近况:${snap}`);
+  return extra.length ? `${npcBaseLine(npc)} ${extra.join("，")}` : npcBaseLine(npc);
 }
 
 function buildNpcSnapshot(): string {
@@ -800,6 +797,33 @@ function buildSceneNpcSnapshot(): string {
   const loc = props.currentWorldLocation ?? null;
   const activeNpcs = loc ? npcStore.getActiveNpcsAt(loc) : [];
   return activeNpcs.map(formatNpcFullLine).join("\n");
+}
+
+/**
+ * 状态更新专用 NPC 现状快照：在场者用 formatNpcStateLine（含储物/装备/功法名 + 完整近况），
+ * 休眠/羁绊 NPC 用简表。供 generateState 据此准确输出 NPC 核心变更与近况。
+ */
+function buildStateNpcSnapshot(): string {
+  const loc = props.currentWorldLocation ?? null;
+  const activeNpcs = loc ? npcStore.getActiveNpcsAt(loc) : [];
+  const dormantNpcs = loc ? npcStore.getDormantNpcsAt(loc) : [];
+  const activeSet = new Set<Npc>(activeNpcs);
+  const dormantSet = new Set<Npc>(dormantNpcs);
+  const bondedNpcs = npcStore.getBondedNpcs().filter(n =>
+    !activeSet.has(n) && !dormantSet.has(n) && n.presence !== "dead",
+  );
+
+  const sections: string[] = [];
+  if (activeNpcs.length > 0) {
+    sections.push("【当前场景在场NPC】\n" + activeNpcs.map(formatNpcStateLine).join("\n"));
+  }
+  if (dormantNpcs.length > 0) {
+    sections.push("【本地点休眠NPC（曾在此地见过，当前不在场）】\n" + dormantNpcs.map(formatNpcBriefLine).join("\n"));
+  }
+  if (bondedNpcs.length > 0) {
+    sections.push("【重要羁绊NPC（高好感或boss级，可能身在别处）】\n" + bondedNpcs.map(formatNpcBriefLine).join("\n"));
+  }
+  return sections.join("\n\n");
 }
 
 function onInputKeydown(e: KeyboardEvent): void {

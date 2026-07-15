@@ -3,8 +3,8 @@ import {
   useApiConfig,
   isApiConfigured,
   API_OVERRIDE_KEY,
-} from "../ai/useApiConfig";
-import type { ApiOverrideStored } from "../ai/useApiConfig";
+} from "../ai_core/bridge/apiConfig";
+import type { ApiOverrideStored } from "../ai_core/bridge/apiConfig";
 import { useImageApiConfig } from "../image_generate/useImageApiConfig";
 import {
   readSaveIndex as readIndexFromGameSave,
@@ -17,9 +17,9 @@ import {
 } from "../save/gameSave";
 import { downloadJson, readJsonFile } from "../save/saveFileTransfer";
 
-export { API_OVERRIDE_KEY } from "../ai/useApiConfig";
-export type { ApiOverrideStored } from "../ai/useApiConfig";
-export { isApiConfigured } from "../ai/useApiConfig";
+export { API_OVERRIDE_KEY } from "../ai_core/bridge/apiConfig";
+export type { ApiOverrideStored } from "../ai_core/bridge/apiConfig";
+export { isApiConfigured } from "../ai_core/bridge/apiConfig";
 export { IMAGE_API_OVERRIDE_KEY } from "../image_generate/useImageApiConfig";
 export { SAVE_INDEX_KEY, SAVE_PREFIX } from "../save/gameSave";
 export type { SaveIndexEntry, MjSavePayload } from "../save/gameSave";

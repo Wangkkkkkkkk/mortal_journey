@@ -6,7 +6,7 @@
  */
 
 import { ref, computed, type Ref, type ComputedRef } from "vue";
-import { safeJsonParse } from "../ai/openAiChatBridge";
+import { safeJsonParse } from "../ai_core/shared/parseJson";
 import { pingReachable } from "./volcImageBridge";
 import type { ArkImageConfig } from "./types";
 
