@@ -40,7 +40,7 @@ function closeFateChoice() {
 }
 
 function onFateChoiceComplete(payload: FateChoiceResult) {
-  gameLog.info("[App] 命运抉择 JSON: " + JSON.stringify(payload, null, 2));
+  gameLog.ai("命运抉择", "in", JSON.stringify(payload, null, 2));
   resetAllGameState();
   createSave(payload);
   lastFateChoice.value = payload;

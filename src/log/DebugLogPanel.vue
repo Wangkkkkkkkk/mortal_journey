@@ -5,7 +5,7 @@ import { gameLog, AI_DIRECTION_LABEL } from "./gameLog";
 
 const showPanel = ref(gameLog.showPanel);
 const lines = ref<GameLogLine[]>(gameLog.getLines());
-const collapsed = ref(false);
+const collapsed = ref(true);
 const enlarged = ref(false);
 const autoScroll = ref(true);
 const bodyEl = ref<HTMLElement | null>(null);
