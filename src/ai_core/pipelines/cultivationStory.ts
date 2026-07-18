@@ -61,7 +61,7 @@ export async function generateCultivationStory(input: CultivationStoryInput): Pr
 
   const userContent = [
     "【修炼参数】",
-    `修炼功法：${input.gongfaName}（${input.gongfaGrade}，${input.gongfaSystem}）`,
+    `修炼功法：${input.gongfaName}（${input.gongfaGrade}${input.gongfaSystem ? "，" + input.gongfaSystem : ""}）`,
     `功法熟练度：${masteryInfo}`,
     `消耗灵石：${input.spiritStoneCount}枚`,
     `预计修炼时间：${timePreview}`,

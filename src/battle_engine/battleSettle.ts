@@ -2,7 +2,7 @@ import type { BattleState, BattleResult, BattleCombatant, BattleOutcome, LootEnt
 import { protagonist } from "../role_core/Protagonist";
 import { npcStore } from "../role_core/npcStore";
 import type { Npc } from "../role_core/Npc";
-import type { InventoryStackItem, TreasureItemDefinition, GongfaItemDefinition } from "../role_core/types/itemInfo";
+import type { InventoryStackItem, TreasureItemDefinition, GongfaItemDefinition } from "../role_core/types/items";
 import type { BattleTriggerEntry } from "../ai_core";
 import { gameLog } from "../log/gameLog";
 
@@ -102,6 +102,22 @@ export function settleBattle(state: BattleState, opts?: SettleBattleOptions): Ba
         slot.count -= take;
         remaining -= take;
         if (slot.count <= 0) p.setInventorySlot(i, null);
+      }
+    }
+  }
+
+  // 消耗型技能（符箓/阵法）结算：将战斗中剩余次数写回主角背包
+  if (p && protagonistCombatant) {
+    const consumables = protagonistCombatant.consumableSkills ?? [];
+    for (const cs of consumables) {
+      if (!cs || cs.inventorySlotIndex < 0) continue;
+      if (cs.remainingCount <= 0) {
+        p.setInventorySlot(cs.inventorySlotIndex, null);
+      } else {
+        const slot = p.inventorySlots[cs.inventorySlotIndex];
+        if (slot && "itemType" in slot) {
+          slot.count = cs.remainingCount;
+        }
       }
     }
   }

@@ -120,6 +120,7 @@
 
 .battle__submenu--skill { border-left: 2px solid #46a; }
 .battle__submenu--elixir { border-left: 2px solid #4a4; }
+.battle__submenu--consumable { border-left: 2px solid #a64; }
 
 .battle__submenu-item {
   display: flex;

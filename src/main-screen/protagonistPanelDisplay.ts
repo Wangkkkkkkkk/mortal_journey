@@ -2,8 +2,8 @@
  * @fileoverview 主角左栏 UI 纯函数：与 `PlayerInfoPanel.vue` 模板解耦，便于单测与后续复杂展示逻辑。
  */
 
-import type { TreasureItemDefinition } from "../role_core/types/itemInfo";
-import type { GongfaItemDefinition } from "../role_core/types/itemInfo";
+import type { TreasureItemDefinition } from "../role_core/types/items";
+import type { GongfaItemDefinition } from "../role_core/types/items";
 import {
   getCultivationRequired,
   EQUIP_SLOT_COUNT,

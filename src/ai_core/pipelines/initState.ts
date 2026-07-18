@@ -10,12 +10,16 @@ import type { EquippedSlotsState, GongfaSlotsState } from "../../role_core/types
 import { EQUIP_SLOT_COUNT, GONGFA_SLOT_COUNT } from "../../role_core/types/playInfo";
 import { DEFAULT_INVENTORY_SLOT_COUNT, compactInventorySlotsInPlace } from "../../role_core/CharacterInventory";
 import type { ProtagonistPlayInfo } from "../../role_core/types/playInfo";
-import type { InventoryStackItem } from "../../role_core/types/itemInfo";
+import type { InventoryStackItem } from "../../role_core/types/items";
 import type { WorldLocation } from "../../role_core/types/worldLocation";
 import { formatWorldLocationDash, parseWorldLocationFromDash } from "../../role_core/types/worldLocation";
 import { runPipeline, type RunPipelineOptions } from "../shared/runPipeline";
 import { callChatCompletions } from "../bridge/openAiBridge";
 import { INIT_STATE_SYSTEM_PRESET } from "../presets/initStatePreset";
+import { buildItemEffectVocabularyPrompt } from "../shared/itemEffectVocabulary";
+
+/** 开局状态 system prompt：基础规则 + 物品效果词汇表（仅计算一次）。 */
+const INIT_STATE_SYSTEM_FULL = `${INIT_STATE_SYSTEM_PRESET}\n\n${buildItemEffectVocabularyPrompt()}`;
 import { extractTagContent } from "../shared/tagSpec";
 import { tryParseJsonArray, safeJsonParse } from "../shared/parseJson";
 import {
@@ -33,7 +37,7 @@ import { parseEquipObject, parseGongfaObject, parseStorageObject } from "../shar
 import {
   sanitizeRace, sanitizePowerTier, sanitizeRealm, sanitizeLinggen, sanitizePercent,
 } from "../shared/sanitizeDomain";
-import type { TreasureItemDefinition, GongfaItemDefinition } from "../../role_core/types/itemInfo";
+import type { TreasureItemDefinition, GongfaItemDefinition } from "../../role_core/types/items";
 import type { ActionSuggestions } from "../types/stateDiff";
 import type { NpcEvent, NpcFullCard } from "../types/npcEvents";
 
@@ -190,7 +194,7 @@ export async function generateInitState(input: InitStateInput): Promise<InitStat
   const opts: RunPipelineOptions = {
     defaultTemperature: 0.55,
     defaultMaxTokens: 16384,
-    system: INIT_STATE_SYSTEM_PRESET,
+    system: INIT_STATE_SYSTEM_FULL,
     user: buildInitStateUserContent(input),
     logTag: "开局状态",
   };

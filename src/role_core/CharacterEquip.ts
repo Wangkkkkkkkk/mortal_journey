@@ -7,7 +7,7 @@ import type {
   TreasureItemDefinition,
   GongfaItemDefinition,
   InventoryStackItem,
-} from "./types/itemInfo";
+} from "./types/items";
 import {
   EQUIP_SLOT_COUNT,
   GONGFA_SLOT_COUNT,

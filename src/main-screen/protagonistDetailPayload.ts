@@ -12,16 +12,14 @@ import type {
   MiscItemDefinition,
   SpiritStoneInventoryStack,
   TreasureItemDefinition,
-} from "../role_core/types/itemInfo";
+} from "../role_core/types/items";
 import type { CultivationRealm, EquipSlotKey, PrimaryStatKey, TraitEntry } from "../role_core/types/playInfo";
 import { PRIMARY_STAT_KEY_TO_ZH } from "../role_core/types/playInfo";
-import type { TreasureSpecialEffect, TreasureConversion, TreasureConversionEffect } from "../role_core/types/treasure";
-import { TREASURE_MODIFIER_NAMES } from "../role_core/types/treasure";
-import type { GongfaSpecialEffect } from "../role_core/types/gongfa";
-import { resolveGongfaEffectDisplay } from "../role_core/types/gongfa";
+import type { Effect, EffectBundle } from "../role_core/types/effects";
+import { TREASURE_MODIFIER_NAMES, resolveEffectBundleDisplay, effectFamily, conversionEffectMeta } from "../role_core/types/effects";
 import { gradeToTraitRarity, getGongfaMasteryProgress } from "./protagonistPanelDisplay";
 import { GONGFA_MASTERY_COMBAT_MULT, GONGFA_MASTERY_ATTRI_MULT, getItemSellPrice } from "../role_core/types/gameConstants";
-import type { ItemGrade } from "../role_core/types/itemInfo";
+import type { ItemGrade } from "../role_core/types/items";
 import { describeTraitEffect } from "../fate_choice/traitEffect";
 
 export interface DerivedStatValues {
@@ -35,7 +33,7 @@ export interface DerivedStatValues {
   insight: number;
 }
 
-type ItemSpecialEffect = TreasureSpecialEffect | GongfaSpecialEffect;
+type ItemSpecialEffect = EffectBundle;
 
 function pushSpecialEffectSection(
   out: ProtagonistDetailSection[],
@@ -52,41 +50,26 @@ function pushSpecialEffectSection(
   out.push({
     label: "特殊效果",
     get text() {
-      if ("battleEffects" in fn) {
-        const ds = derivedStatsGetter ? derivedStatsGetter() : undefined;
-        const getStat = (key: PrimaryStatKey) => {
-          if (!ds) return 0;
-          return (ds as unknown as Record<string, number>)[key] ?? 0;
-        };
-        const masteryMult = mastery != null && mastery >= 1
-          ? GONGFA_MASTERY_COMBAT_MULT[Math.min(mastery, GONGFA_MASTERY_COMBAT_MULT.length) - 1]
-          : 1.0;
-        return resolveGongfaEffectDisplay(fn, getStat, masteryMult, mastery ?? 1, cooldownReduce ?? 0);
-      }
-      if ("modifiers" in fn) {
-        const tFn = fn as TreasureSpecialEffect;
-        return tFn.modifiers
-          .map(m => `${TREASURE_MODIFIER_NAMES[m.modifierType]}+${m.value}%`)
-          .join("\n");
-      }
-      return "";
+      const ds = derivedStatsGetter ? derivedStatsGetter() : undefined;
+      const getStat = (key: PrimaryStatKey) => {
+        if (!ds) return 0;
+        return (ds as unknown as Record<string, number>)[key] ?? 0;
+      };
+      const masteryMult = mastery != null && mastery >= 1
+        ? GONGFA_MASTERY_COMBAT_MULT[Math.min(mastery, GONGFA_MASTERY_COMBAT_MULT.length) - 1]
+        : 1.0;
+      return resolveEffectBundleDisplay(fn, getStat, masteryMult, mastery ?? 1, cooldownReduce ?? 0);
     },
   });
 }
 
 /**
  * 将单条法宝转换格式化为可读文案。
- *
- * - bonus：`dest +ratio%×source`
- * - transfer：`将ratio%source转为dest`
- *
- * @param c 单条转换。
- * @returns 中文展示文案。
  */
-function formatTreasureConversion(c: TreasureConversion): string {
+function formatTreasureConversion(c: Extract<Effect, { type: "conversion" }>): string {
   if (c.target === "stat") {
-    const from = PRIMARY_STAT_KEY_TO_ZH[c.from];
-    const to = PRIMARY_STAT_KEY_TO_ZH[c.to];
+    const from = c.from ? PRIMARY_STAT_KEY_TO_ZH[c.from] : "";
+    const to = c.to ? PRIMARY_STAT_KEY_TO_ZH[c.to] : "";
     return c.mode === "transfer"
       ? `将${c.ratio}%${from}转为${to}`
       : `${to} +${c.ratio}%×${from}`;
@@ -102,38 +85,32 @@ function formatTreasureConversion(c: TreasureConversion): string {
 }
 
 /**
- * 追加法宝「属性加成」段落（原 modifiers 战斗修正展示）。
- *
- * @param out 段落数组（原地修改）。
- * @param fn 法宝 function；为空则不追加。
+ * 追加法宝/丹药/功法的「效果」段落（统一渲染 EffectBundle）。
  */
-function pushTreasureAttributeBonusSection(
+function pushEffectSection(
   out: ProtagonistDetailSection[],
-  fn: TreasureSpecialEffect | undefined,
+  bundle: EffectBundle | undefined,
+  derivedStatsGetter?: () => DerivedStatValues,
+  mastery?: number,
+  cooldownReduce?: number,
 ): void {
-  if (!fn) return;
-  out.push({
-    label: "属性加成",
-    text: fn.modifiers
-      .map(m => `${TREASURE_MODIFIER_NAMES[m.modifierType]}+${m.value}%`)
-      .join("\n"),
-  });
+  if (!bundle) return;
+  pushSpecialEffectSection(out, bundle, "", undefined, undefined, undefined, derivedStatsGetter, mastery, cooldownReduce);
 }
 
 /**
- * 追加法宝「特殊效果」段落（仙品/神品的转换型效果）。
- *
- * @param out 段落数组（原地修改）。
- * @param se 法宝 specialEffect；为空则不追加。
+ * 追加法宝「转换效果」段落（仙品/神品的 conversion 效果，若已含于 effect 中则单独列出）。
  */
-function pushTreasureSpecialEffectSection(
+function pushTreasureConversionSection(
   out: ProtagonistDetailSection[],
-  se: TreasureConversionEffect | undefined,
+  bundle: EffectBundle | undefined,
 ): void {
-  if (!se) return;
-  const lines: string[] = [];
-  for (const c of se.conversions) lines.push(formatTreasureConversion(c));
-  out.push({ label: "特殊效果", text: lines.filter(Boolean).join("\n") });
+  if (!bundle) return;
+  const convs = bundle.effects.filter((e): e is Extract<Effect, { type: "conversion" }> => e.type === "conversion");
+  if (convs.length === 0) return;
+  const meta = conversionEffectMeta(convs[0]);
+  const lines = convs.map(formatTreasureConversion);
+  out.push({ label: "命名法宝", text: `${meta.name}\n${meta.intro}\n${lines.join("\n")}` });
 }
 
 /**
@@ -347,8 +324,8 @@ export function buildWearableDetailPayload(
   const sections: ProtagonistDetailSection[] = [];
   pushSec(sections, "简介", it.desc);
   pushSec(sections, "品级", it.grade);
-  pushTreasureAttributeBonusSection(sections, it.function);
-  pushTreasureSpecialEffectSection(sections, it.specialEffect);
+  pushEffectSection(sections, it.effect);
+  pushTreasureConversionSection(sections, it.effect);
 
   const actions: ProtagonistDetailActionButton[] = [];
   if (source?.type === "equipped") {
@@ -419,7 +396,7 @@ export function buildGongfaDetailPayload(
   const mastery = gf.mastery ?? 1;
   const bonus = formatZhBonusWithMastery(gf.bonus as Record<string, number>, mastery);
   if (bonus) pushSec(sections, "修炼加成", bonus);
-  pushSpecialEffectSection(sections, gf.function, gf.grade, primaryStatGetter, statNameGetter, gf.system, derivedStatsGetter, mastery, cooldownReduce);
+  pushSpecialEffectSection(sections, gf.effect, gf.grade, primaryStatGetter, statNameGetter, undefined, derivedStatsGetter, mastery, cooldownReduce);
 
   const actions: ProtagonistDetailActionButton[] = [];
   if (source?.type === "bar") {
@@ -459,10 +436,23 @@ export function buildGongfaDetailPayload(
  * @returns 可读药效字符串；无有效恢复效果时返回 `undefined`。
  */
 function formatElixirEffect(el: ElixirItemDefinition): string {
-  const { effectType, effects } = el;
-  const suffix = effects.isPercent ? "%" : "";
-  const label = effectType.startsWith("提升") ? `永久${effectType}` : effectType;
-  return `${label} ${effects.value}${suffix}`;
+  if (!el.effect) return "";
+  return el.effect.effects
+    .map(e => {
+      if (e.type === "healHp" || e.type === "healMp" || e.type === "xiuweiBoost" || e.type === "shouyuanBoost" || e.type === "statBoost") {
+        const v = typeof e.value === "number" ? e.value : e.value[0];
+        const suffix = ("isPercent" in e && e.isPercent) ? "%" : "";
+        const statLabel = e.type === "statBoost" ? PRIMARY_STAT_KEY_TO_ZH[e.statKey] : "";
+        if (e.type === "healHp") return `恢复血量 ${v}${suffix}`;
+        if (e.type === "healMp") return `恢复法力 ${v}${suffix}`;
+        if (e.type === "xiuweiBoost") return `提升修为 ${v}${suffix}`;
+        if (e.type === "shouyuanBoost") return `提升寿元 ${v}年`;
+        return `永久提升${statLabel} +${v}`;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**
@@ -546,7 +536,29 @@ export function buildInventoryStackDetailPayload(
       };
       break;
     }
-    case "材料": {
+    case "符箓":
+    case "阵法": {
+      const pill = it as unknown as ElixirItemDefinition;
+      const sections: ProtagonistDetailSection[] = [];
+      pushSec(sections, "简介", pill.desc);
+      pushSec(sections, "品级", pill.grade);
+      pushSec(sections, "效果", formatElixirEffect(pill));
+      pushSec(sections, "数量", pill.count);
+      const actions: ProtagonistDetailActionButton[] = [];
+      if (bagIndex != null && pill.count > 0) {
+        actions.push({ label: "使用", action: { id: "consumeElixir", inventoryIndex: bagIndex }, primary: true });
+      }
+      payload = {
+        title: pill.name,
+        subtitle: it.itemType,
+        sections,
+        dataRarity: gradeToTraitRarity(pill.grade),
+        actions: actions.length > 0 ? actions : undefined,
+      };
+      break;
+    }
+    case "炼丹材料":
+    case "炼器材料": {
       const m = it as MaterialItemDefinition;
       const sections: ProtagonistDetailSection[] = [];
       pushSec(sections, "简介", m.desc);
@@ -554,7 +566,7 @@ export function buildInventoryStackDetailPayload(
       pushSec(sections, "数量", m.count);
       payload = {
         title: m.name,
-        subtitle: `材料`,
+        subtitle: m.itemType,
         sections,
         dataRarity: gradeToTraitRarity(m.grade),
       };

@@ -1,10 +1,10 @@
-import type { BattleCombatant, BattleSkill, BattleElixir, BattleEffect, SkillEffect, DamageType, ModifierType, CcType, StatusType, SummonTrigger } from "./types";
+import type { BattleCombatant, BattleSkill, BattleElixir, BattleEffect, SkillEffect, DamageType, ModifierType, CcType, StatusType, SummonTrigger, BattleConsumableSkill } from "./types";
 import type { BattleTriggerEntry } from "../ai_core";
 import type { GongfaSlotsState, EquippedSlotsState } from "../role_core/types/playInfo";
-import type { InventoryStackItem, ElixirItemDefinition } from "../role_core/types/itemInfo";
-import type { GongfaBattleEffect, LayerValue } from "../role_core/types/gongfa";
+import type { InventoryStackItem, ElixirItemDefinition } from "../role_core/types/items";
+import type { Effect, EffectBundle, LayerValue } from "../role_core/types/effects";
+import { atLayer, atLayerFloat, resolveEffectDesc, effectFamily } from "../role_core/types/effects";
 import type { PrimaryStatKey } from "../role_core/types/playInfo";
-import { atLayer, atLayerFloat, resolveGongfaBattleEffectDesc } from "../role_core/types/gongfa";
 import { protagonist } from "../role_core/Protagonist";
 import { Npc } from "../role_core/Npc";
 import { npcStore } from "../role_core/npcStore";
@@ -25,7 +25,7 @@ function getMasteryMult(mastery?: number): number {
 }
 
 function bakeScalingValue(
-  eff: GongfaBattleEffect,
+  eff: Effect,
   getStat: (key: string) => number,
   masteryMult: number,
   layer: number,
@@ -40,7 +40,7 @@ function bakeScalingValue(
 }
 
 function convertBattleEffectToSkillEffect(
-  eff: GongfaBattleEffect,
+  eff: Effect,
   getStat: (key: string) => number,
   masteryMult: number,
   layer: number,
@@ -101,10 +101,13 @@ function convertBattleEffectToSkillEffect(
       const count = eff.countPerCast != null ? atLayer(eff.countPerCast as LayerValue, layer) : 1;
       return { type: "summon", name: eff.name, trigger: eff.trigger as SummonTrigger, effect: { type: "dealDamage", damageType: "physical", value: dmg }, duration: eff.duration, stacksPerCast: count };
     }
+    default:
+      // 非主动战斗效果（消耗/转换）不应出现在主动技能里；兜底返回 0 伤害。
+      return { type: "dealDamage", damageType: "physical", value: 0 };
   }
 }
 
-function isTargetEnemy(eff: GongfaBattleEffect): boolean {
+function isTargetEnemy(eff: Effect): boolean {
   switch (eff.type) {
     case "dealDamage": case "dealDamageExecute": case "dealDamagePierce": case "dealDamageBySummon":
     case "consumePoisonDamage":
@@ -120,7 +123,7 @@ function isTargetEnemy(eff: GongfaBattleEffect): boolean {
   }
 }
 
-function needsTarget(eff: GongfaBattleEffect): boolean {
+function needsTarget(eff: Effect): boolean {
   switch (eff.type) {
     case "dealDamage": case "dealDamageExecute": case "dealDamagePierce": case "dealDamageBySummon":
     case "consumePoisonDamage":
@@ -137,32 +140,34 @@ function buildBattleSkills(gongfaSlots: GongfaSlotsState, getStat: (key: string)
   const skills: BattleSkill[] = [];
 
   for (const gf of gongfaSlots) {
-    if (!gf || !gf.function) continue;
-    if (gf.function.type !== "主动") continue;
+    if (!gf || !gf.effect) continue;
+    const bundle = gf.effect;
+    if (bundle.type !== "主动") continue;
 
     const layer = gf.mastery ?? 1;
     const masteryMult = getMasteryMult(layer);
-    const effects = gf.function.battleEffects.map(eff =>
+    const battleEffects = bundle.effects.filter(e => effectFamily(e) === "activeBattle");
+    const effects = battleEffects.map(eff =>
       convertBattleEffectToSkillEffect(eff, getStat, masteryMult, layer),
     );
 
-    const hasOffensive = gf.function.battleEffects.some(isTargetEnemy);
-    const hasNeedTarget = gf.function.battleEffects.some(needsTarget);
+    const hasOffensive = battleEffects.some(isTargetEnemy);
+    const hasNeedTarget = battleEffects.some(needsTarget);
 
     const getStatForDesc = (key: PrimaryStatKey) => getStat(key);
-    const desc = gf.function.battleEffects
-      .map(e => resolveGongfaBattleEffectDesc(e, getStatForDesc, masteryMult, layer, false))
+    const desc = battleEffects
+      .map(e => resolveEffectDesc(e, getStatForDesc, masteryMult, layer, false))
       .join("；");
 
     skills.push({
       name: gf.name,
       desc,
-      mpCost: atLayer(gf.function.mpCost ?? 0, layer),
+      mpCost: atLayer(bundle.mpCost ?? 0, layer),
       actionCost: 100,
-      cooldown: Math.max(0, (gf.function.cooldown ?? 0) - cooldownReduce),
+      cooldown: Math.max(0, (bundle.cooldown ?? 0) - cooldownReduce),
       needTarget: hasNeedTarget,
       targetTeam: hasOffensive ? "enemy" : "ally",
-      isAoE: !!gf.function.isAoE,
+      isAoE: !!bundle.isAoE,
       effects,
     });
   }
@@ -170,7 +175,7 @@ function buildBattleSkills(gongfaSlots: GongfaSlotsState, getStat: (key: string)
 }
 
 function convertBattleEffectToInitEffect(
-  eff: GongfaBattleEffect,
+  eff: Effect,
   getStat: (key: string) => number,
   masteryMult: number,
   layer: number,
@@ -227,6 +232,9 @@ function convertBattleEffectToInitEffect(
     case "revive":
     case "summon":
       return base;
+    default:
+      // 非被动战斗效果（消耗/转换）不产生战斗 BattleEffect。
+      return base;
   }
 }
 
@@ -238,13 +246,15 @@ function extractPassiveEffects(
   const effects: BattleEffect[] = [];
 
   for (const gf of gongfaSlots) {
-    if (!gf || !gf.function) continue;
-    if (gf.function.type !== "被动") continue;
+    if (!gf || !gf.effect) continue;
+    const bundle = gf.effect;
+    if (bundle.type !== "被动") continue;
 
     const layer = gf.mastery ?? 1;
     const masteryMult = getMasteryMult(layer);
-    for (const eff of gf.function.battleEffects) {
-      const be = convertBattleEffectToInitEffect(eff, getStat, masteryMult, layer, gf.function.name, combatantId);
+    for (const eff of bundle.effects) {
+      if (effectFamily(eff) !== "passiveBattle") continue;
+      const be = convertBattleEffectToInitEffect(eff, getStat, masteryMult, layer, bundle.name, combatantId);
       be.hidden = true;
       effects.push(be);
     }
@@ -255,28 +265,37 @@ function extractPassiveEffects(
 
 function extractTreasurePassiveEffects(
   equippedSlots: EquippedSlotsState,
+  getStat: (key: string) => number,
   combatantId: string,
 ): BattleEffect[] {
   const effects: BattleEffect[] = [];
 
   for (const tr of equippedSlots) {
-    if (!tr || !tr.function) continue;
-    if (!("modifiers" in tr.function)) continue;
-    for (const mod of tr.function.modifiers) {
-      const rawType = mod.modifierType as string;
-      const engineType = (rawType === "healReceived" ? "hpRecover" : rawType) as ModifierType;
-      effects.push({
-        id: generateEffectId(),
-        name: tr.function.name,
-        sourceId: combatantId,
-        category: "modifier",
-        remainingDuration: 99,
-        stacks: 1,
-        maxStacks: 1,
-        modifierType: engineType,
-        modifierValue: mod.modifierType === "damageTaken" ? -mod.value : mod.value,
-        hidden: true,
-      });
+    if (!tr || !tr.effect) continue;
+    for (const eff of tr.effect.effects) {
+      if (effectFamily(eff) === "passiveBattle") {
+        const be = convertBattleEffectToInitEffect(eff, getStat, 1.0, 1, tr.effect.name, combatantId);
+        be.hidden = true;
+        effects.push(be);
+      } else if (eff.type === "applyModifier") {
+        // 修正型被动（已统一为 applyModifier Effect）
+        const rawType = eff.modifierType as string;
+        const engineType = (rawType === "healReceived" ? "hpRecover" : rawType) as ModifierType;
+        const val = atLayer(eff.value, 1);
+        effects.push({
+          id: generateEffectId(),
+          name: tr.effect.name,
+          sourceId: combatantId,
+          category: "modifier",
+          remainingDuration: 99,
+          stacks: 1,
+          maxStacks: 1,
+          modifierType: engineType,
+          modifierValue: val,
+          hidden: true,
+        });
+      }
+      // conversion / consumable 不在此处理（Character / consumeElixir 负责）
     }
   }
 
@@ -287,18 +306,74 @@ function extractRecoveryElixirs(inventorySlots: Array<InventoryStackItem | null>
   const result: BattleElixir[] = [];
   for (const slot of inventorySlots) {
     if (!slot) continue;
-    if ("itemType" in slot && slot.itemType === "丹药" && "effectType" in slot
-      && (slot.effectType === "恢复血量" || slot.effectType === "恢复法力")) {
+    if ("itemType" in slot && slot.itemType === "丹药") {
       const el = slot as ElixirItemDefinition;
-      result.push({
-        name: el.name,
-        desc: el.desc ?? "",
-        effectType: el.effectType === "恢复血量" ? "healHp" : "healMp",
-        value: el.effects?.value ?? 0,
-        isPercent: el.effects?.isPercent ?? false,
-        count: el.count,
-      });
+      if (!el.effect) continue;
+      for (const eff of el.effect.effects) {
+        if (eff.type === "healHp" || eff.type === "healMp") {
+          result.push({
+            name: el.name,
+            desc: el.desc ?? "",
+            effectType: eff.type,
+            value: atLayer(eff.value, 1),
+            isPercent: eff.isPercent,
+            count: el.count,
+          });
+        }
+      }
     }
+  }
+  return result;
+}
+
+function extractConsumableSkills(
+  inventorySlots: Array<InventoryStackItem | null>,
+  getStat: (key: string) => number,
+  combatantId: string,
+): BattleConsumableSkill[] {
+  const result: BattleConsumableSkill[] = [];
+  for (let i = 0; i < inventorySlots.length; i++) {
+    const slot = inventorySlots[i];
+    if (!slot) continue;
+    if (!("itemType" in slot) || (slot.itemType !== "符箓" && slot.itemType !== "阵法")) continue;
+    const item = slot as unknown as ElixirItemDefinition;
+    if (!item.effect || item.count <= 0) continue;
+
+    const isFormation = slot.itemType === "阵法";
+    const activeEffects = item.effect.effects.filter(e => effectFamily(e) === "activeBattle");
+    if (activeEffects.length === 0) continue;
+
+    const skillEffects: SkillEffect[] = [];
+    for (const eff of activeEffects) {
+      skillEffects.push(convertBattleEffectToSkillEffect(eff, getStat, 1, 1));
+    }
+
+    const hasOffensive = activeEffects.some(isTargetEnemy);
+    const hasNeedTarget = activeEffects.some(needsTarget);
+
+    const getStatForDesc = (key: PrimaryStatKey) => getStat(key);
+    const desc = activeEffects
+      .map(e => resolveEffectDesc(e, getStatForDesc, 1, 1, false))
+      .join("；");
+
+    const skill: BattleSkill = {
+      name: item.name,
+      desc,
+      mpCost: 0,
+      actionCost: 30, // ELIXIR_COST
+      cooldown: 0,
+      needTarget: hasNeedTarget,
+      targetTeam: hasOffensive ? "enemy" : "ally",
+      isAoE: isFormation, // 阵法默认群体；符箓单目标
+      effects: skillEffects,
+    };
+
+    result.push({
+      skill,
+      inventorySlotIndex: i,
+      remainingCount: item.count,
+      itemName: item.name,
+    });
   }
   return result;
 }
@@ -312,9 +387,10 @@ function createProtagonistCombatant(): BattleCombatant | null {
   const linggenBonus = computeLinggenCombatBonuses(p.linggen, p.realm.major);
   const skills = buildBattleSkills(p.gongfaSlots, getStat, linggenBonus.cooldownReduce);
   const elixirs = extractRecoveryElixirs(p.inventorySlots);
+  const consumableSkills = extractConsumableSkills(p.inventorySlots, getStat, generateId("ally", 0));
   const passiveEffects: BattleEffect[] = [
     ...extractPassiveEffects(p.gongfaSlots, getStat, generateId("ally", 0)),
-    ...extractTreasurePassiveEffects(p.equippedSlots, generateId("ally", 0)),
+    ...extractTreasurePassiveEffects(p.equippedSlots, getStat, generateId("ally", 0)),
   ];
 
   return {
@@ -346,6 +422,7 @@ function createProtagonistCombatant(): BattleCombatant | null {
     skills,
     cooldowns: new Array(Math.max(GONGFA_SLOT_COUNT, skills.length)).fill(0),
     elixirs,
+    consumableSkills,
 
     effects: passiveEffects,
     linggenHealMult: linggenBonus.healMult,
@@ -367,9 +444,10 @@ function createNpcCombatant(
   const skills = buildBattleSkills(npc.gongfaSlots, getStat, linggenBonus.cooldownReduce);
   const elixirs = extractRecoveryElixirs(npc.inventorySlots);
   const id = generateId(team, index);
+  const consumableSkills = extractConsumableSkills(npc.inventorySlots, getStat, id);
   const passiveEffects: BattleEffect[] = [
     ...extractPassiveEffects(npc.gongfaSlots, getStat, id),
-    ...extractTreasurePassiveEffects(npc.equippedSlots, id),
+    ...extractTreasurePassiveEffects(npc.equippedSlots, getStat, id),
   ];
 
   // 困难模式：敌方全主属性 ×1.5（攻防血速同步放大，含当前 HP/MP 以保证满血开战）。
@@ -405,6 +483,7 @@ function createNpcCombatant(
     skills,
     cooldowns: new Array(Math.max(GONGFA_SLOT_COUNT, skills.length)).fill(0),
     elixirs,
+    consumableSkills,
 
     effects: passiveEffects,
     linggenHealMult: linggenBonus.healMult,

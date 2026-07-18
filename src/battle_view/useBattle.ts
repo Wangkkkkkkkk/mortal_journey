@@ -67,7 +67,7 @@ export function useBattle() {
 
   function getPlayerActionOptions(): ActionOptions {
     const e = engine.value;
-    if (!e) return { canNormalAttack: false, normalAttackCost: 50, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: 30, fleeActionCost: 100, canFlee: false, skills: [], elixirs: [] };
+    if (!e) return { canNormalAttack: false, normalAttackCost: 50, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: 30, fleeActionCost: 100, canFlee: false, skills: [], elixirs: [], consumableSkills: [] };
     return e.getPlayerActionOptions();
   }
 
@@ -77,7 +77,7 @@ export function useBattle() {
     if (!s || s.phase !== "playerAction") return;
     s.pendingAction = action;
 
-    if (action.type === "normalAttack" || action.type === "skill") {
+    if (action.type === "normalAttack" || action.type === "skill" || action.type === "consumableSkill") {
       if (e) {
         const actor = e.findCombatant(s.activeCombatantId ?? "");
         if (actor && e.effectManager.isFeared(actor)) {
@@ -107,6 +107,19 @@ export function useBattle() {
       const opts = getPlayerActionOptions();
       const skillItem = opts.skills.find(sk => sk.skillIndex === action.skillIndex);
       if (skillItem && (!skillItem.needTarget || skillItem.isAoE)) {
+        s.phase = "targetSelection";
+        const currentActorId = s.activeCombatantId;
+        if (currentActorId) {
+          selectTarget(currentActorId);
+          return;
+        }
+      }
+    }
+
+    if (action.type === "consumableSkill") {
+      const opts = getPlayerActionOptions();
+      const csItem = opts.consumableSkills.find(cs => cs.consumableIndex === action.consumableIndex);
+      if (csItem && (!csItem.needTarget || csItem.isAoE)) {
         s.phase = "targetSelection";
         const currentActorId = s.activeCombatantId;
         if (currentActorId) {

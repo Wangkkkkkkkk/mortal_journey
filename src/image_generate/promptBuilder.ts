@@ -146,8 +146,7 @@ function extractCombatHints(p: Protagonist): string {
   }
   for (const cell of p.gongfaSlots) {
     if (cell && cell.name) {
-      const tag = (cell as { system?: string }).system === "炼体" ? "炼体功法" : "功法";
-      hints.push(`${tag}「${cell.name}」`);
+      hints.push(`功法「${cell.name}」`);
       if (hints.length >= 2) break;
     }
   }

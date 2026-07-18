@@ -8,6 +8,8 @@ import type {
   ActionOptions,
   SkillActionItem,
   ElixirActionItem,
+  ConsumableSkillActionItem,
+  BattleConsumableSkill,
   BattleEngineLike,
 } from "./types";
 
@@ -161,6 +163,9 @@ export class BattleEngine implements BattleEngineLike {
       case "elixir":
         this.executeElixir(actor, action.elixirIndex);
         break;
+      case "consumableSkill":
+        this.executeConsumableSkill(actor, action.consumableIndex, action.targetId);
+        break;
       case "flee":
         this.executeFlee(actor);
         break;
@@ -176,6 +181,9 @@ export class BattleEngine implements BattleEngineLike {
 
   private resolveTargetOverride(actor: BattleCombatant, action: BattleAction): void {
     if (action.type === "flee" || action.type === "elixir") return;
+    if (action.type === "consumableSkill") {
+      // 消耗型技能按普通技能的嘲讽/恐惧逻辑处理
+    }
     if (!("targetId" in action)) return;
 
     const taunt = this.effectManager.isTaunted(actor);
@@ -321,6 +329,56 @@ export class BattleEngine implements BattleEngineLike {
     this.gaugeManager.consumeGauge(actor, ELIXIR_COST);
   }
 
+  private executeConsumableSkill(actor: BattleCombatant, consumableIndex: number, targetId: string): void {
+    const consumables = actor.consumableSkills ?? [];
+    const cs = consumables[consumableIndex];
+    if (!cs || cs.remainingCount <= 0) return;
+
+    cs.remainingCount--;
+    this.gaugeManager.consumeGauge(actor, ELIXIR_COST);
+
+    const skill = cs.skill;
+    this.addLog({ turn: this.state.actionCount, actorName: actor.name, action: "使用符箓/阵法", type: "info", narrative: `${actor.name}使用${cs.itemName}`, team: actor.team });
+
+    if (skill.isAoE) {
+      const allies = actor.team === "ally" ? this.state.allies : this.state.enemies;
+      const enemies = actor.team === "ally" ? this.state.enemies : this.state.allies;
+      const targets = (skill.targetTeam === "enemy" ? enemies : allies).filter(c => !c.isDead);
+      if (targets.length === 0) {
+        this.addLog({ turn: this.state.actionCount, actorName: actor.name, action: "使用符箓/阵法", type: "miss", narrative: "没有有效的目标", team: actor.team });
+        return;
+      }
+      for (const t of targets) {
+        const ctx: ActionContext = {
+          actor, action: { type: "consumableSkill", consumableIndex, targetId: t.id },
+          allies, enemies,
+          turn: this.state.actionCount, target: t,
+        };
+        const entries = this.effectHandler.executeEffects(skill.effects, ctx, this, skill.name);
+        this.addLogEntries(entries);
+      }
+    } else {
+      const target = this.findCombatant(targetId);
+      if (!target || target.isDead) {
+        this.addLog({ turn: this.state.actionCount, actorName: actor.name, action: "使用符箓/阵法", type: "miss", narrative: `${actor.name}使用${cs.itemName}，但目标无效`, team: actor.team });
+        return;
+      }
+      const ctx: ActionContext = {
+        actor, action: { type: "consumableSkill", consumableIndex, targetId },
+        allies: actor.team === "ally" ? this.state.allies : this.state.enemies,
+        enemies: actor.team === "ally" ? this.state.enemies : this.state.allies,
+        turn: this.state.actionCount, target,
+      };
+      const entries = this.effectHandler.executeEffects(skill.effects, ctx, this, skill.name);
+      this.addLogEntries(entries);
+    }
+
+    // 清除已消耗完毕的项
+    if (cs.remainingCount <= 0) {
+      consumables[consumableIndex] = null as any;
+    }
+  }
+
   private executeFlee(actor: BattleCombatant): void {
     if (!actor.isProtagonist) {
       this.addLog({ turn: this.state.actionCount, actorName: actor.name, action: "逃跑失败", type: "flee_fail", narrative: `${actor.name}无法逃跑！`, team: actor.team });
@@ -382,12 +440,12 @@ export class BattleEngine implements BattleEngineLike {
   getPlayerActionOptions(): ActionOptions {
     const actor = this.findCombatant(this.state.activeCombatantId ?? "");
     if (!actor || actor.isDead) {
-      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], elixirs: [] };
+      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], elixirs: [], consumableSkills: [] };
     }
 
     const canAct = this.effectManager.canAct(actor);
     if (!canAct) {
-      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], elixirs: [] };
+      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], elixirs: [], consumableSkills: [] };
     }
 
     const canUseSkills = this.effectManager.canUseSkills(actor);
@@ -442,6 +500,23 @@ export class BattleEngine implements BattleEngineLike {
       });
     }
 
+    const consumableSkills: ConsumableSkillActionItem[] = [];
+    const consumables = actor.consumableSkills ?? [];
+    for (let i = 0; i < consumables.length; i++) {
+      const cs = consumables[i];
+      if (!cs || cs.remainingCount <= 0) continue;
+      consumableSkills.push({
+        consumableIndex: i,
+        name: cs.itemName,
+        count: cs.remainingCount,
+        needTarget: cs.skill.needTarget,
+        targetTeam: cs.skill.targetTeam,
+        isAoE: cs.skill.isAoE,
+        description: cs.skill.desc,
+        usable: true,
+      });
+    }
+
     return {
       canNormalAttack: true,
       normalAttackCost: NORMAL_ATTACK_COST,
@@ -452,6 +527,7 @@ export class BattleEngine implements BattleEngineLike {
       fleeActionCost: FLEE_COST,
       skills,
       elixirs,
+      consumableSkills,
     };
   }
 

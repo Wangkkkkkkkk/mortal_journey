@@ -39,10 +39,9 @@ export interface ItemAddEntry {
   intro: string;
   grade: string;
   count: number;
-  system?: unknown;
-  role?: unknown;
-  function?: unknown;
   bonus?: unknown;
+  /** 统一效果列表 [{kind, ...参数}]，由状态 AI 从效果词汇表选择，可多条组合。 */
+  effects?: unknown;
 }
 
 export interface ItemRemoveEntry {

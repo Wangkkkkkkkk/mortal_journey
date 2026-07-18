@@ -14,7 +14,7 @@ import { worldMapStore, type WorldMapSerialData } from "../role_core/worldMapSto
 import { storyStore, type StorySerialData, type ChatMessage } from "../role_core/storyStore";
 import { writeActiveSave, getActiveDifficulty } from "../save/gameSave";
 import type { NpcPlayInfo } from "../role_core/types/playInfo";
-import type { InventoryStackItem } from "../role_core/types/itemInfo";
+import type { InventoryStackItem } from "../role_core/types/items";
 import { Character } from "../role_core/Character";
 import { gameLog } from "../log/gameLog";
 import {

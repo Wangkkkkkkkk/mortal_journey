@@ -16,13 +16,13 @@
 
 import type { Npc } from "./Npc";
 import { EQUIP_SLOT_COUNT, type GongfaSlotsState, type EquippedSlotsState } from "./types/playInfo";
-import type { InventoryStackItem } from "./types/itemInfo";
+import type { InventoryStackItem } from "./types/items";
 import { parseEquipObject, parseGongfaObject, parseStorageObject } from "../ai_core/shared/parseItems";
 import {
   DEFAULT_INVENTORY_SLOT_COUNT,
   compactInventorySlotsInPlace,
 } from "./CharacterInventory";
-import { applyLinggenElixirBoost } from "./types/elixir";
+import { applyLinggenElixirBoost } from "./types/items";
 import { gameLog } from "../log/gameLog";
 
 /** 境界突破（含小境界推进）。 */

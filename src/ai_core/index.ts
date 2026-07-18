@@ -66,7 +66,7 @@ export {
 export { safeJsonParse, tryParseJsonArray, sanitizeJsonLike, safeStr, safeCount } from "./shared/parseJson";
 export {
   parseEquipObject, parseGongfaObject, parseStorageObject,
-  rollGrade, parseBonusField, VALID_BONUS_NAMES, GRADE_KEYS, TYPE_TO_ITEM_TYPE,
+  rollGrade, parseBonusField, VALID_BONUS_NAMES, TYPE_TO_ITEM_TYPE,
 } from "./shared/parseItems";
 export { buildProtagonistBrief, formatEquippedSlots, formatGongfaSlots, formatInventorySlots, type BriefContext, type BriefOptions } from "./shared/protagonistBrief";
 export {

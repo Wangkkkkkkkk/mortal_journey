@@ -13,7 +13,7 @@
  */
 
 import type { TraitEffect } from "./traitEffect";
-import type { ItemGrade } from "../role_core/types/itemInfo";
+import type { ItemGrade } from "../role_core/types/items";
 import type { PrimaryStatKey } from "../role_core/types/playInfo";
 import { PRIMARY_STAT_KEYS } from "../role_core/types/playInfo";
 

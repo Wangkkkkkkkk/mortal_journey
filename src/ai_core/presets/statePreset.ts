@@ -166,60 +166,49 @@ export const STATE_SYSTEM_PRESET = `
 4. 储物袋灵石堆叠输出格式：<SPIRIT_STONE_TAG> … </SPIRIT_STONE_TAG>，内为 JSON 数组（无灵石变更时写 []）。
 5. 示例：<SPIRIT_STONE_TAG> [{"op":"add","count":5}] </SPIRIT_STONE_TAG>。
 
-[丹药effectType规则]
-  1. 丹药不携带 function 字段，改为携带 effectType 字段，表示丹药的唯一效果类型。
-  2. effectType 只能是以下之一：恢复血量、恢复法力、提升修为、提升寿元、提升体魄、提升灵力、提升劲力、提升护体、提升灵御、提升神识、提升身法、提升悟性。
-  3. 丹药不含品阶（品阶由系统根据境界自动分配）。
-  4. effectType 须与丹药名称和介绍描述契合。
+[消耗品效果规则（丹药/符箓/阵法）]
+  1. 丹药/符箓/阵法携带 effects 字段（数组，每项 {kind, ...参数}），表示消耗品的效果（可选值见下方「物品效果词汇表」消耗品部分）。
+  2. effect 须与物品名称和介绍描述契合。
+  3. 丹药/符箓/阵法必须输出 grade（品阶由你决定，系统尊重你的输出，但不得低于境界下限）。
+  4. 丹药侧重恢复/提升；符箓侧重增益/伤害；阵法效果默认群体（增益=友方全体，减益/伤害=敌方全体）。
 
 [储物袋物品添加规则]
 1. 根据剧情描述，给储物袋添加新物品，比如购买、拾取、获得等。
 2. 禁止重复入库：主角当前佩戴和功法栏中已出现的物品/功法，视为已在身或已修习，禁止再添加进储物袋。
 3. 物品的增加一定是剧情明确交付、获取、拾取等，才进行增加。
-4. 功法获取硬约束：当剧情描述主角通过以下途径获得功法时，必须在 <ITEM_ADD_TAG> 中输出对应功法条目（type 为"功法"，含 name、intro、grade、bonus、system、role）：
+4. 功法获取硬约束：当剧情描述主角通过以下途径获得功法时，必须在 <ITEM_ADD_TAG> 中输出对应功法条目（type 为"功法"，含 name、intro、grade、bonus、effect）：
   4.1 参悟/研读玉简、残卷、古籍、石碑等记载修炼法门的载体。
   4.2 从师长辈处获授功法、宗门藏经阁选取功法。
   4.3 在坊市/拍卖行/交易中购得功法。
   4.4 击杀敌人后从其遗物中获得功法。
   4.5 注意：玉简、残卷本身只是载体，应当直接将其记载的功法名称作为功法条目输出，而不是将"玉简"作为杂物输出。
 5. 物品品阶和境界对应关系：练气对应下品，筑基对应中品，结丹对应上品，元婴对应极品，化神对应仙品，神品为超越化神的至高品阶。
-6. 物品品阶只能是下品、中品、上品、极品、仙品、神品中的一个，物品品阶可以多样化，可以部分装备功法物品高于境界，但是物品品阶不能低于境界。
-7. 重要：法宝、功法等物品的名称需要和物品功能对应。
+6. 物品品阶（grade）由你决定：系统会尊重你的输出（不再随机覆盖）。品阶只能是下品、中品、上品、极品、仙品、神品中的一个，可以高于境界，但不得低于境界下限。剧情描写为重宝时应给高品阶。
+7. 重要：法宝、功法等物品的名称需要和物品功能（effect）对应。
   7.1 法宝命名约束：法宝是经过灵气淬炼的修仙灵器，名称必须体现珍稀或灵异之感。
   7.2 禁止使用凡俗日用品名称（如布衣、草鞋、铁剑、破刀）。
   7.3 正确示例：青锋剑、灵丝道袍、玄铁护甲、紫电飞剑。
   7.4 错误示例：布衣、精刚剑、粗布劲装。
 8. 物品信息：
-  8.1 物品类型：可以是法宝、功法（攻击类或辅助类）、丹药、突破丹药、材料、杂物等。法宝不区分武器/防具/载具，统一为法宝类型。
+  8.1 物品类型：可以是法宝、功法、丹药、符箓、阵法、炼丹材料、炼器材料、杂物等。法宝不区分武器/防具/载具，统一为法宝类型。
   8.2 物品名称：根据剧情描述起名。
-  8.3 介绍intro：
-    - 只描述物品的外观、材质、来历。
-    - 功法的 intro 禁止使用"体修""法修""剑修""毒修""药修""魔修""通用""灵力""劲力""体魄"等体系或属性分类名词。
-    - 不得描述功法的具体功能效果，应采用修仙世界的玄学化描述风格。
-    - 示例："据传源自上古力修一脉，修炼时周身气血如山岳崩裂"。
-  8.4 品阶：只能是下品、中品、上品、极品、仙品、神品中的一个。
+  8.3 介绍intro：只描述物品的外观、材质、来历。不得描述功法的具体功能数值，应采用修仙世界的玄学化描述风格。示例："据传源自上古力修一脉，修炼时周身气血如山岳崩裂"。
+  8.4 品阶 grade：只能是下品、中品、上品、极品、仙品、神品中的一个（系统尊重你的输出，但不得低于境界下限）。
   8.5 数量：默认1，如果剧情明确提到具体数量，则根据剧情描述确定数量。
-9. 法宝不需要输出 function 字段和 bonus 字段，法宝的特殊功能由系统根据品阶自动分配。
+9. 物品效果（effects）：法宝/功法/消耗品(丹药/符箓/阵法)都必须输出 effects 字段（数组），每项 {kind, ...参数} 从「物品效果词汇表」选一个原语。功法建议同类（全主动或全被动），消耗品建议 1~3 条。效果语义须与物品名称、intro、剧情描写严格一致。程序按品阶自动填全部数值，你不需要也不应该输出任何数值。
 10. 功法命名硬约束：
   10.1 功法名称的最后一个字必须是"功""诀""术""法"之一，禁止使用其他字结尾。
   10.2 正确示例：长春功、聚灵诀、烈火术、御剑法。
   10.3 错误示例：碎石掌、混元劲、金钟罩。
-11. 功法不需要输出 function 字段，功法的特殊功能由系统根据体系、品阶和定位自动分配。
-  11.1 system（体系）字段：只能从通用、剑修、体修、法修、毒修、药修、魔修七种中选择一个。体系须与功法名称和描述契合：
-    - 通用：万法归宗，物理法术兼修。
-    - 剑修：御剑杀伐，飞剑体系为主。
-    - 体修：淬炼肉身，高血高防普攻为主。
-    - 法修：五行术法，法术伤害与控制为主。
-    - 毒修：施毒炼蛊，叠毒爆发为主。
-    - 药修：炼丹治伤，恢复与辅助为主。
-    - 魔修：以血祭法，祭血增伤与削弱为主。
-  11.2 role（定位）字段：只能从"攻击"和"辅助"中选择一个。攻击类功法（如崩山诀、烈火术）必须选"攻击"，辅助类功法（如聚灵诀、轻身术）选"辅助"。功法名称明显是攻击手段时必须选"攻击"。
-  11.3 bonus 字段：功法必须输出 bonus 字段，只能是体魄、灵力、劲力、神识、护体、灵御、身法、悟性其中一个。
+11. 功法必须输出 bonus 字段（只能是体魄、灵力、劲力、神识、护体、灵御、身法、悟性其中一个）与 effects 字段（数组，从词汇表选原语，可多条组合）。功法无 system、role 字段；主动/被动由所列 kind 自动决定（含任一主动 kind 即为主动技能）。
 12. 储物袋物品添加输出格式：<ITEM_ADD_TAG> … </ITEM_ADD_TAG>，内为 JSON 数组（无物品变更时写 []）。
 13. 示例：
-  13.1 <ITEM_ADD_TAG> [{"type":"法宝","name":"青锋剑","intro":"剑身以灵矿铸就，隐隐泛着灵光","grade":"中品","count":1}] </ITEM_ADD_TAG>
-  13.2 <ITEM_ADD_TAG> [{"type":"丹药","name":"回春丹","intro":"碧绿丹丸","effectType":"恢复血量","count":1}] </ITEM_ADD_TAG>
-  13.3 <ITEM_ADD_TAG> [{"type":"功法","name":"崩山诀","intro":"据传源自上古力修一脉，修炼时周身气血如山岳崩裂","grade":"下品","bonus":"劲力","system":"体修","role":"攻击","count":1}] </ITEM_ADD_TAG>
+  13.1 <ITEM_ADD_TAG> [{"type":"法宝","name":"青锋剑","intro":"剑身以灵矿铸就，隐隐泛着灵光","grade":"中品","effects":[{"kind":"applyModifier","modifierType":"damageDealt"}],"count":1}] </ITEM_ADD_TAG>
+  13.2 <ITEM_ADD_TAG> [{"type":"丹药","name":"回春丹","intro":"碧绿丹丸","grade":"下品","effects":[{"kind":"healHp"}],"count":1}] </ITEM_ADD_TAG>
+  13.3 <ITEM_ADD_TAG> [{"type":"功法","name":"崩山诀","intro":"据传源自上古力修一脉，修炼时周身气血如山岳崩裂","grade":"下品","bonus":"劲力","effects":[{"kind":"dealDamage","damageType":"physical"}],"count":1}] </ITEM_ADD_TAG>
+  13.4 <ITEM_ADD_TAG> [{"type":"功法","name":"灼火术","intro":"掌心凝聚赤焰、灼骨燃魂","grade":"中品","bonus":"灵力","effects":[{"kind":"dealDamage","damageType":"magical","scalingStat":"perception"},{"kind":"applyStatus","statusType":"burn"}],"count":1}] </ITEM_ADD_TAG>
+  13.5 <ITEM_ADD_TAG> [{"type":"符箓","name":"火灵符","intro":"以朱砂绘于灵纸之上，蕴含烈焰之力","grade":"中品","effects":[{"kind":"dealDamage","damageType":"magical"}],"count":1}] </ITEM_ADD_TAG>
+  13.6 <ITEM_ADD_TAG> [{"type":"阵法","name":"迷魂阵旗","intro":"八面阵旗插定方位，催动后迷雾四起、敌我难辨","grade":"上品","effects":[{"kind":"applyCc","ccType":"confusion"}],"count":1}] </ITEM_ADD_TAG>
 
 [储物袋物品减少规则]
 1. 根据剧情描述，给储物袋减少物品。
@@ -240,22 +229,13 @@ export const STATE_SYSTEM_PRESET = `
 4. 好感度跃迁约束：较大涨跌必须有重大事件支撑。
 5. NPC等级逻辑（powerTier）：小怪有2个法宝即可，功法为 1 门攻击 + 1 门辅助；精英怪四槽法宝齐全，功法为 2 门攻击 + 2 门辅助；小boss/大boss 法宝和功法品阶更高。
 6. NPC的法宝结构：
-  6.1 法宝须含 type（法宝）、name、intro。不需要 function，不需要 bonus。
+  6.1 法宝须含 type（法宝）、name、intro、effect（从「物品效果词汇表」被动效果中选一个 kind 与名称/外观契合的）。不需要 function，不需要 bonus。
   6.2 法宝命名约束：法宝名称必须体现珍稀或灵异之感，禁止使用凡俗日用品名称（如布衣、草鞋、铁剑、破刀）。
 7. NPC的功法结构：
-  7.1 功法须含 type（功法）、name、intro、bonus、system、role。不需要 function。
-  7.2 system（体系）只能是通用、剑修、体修、法修、毒修、药修、魔修中的一个，须与功法名称契合：
-    - 通用：万法归宗，物理法术兼修。
-    - 剑修：御剑杀敌，飞剑体系为主。
-    - 体修：淬炼肉身，高血高防普攻为主。
-    - 法修：五行术法，法术伤害与控制为主。
-    - 毒修：施毒炼蛊，叠毒爆发为主。
-    - 药修：炼丹治伤，恢复与辅助为主。
-    - 魔修：以血祭法，祭血增伤与削弱为主。
-  7.3 功法命名硬约束：功法名称的最后一个字必须是"功""诀""术""法"之一，禁止使用其他字结尾。
-  7.4 role 为"攻击"或"辅助"，攻击类功法必须选"攻击"。
-  7.5 功法不含 grade（品阶由系统根据境界自动分配）。
-8. NPC储物袋中的丹药须含 effectType，不含 grade。
+  7.1 功法须含 type（功法）、name、intro、bonus、effect（从「物品效果词汇表」中选一个 kind 与名称/描述契合的）。不需要 function，无 system/role。
+  7.2 功法命名硬约束：功法名称的最后一个字必须是"功""诀""术""法"之一，禁止使用其他字结尾。
+  7.3 功法不含 grade（品阶由系统根据境界自动分配）。主动/被动由所选 kind 自动决定。
+8. NPC储物袋中的消耗品（丹药/符箓/阵法）须含 effects（[{kind}]），不含 grade。
 9. NPC生成需要包含的信息：
   9.1 基本信息：displayName（名字2-4字）、identity、gender、age、favorability（-99~99）。
   9.2 种族与外貌（用于文生图角色立绘，须具体可视，禁止空泛）：
@@ -267,10 +247,10 @@ export const STATE_SYSTEM_PRESET = `
     - clothing：服装特征（服装类型如道袍/劲装/儒衫、主色调、纹样、配饰）。修仙者与人形妖兽必填；兽形"妖兽"留空字符串即可。
   9.3 修炼信息：realm（境界，含 major 和 minor）、linggen（灵根，从金木水火土中选择1-4个）。
   9.4 装备槽 equippedSlots：最多4个法宝，其中至少1个为攻击性法宝如剑、刀等。
-  9.5 功法槽 gongfaSlots：长度8，须含攻击类功法，每个功法含 bonus、system、role。
+  9.5 功法槽 gongfaSlots：长度8，须含攻击类功法，每个功法含 bonus、effect。
   9.6 储物袋 inventorySlots：最多12格。
   9.7 状态：hpPercent/mpPercent（血量/法力百分比，0-100整数，100为满状态）。
-10. NPC的功法不需要 function，需要 system 和 role。法宝不需要 function。丹药使用 effectType，不使用 function。
+10. NPC的功法与法宝都需要 effects 字段（数组，从「物品效果词汇表」选原语，可多条组合），不需要 function/system/role。丹药/符箓/阵法用 effects:[{kind}]。
 11. NPC补充约束：
   11.1 输出时数组须列出本回合仍应在面板中可见者的完整名单。
   11.2 若本回合触发战斗，所有参战者（含新出现的敌人、妖兽）也必须在此数组中输出完整角色卡——这是战斗系统的硬性前置条件，不可省略。
@@ -305,12 +285,12 @@ export const STATE_SYSTEM_PRESET = `
     "realm": { "major": "练气", "minor": "初期" },
     "currentLocation": { "region": "天南", "country": "越国", "area": "七玄门", "detail": "外门" },
     "equippedSlots": [
-      {"type": "法宝", "name": "青锋剑", "intro": "外门制式灵剑，刃口隐隐泛着灵光"},
-      {"type": "法宝", "name": "灵丝道袍", "intro": "以灵蚕丝织就的道袍，轻便坚韧"}
+      {"type": "法宝", "name": "青锋剑", "intro": "外门制式灵剑，刃口隐隐泛着灵光", "effects": [{"kind": "applyModifier", "modifierType": "damageDealt"}]},
+      {"type": "法宝", "name": "灵丝道袍", "intro": "以灵蚕丝织就的道袍，轻便坚韧", "effects": [{"kind": "applyModifier", "modifierType": "damageTaken"}]}
     ],
     "gongfaSlots": [
-      {"type": "功法", "name": "长春功", "intro": "外门弟子入门必修，功法运转后灵台清明、气息绵长", "bonus": "灵力", "system": "法修", "role": "辅助"},
-      {"type": "功法", "name": "崩山诀", "intro": "据传源自上古力修一脉，修炼时周身气血如山岳崩裂", "bonus": "劲力", "system": "体修", "role": "攻击"},
+      {"type": "功法", "name": "长春功", "intro": "外门弟子入门必修，功法运转后灵台清明、气息绵长", "bonus": "灵力", "effects": [{"kind": "applyModifier", "modifierType": "mpRecover"}]},
+      {"type": "功法", "name": "崩山诀", "intro": "据传源自上古力修一脉，修炼时周身气血如山岳崩裂", "bonus": "劲力", "effects": [{"kind": "dealDamage", "damageType": "physical"}]},
       null, null, null, null, null, null
     ],
     "inventorySlots": [
@@ -330,7 +310,7 @@ export const STATE_SYSTEM_PRESET = `
   - death：NPC 死亡。
 2. 每个 NPC 的核心变更必须携带正确的 npcId（与 nearbyNpcs / 输入「在场 NPC 现状」中的 npcId 完全一致）。
 3. 【物品得失·重要·须主动输出】NPC 的储物袋/装备/功法会随剧情实时变动。输入会列出每个在场 NPC 现有的「法宝/功法/储物」物品名——凡剧情明确描写下列交易/流转，就必须输出对应事件（切勿因"保守"而漏写，否则 NPC 财物会与剧情脱节）：
-  3.1 NPC 购买、拾取、获赠、缴获、炼制出某物品 → equipment_acquired。slot 取法：穿戴在身→equipped；习得/修炼新功法→gongfa；其余收入储物袋→inventory。data 须含 type/name/intro（功法还需 bonus/system/role，丹药还需 effectType）。
+  3.1 NPC 购买、拾取、获赠、缴获、炼制出某物品 → equipment_acquired。slot 取法：穿戴在身→equipped；习得/修炼新功法→gongfa；其余收入储物袋→inventory。data 须含 type/name/intro（功法还需 bonus，消耗品需 effects）。
   3.2 NPC 将物品/装备/功法 交给主角或他人、被夺、损坏、消耗、施舍 → equipment_lost。inventory 按 itemName 扣除（可带 count，须与该 NPC 现有物品名一致）；equipped/gongfa 用 slotIndex。
   3.3 【商人例外】若 NPC 身份是专职经商者（identity 含 商人/掌柜/店主/坊市/商贩/伙计 等），其正常售卖、进货、摆摊属"商品流转"，不视为个人财物变动，不触发 equipment_lost；但该商人个人获赠/失去私物时仍照常记录。
   3.4 主角那一侧的得失走主角自己的 <ITEM_ADD_TAG>/<ITEM_REMOVE_TAG> 与 <SPIRIT_STONE_TAG>，不要在 NPC 核心变更里重复主角的变化。
@@ -341,7 +321,7 @@ export const STATE_SYSTEM_PRESET = `
   7.1 剧情中 NPC「李清容」突破至筑基初期：
   <MJ_NPC_CORE_CHANGE_TAG>[{"npcId":"f3a2c1d8-...","event":"realm_breakthrough","newRealm":{"major":"筑基","minor":"初期"}}]</MJ_NPC_CORE_CHANGE_TAG>
   7.2 剧情中 NPC 在坊市购得一柄法宝并收入储物袋：
-  <MJ_NPC_CORE_CHANGE_TAG>[{"npcId":"f3a2c1d8-...","event":"equipment_acquired","slot":"inventory","data":{"type":"法宝","name":"碧水剑","intro":"以寒潭碧水髓淬炼的灵剑"}}]</MJ_NPC_CORE_CHANGE_TAG>
+  <MJ_NPC_CORE_CHANGE_TAG>[{"npcId":"f3a2c1d8-...","event":"equipment_acquired","slot":"inventory","data":{"type":"法宝","name":"碧水剑","intro":"以寒潭碧水髓淬炼的灵剑","effects":[{"kind":"applyModifier","modifierType":"damageDealt"}]}}]</MJ_NPC_CORE_CHANGE_TAG>
   7.3 剧情中 NPC 将一颗回春丹交给主角（扣除其储物）：
   <MJ_NPC_CORE_CHANGE_TAG>[{"npcId":"f3a2c1d8-...","event":"equipment_lost","slot":"inventory","itemName":"回春丹","count":1}]</MJ_NPC_CORE_CHANGE_TAG>
   7.4 无核心变更：<MJ_NPC_CORE_CHANGE_TAG>[]</MJ_NPC_CORE_CHANGE_TAG>

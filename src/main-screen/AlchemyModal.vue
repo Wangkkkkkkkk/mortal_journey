@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { protagonist } from "../role_core/Protagonist";
-import type { MaterialItemDefinition, ItemGrade } from "../role_core/types/itemInfo";
-import type { ElixirItemDefinition } from "../role_core/types/elixir";
+import type { MaterialItemDefinition, ItemGrade } from "../role_core/types/items";
+import type { ElixirItemDefinition } from "../role_core/types/items";
 import { computeAlchemyGradeOdds } from "../role_core/alchemy";
 import { gradeToTraitRarity } from "./protagonistPanelDisplay";
 import { useScrollLock } from "../composables/useScrollLock";
@@ -34,7 +34,7 @@ const materialEntries = computed<MaterialEntry[]>(() => {
   if (!p) return [];
   const out: MaterialEntry[] = [];
   p.inventorySlots.forEach((cell, i) => {
-    if (cell && "itemType" in cell && cell.itemType === "材料") {
+    if (cell && "itemType" in cell && cell.itemType === "炼丹材料") {
       out.push({ slotIndex: i, material: cell as MaterialItemDefinition });
     }
   });
@@ -123,9 +123,15 @@ function doCraft() {
 
 /** 结果展示用的药效文案。 */
 function effectText(el: ElixirItemDefinition): string {
-  const suffix = el.effects.isPercent ? "%" : "";
-  const label = el.effectType.startsWith("提升") ? `永久${el.effectType}` : el.effectType;
-  return `${label} ${el.effects.value}${suffix}`;
+  if (!el.effect) return "";
+  return el.effect.effects.map(e => {
+    if (e.type === "healHp") return `恢复血量 ${typeof e.value === "number" ? e.value : e.value[0]}${e.isPercent ? "%" : ""}`;
+    if (e.type === "healMp") return `恢复法力 ${typeof e.value === "number" ? e.value : e.value[0]}${e.isPercent ? "%" : ""}`;
+    if (e.type === "xiuweiBoost") return `提升修为 ${typeof e.value === "number" ? e.value : e.value[0]}${e.isPercent ? "%" : ""}`;
+    if (e.type === "shouyuanBoost") return `提升寿元 ${(typeof e.value === "number" ? e.value : e.value[0])}年`;
+    if (e.type === "statBoost") return `永久提升属性 +${typeof e.value === "number" ? e.value : e.value[0]}`;
+    return "";
+  }).filter(Boolean).join("；");
 }
 
 function onBackdropClick() {

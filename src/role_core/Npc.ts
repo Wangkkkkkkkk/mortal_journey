@@ -14,7 +14,7 @@ import {
 } from "./types/playInfo";
 import { DEFAULT_INVENTORY_SLOT_COUNT, compactInventorySlotsInPlace } from "./CharacterInventory";
 import { getRealmPrimaryStats, getShouyuanForRealm, applyNpcGongfaMasteryByRealm } from "./realmUtils";
-import type { InventoryStackItem, TreasureItemDefinition, GongfaItemDefinition } from "./types/itemInfo";
+import type { InventoryStackItem, TreasureItemDefinition, GongfaItemDefinition } from "./types/items";
 import type { NpcNearbyEntry } from "../ai_core";
 import { parseEquipObject, parseGongfaObject, parseStorageObject } from "../ai_core/shared/parseItems";
 import { resolveNpcId } from "./npcId";

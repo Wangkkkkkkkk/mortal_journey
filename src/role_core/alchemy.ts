@@ -10,13 +10,40 @@
  *   - 100% 出丹，无失败。
  */
 
-import type { ItemGrade } from "./types/itemInfo";
-import type { ElixirItemDefinition, ElixirEffectType } from "./types/elixir";
-import {
-  rollElixirEffectType,
-  rollElixirValue,
-  isElixirPercent,
-} from "./types/elixir";
+import type { ItemGrade } from "./types/items";
+import type { ElixirItemDefinition } from "./types/items";
+import { resolveElixirEffect } from "./types/items";
+import type { EffectParams } from "./types/effects";
+
+/** 丹药效果类型中文 → {kind, params}（供炼丹随机选取后映射到统一效果池）。 */
+const ELIXIR_TYPE_TO_KIND: Record<string, { kind: string; params: EffectParams }> = {
+  "恢复血量": { kind: "healHp", params: {} },
+  "恢复法力": { kind: "healMp", params: {} },
+  "提升修为": { kind: "xiuweiBoost", params: {} },
+  "提升寿元": { kind: "shouyuanBoost", params: {} },
+  "提升体魄": { kind: "statBoost", params: { statKey: "physique" } },
+  "提升灵力": { kind: "statBoost", params: { statKey: "spirit" } },
+  "提升劲力": { kind: "statBoost", params: { statKey: "strength" } },
+  "提升神识": { kind: "statBoost", params: { statKey: "perception" } },
+  "提升护体": { kind: "statBoost", params: { statKey: "guard" } },
+  "提升灵御": { kind: "statBoost", params: { statKey: "resistance" } },
+  "提升身法": { kind: "statBoost", params: { statKey: "agility" } },
+  "提升悟性": { kind: "statBoost", params: { statKey: "insight" } },
+};
+
+const ELIXIR_TYPE_WEIGHTS: Record<string, number> = {
+  "恢复血量": 25, "恢复法力": 25,
+  "提升体魄": 5, "提升灵力": 5, "提升劲力": 5, "提升神识": 5, "提升护体": 5, "提升灵御": 5, "提升身法": 5, "提升悟性": 5,
+  "提升修为": 5, "提升寿元": 5,
+};
+
+function rollElixirType(): string {
+  const entries = Object.entries(ELIXIR_TYPE_WEIGHTS);
+  const total = entries.reduce((s, [, w]) => s + w, 0);
+  let r = Math.random() * total;
+  for (const [name, w] of entries) { r -= w; if (r <= 0) return name; }
+  return "恢复血量";
+}
 
 /** 品阶固定枚举（与 ItemGrade 一致，但保证顺序用于遍历）。 */
 export const ALCHEMY_GRADES: readonly ItemGrade[] = [
@@ -66,7 +93,7 @@ export function computeAlchemyGradeOdds(grades: readonly ItemGrade[]): { grade: 
 /**
  * 默认丹药命名表：12 效果 × 6 品阶 = 72 条独立命名 + 简介。
  */
-export const ELIXIR_NAME_TABLE: Readonly<Record<ElixirEffectType, Readonly<Record<ItemGrade, { name: string; desc: string }>>>> = {
+export const ELIXIR_NAME_TABLE: Readonly<Record<string, Readonly<Record<ItemGrade, { name: string; desc: string }>>>> = {
   "恢复血量": {
     下品: { name: "回血丹",   desc: "寻常草药炼制的低阶丹药，服之可缓慢回复少许气血。" },
     中品: { name: "止血丹",   desc: "能迅速止住外伤出血、稳固气血的中阶丹药。" },
@@ -180,10 +207,9 @@ export interface AlchemyMaterialInput {
 export function craftElixirDef(materials: readonly AlchemyMaterialInput[]): ElixirItemDefinition {
   const grades = materials.map((m) => m.grade);
   const grade = rollAlchemyGrade(grades);
-  const effectType: ElixirEffectType = rollElixirEffectType();
-  const value = rollElixirValue(effectType, grade);
-  const isPercent = isElixirPercent(effectType, grade);
+  const effectType = rollElixirType();
   const entry = ELIXIR_NAME_TABLE[effectType][grade];
+  const mapping = ELIXIR_TYPE_TO_KIND[effectType] ?? ELIXIR_TYPE_TO_KIND["恢复血量"];
 
   return {
     itemType: "丹药",
@@ -191,7 +217,6 @@ export function craftElixirDef(materials: readonly AlchemyMaterialInput[]): Elix
     desc: entry.desc,
     grade,
     count: 1,
-    effectType,
-    effects: { value, isPercent },
+    effect: resolveElixirEffect([mapping], grade),
   };
 }

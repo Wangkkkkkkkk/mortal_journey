@@ -1,29 +1,25 @@
 /**
- * 物品解析工具（从现有 ai/parseAiItem.ts 迁移）。
+ * 物品解析工具。
  *
- * parseEquipObject / parseGongfaObject / parseStorageObject 用于把 AI 输出的
- * 原始物品对象转换为结构化的 ItemDefinition，品阶由系统按境界自动分配。
+ * parseEquipObject / parseGongfaObject / parseStorageObject 把 AI 输出的原始物品
+ * 对象转换为结构化 ItemDefinition。物品效果由 AI 从统一效果词汇表选一个 kind 决定，
+ * 程序按品阶填充数值。品阶尊重 AI 输出（不得低于境界下限），缺失时随机。
  */
 
 import {
   rollGradeAttriValue,
   GONGFA_GRADE_ATTRI_TABLE,
 } from "../../role_core/types/playInfo";
-import type { InventoryStackItem } from "../../role_core/types/playInfo";
-import { createSpiritStoneInventoryStack } from "../../role_core/types/spiritStone";
+import type { InventoryStackItem } from "../../role_core/types/items";
 import type {
   GongfaItemDefinition,
-  ItemGrade,
   TreasureItemDefinition,
   MaterialItemDefinition,
   MiscItemDefinition,
   CategorizedItemDefinition,
-  GradeDropRate,
-} from "../../role_core/types/itemInfo";
-import { GRADE_DROP_TABLE } from "../../role_core/types/itemInfo";
-import { rollTreasureFunction, rollTreasureSpecialEffect } from "../../role_core/types/treasure";
-import { rollGongfaFunction, normalizeGongfaSystem, normalizeGongfaRole } from "../../role_core/types/gongfa";
-import { parseElixirEffectType, rollElixirValue, isElixirPercent } from "../../role_core/types/elixir";
+} from "../../role_core/types/items";
+import { GRADE_DROP_TABLE, validateGrade, rollGrade, resolveGongfaEffect, resolveTreasureEffect, resolveElixirEffect, type EffectParams, type EffectEntry } from "../../role_core/types/items";
+import { createSpiritStoneInventoryStack } from "../../role_core/types/spiritStone";
 import { safeStr, safeCount } from "./parseJson";
 
 export const VALID_BONUS_NAMES: ReadonlySet<string> = new Set(Object.keys(GONGFA_GRADE_ATTRI_TABLE));
@@ -35,40 +31,78 @@ export function parseBonusField(raw: unknown, grade: string): Record<string, num
   return { [name]: rollGradeAttriValue(name, grade, GONGFA_GRADE_ATTRI_TABLE) };
 }
 
-export const GRADE_KEYS: readonly (keyof GradeDropRate)[] = ["下品", "中品", "上品", "极品", "仙品", "神品"];
-
-export function rollGrade(realmMajor: string, realmMinor: string): ItemGrade {
-  const stage = GRADE_DROP_TABLE[realmMajor]?.[realmMinor];
-  if (!stage) return "下品";
-  const total = stage.下品 + stage.中品 + stage.上品 + stage.极品 + stage.仙品 + stage.神品;
-  if (total <= 0) return "下品";
-  let roll = Math.random() * total;
-  for (const key of GRADE_KEYS) {
-    roll -= stage[key];
-    if (roll <= 0) return key;
-  }
-  return "下品";
-}
+export { rollGrade };
 
 export const TYPE_TO_ITEM_TYPE: Record<string, CategorizedItemDefinition["itemType"]> = {
   "法宝": "法宝",
   "功法": "功法",
   "丹药": "丹药",
-  "材料": "材料",
+  "符箓": "符箓",
+  "阵法": "阵法",
+  "炼丹材料": "炼丹材料",
+  "炼器材料": "炼器材料",
   "杂物": "杂物",
 };
 
+/** 从原始对象的一条 effect 提取 kind + params。 */
+function readOneEntry(raw: unknown): { kind: string | undefined; params: EffectParams } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const e = raw as Record<string, unknown>;
+  const kind = typeof e.kind === "string" ? e.kind.trim() : undefined;
+  if (!kind) return null;
+  return {
+    kind,
+    params: {
+      damageType: typeof e.damageType === "string" ? e.damageType : undefined,
+      statusType: typeof e.statusType === "string" ? e.statusType : undefined,
+      ccType: typeof e.ccType === "string" ? e.ccType : undefined,
+      modifierType: typeof e.modifierType === "string" ? e.modifierType : undefined,
+      scalingStat: typeof e.scalingStat === "string" ? e.scalingStat : undefined,
+      summonTrigger: typeof e.summonTrigger === "string" ? e.summonTrigger : undefined,
+      statKey: typeof e.statKey === "string" ? e.statKey : undefined,
+      isAoE: e.isAoE === true,
+    },
+  };
+}
+
+/**
+ * 从 AI 原始对象读取效果列表：
+ *   - 优先 effects（数组，每项 {kind, ...params}）
+ *   - 兼容单个 effect / effectKind + 顶层参数
+ */
+function readEffectEntries(obj: Record<string, unknown>): EffectEntry[] {
+  const entries: EffectEntry[] = [];
+  if (Array.isArray(obj.effects)) {
+    for (const raw of obj.effects) {
+      const r = readOneEntry(raw);
+      if (r && r.kind) entries.push({ kind: r.kind, params: r.params });
+    }
+  }
+  if (entries.length === 0) {
+    // 兼容单 effect 对象
+    const single = readOneEntry(obj.effect);
+    if (single && single.kind) entries.push({ kind: single.kind, params: single.params });
+  }
+  if (entries.length === 0 && typeof obj.effectKind === "string") {
+    // 兼容旧顶层字段
+    entries.push({
+      kind: obj.effectKind.trim(),
+      params: readOneEntry(obj)?.params ?? {},
+    });
+  }
+  return entries;
+}
+
 export function parseEquipObject(e: unknown, realmMajor: string, realmMinor: string): TreasureItemDefinition {
   const obj = e as Record<string, unknown>;
-  const grade = rollGrade(realmMajor, realmMinor);
+  const grade = validateGrade(obj.grade, realmMajor) ?? rollGrade(realmMajor, realmMinor);
   return {
     itemType: "法宝",
     name: safeStr(obj.name, "未命名法宝"),
     desc: safeStr(obj.intro, ""),
     grade,
     count: 1,
-    function: rollTreasureFunction(grade),
-    specialEffect: rollTreasureSpecialEffect(grade),
+    effect: resolveTreasureEffect(readEffectEntries(obj), grade),
   };
 }
 
@@ -79,9 +113,7 @@ export function parseGongfaObject(
   _playerLinggen?: readonly string[] | null,
 ): GongfaItemDefinition {
   const obj = e as Record<string, unknown>;
-  const grade = rollGrade(realmMajor, realmMinor);
-  const system = normalizeGongfaSystem(obj.system);
-  const role = normalizeGongfaRole(obj.role);
+  const grade = validateGrade(obj.grade, realmMajor) ?? rollGrade(realmMajor, realmMinor);
   return {
     itemType: "功法",
     name: safeStr(obj.name, "未命名功法"),
@@ -89,10 +121,7 @@ export function parseGongfaObject(
     grade,
     count: 1,
     bonus: parseBonusField(obj.bonus, grade),
-    system,
-    role,
-    mastery: 1,
-    function: rollGongfaFunction(system, grade, role),
+    effect: resolveGongfaEffect(readEffectEntries(obj), grade),
   };
 }
 
@@ -113,18 +142,16 @@ export function parseStorageObject(
 
   const name = safeStr(obj.name, "未命名物品");
   const desc = safeStr(obj.intro, "");
-  const grade = rollGrade(realmMajor, realmMinor);
+  const grade = validateGrade(obj.grade, realmMajor) ?? rollGrade(realmMajor, realmMinor);
   const count = safeCount(obj.count);
   const itemType = TYPE_TO_ITEM_TYPE[typeStr] ?? "杂物";
+  const entries = readEffectEntries(obj);
 
   if (itemType === "功法") {
-    const system = normalizeGongfaSystem(obj.system);
-    const role = normalizeGongfaRole(obj.role);
     return {
       itemType: "功法", name, desc, grade, count,
-      system, role, mastery: 1,
       bonus: parseBonusField(obj.bonus, grade),
-      function: rollGongfaFunction(system, grade, role),
+      effect: resolveGongfaEffect(entries, grade),
     } as GongfaItemDefinition;
   }
 
@@ -132,19 +159,27 @@ export function parseStorageObject(
     case "法宝":
       return {
         itemType: "法宝", name, desc, grade, count,
-        function: rollTreasureFunction(grade),
-        specialEffect: rollTreasureSpecialEffect(grade),
+        effect: resolveTreasureEffect(entries, grade),
       } as TreasureItemDefinition;
-    case "丹药": {
-      const effectType = parseElixirEffectType(obj.effectType);
-      const value = rollElixirValue(effectType, grade);
+    case "丹药":
       return {
-        itemType: "丹药" as const, name, desc, grade, count, effectType,
-        effects: { value, isPercent: isElixirPercent(effectType, grade) },
+        itemType: "丹药" as const, name, desc, grade, count,
+        effect: resolveElixirEffect(entries, grade),
       };
-    }
-    case "材料":
-      return { itemType: "材料", name, desc, grade, count } as MaterialItemDefinition;
+    case "符箓":
+      return {
+        itemType: "符箓" as const, name, desc, grade, count,
+        effect: resolveElixirEffect(entries, grade),
+      } as import("../../role_core/types/items").TalismanItemDefinition;
+    case "阵法":
+      return {
+        itemType: "阵法" as const, name, desc, grade, count,
+        effect: resolveElixirEffect(entries, grade),
+      } as import("../../role_core/types/items").FormationItemDefinition;
+    case "炼丹材料":
+      return { itemType: "炼丹材料", name, desc, grade, count } as import("../../role_core/types/items").AlchemyMaterialItemDefinition;
+    case "炼器材料":
+      return { itemType: "炼器材料", name, desc, grade, count } as import("../../role_core/types/items").ForgingMaterialItemDefinition;
     case "杂物":
     default:
       return { itemType: "杂物", name, desc, grade, count } as MiscItemDefinition;

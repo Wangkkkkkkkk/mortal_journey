@@ -131,6 +131,8 @@ export interface BattleCombatant {
   skills: BattleSkill[];
   cooldowns: number[];
   elixirs: BattleElixir[];
+  /** 消耗型技能（符箓/阵法）：一次性使用的技能，使用后从库存扣除。 */
+  consumableSkills?: BattleConsumableSkill[];
 
   effects: BattleEffect[];
 
@@ -161,6 +163,17 @@ export interface BattleSkill {
   targetTeam: "ally" | "enemy";
   isAoE: boolean;
   effects: readonly SkillEffect[];
+}
+
+export interface BattleConsumableSkill {
+  /** 消耗后执行的技能。isAoE/needTarget/targetTeam 由桥接层决定（阵法=群体，符箓=按效果判断）。 */
+  skill: BattleSkill;
+  /** 指向主角/NPC inventorySlots 中的物品。 */
+  inventorySlotIndex: number;
+  /** 剩余使用次数。 */
+  remainingCount: number;
+  /** 物品名称。 */
+  itemName: string;
 }
 
 export interface BattleElixir {
@@ -248,6 +261,7 @@ export type BattleAction =
   | { type: "normalAttack"; targetId: string }
   | { type: "skill"; skillIndex: number; targetId: string }
   | { type: "elixir"; elixirIndex: number }
+  | { type: "consumableSkill"; consumableIndex: number; targetId: string }
   | { type: "flee" };
 
 export interface ActionContext {
@@ -356,6 +370,18 @@ export interface ElixirActionItem {
   description: string;
 }
 
+export interface ConsumableSkillActionItem {
+  consumableIndex: number;
+  name: string;
+  count: number;
+  needTarget: boolean;
+  targetTeam: "ally" | "enemy";
+  isAoE: boolean;
+  description: string;
+  /** 是否可用（数量充足）；false 时 UI 置灰。 */
+  usable: boolean;
+}
+
 export interface ActionOptions {
   canNormalAttack: boolean;
   normalAttackCost: number;
@@ -366,6 +392,7 @@ export interface ActionOptions {
   canFlee: boolean;
   skills: SkillActionItem[];
   elixirs: ElixirActionItem[];
+  consumableSkills: ConsumableSkillActionItem[];
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -12,7 +12,7 @@ import type {
   TreasureItemDefinition,
   GongfaItemDefinition,
   InventoryStackItem,
-} from "./itemInfo";
+} from "./items";
 import type { WorldLocation } from "./worldLocation";
 import type { WorldTime } from "../worldTime";
 
@@ -293,7 +293,7 @@ export type {
   MaterialBagStack,
   MiscBagStack,
   InventoryStackItem,
-} from "./itemInfo";
+} from "./items";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 三、导出 — realmUtils 功能函数再导出

@@ -4,7 +4,7 @@
  */
 
 import type { PrimaryStatKey } from "./types/playInfo";
-import type { GongfaItemDefinition } from "./types/itemInfo";
+import type { GongfaItemDefinition } from "./types/items";
 import {
   TABLE,
   REALM_ORDER,

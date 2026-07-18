@@ -8,7 +8,7 @@ import {
   type EquipSlotKey,
 } from "../role_core/types/playInfo";
 import { computeLinggenCombatBonuses } from "../role_core/types/gameConstants";
-import type { GongfaItemDefinition } from "../role_core/types/itemInfo";
+import type { GongfaItemDefinition } from "../role_core/types/items";
 import {
   buildWearableDetailPayload,
   buildGongfaDetailPayload,

@@ -45,6 +45,10 @@ import { parseWorldLocationFromDash } from "../../role_core/types/worldLocation"
 import { runPipeline, type RunPipelineOptions } from "../shared/runPipeline";
 import { callChatCompletions } from "../bridge/openAiBridge";
 import { STATE_SYSTEM_PRESET } from "../presets/statePreset";
+import { buildItemEffectVocabularyPrompt } from "../shared/itemEffectVocabulary";
+
+/** 状态更新 system prompt：基础规则 + 物品效果词汇表（仅计算一次）。 */
+const STATE_SYSTEM_FULL = `${STATE_SYSTEM_PRESET}\n\n${buildItemEffectVocabularyPrompt()}`;
 import {
   extractTagContent,
   MJ_WORLD_BODY_OPEN, MJ_WORLD_BODY_CLOSE,
@@ -279,10 +283,8 @@ function parseItemAdds(raw: string): ItemAddEntry[] {
       if (!name) return null;
       return {
         type, name, intro, grade, count,
-        ...(o.system != null ? { system: o.system } : {}),
-        ...(o.role != null ? { role: o.role } : {}),
-        ...(o.function != null ? { function: o.function } : {}),
         ...(o.bonus != null ? { bonus: o.bonus } : {}),
+        ...(o.effects != null ? { effects: o.effects } : {}),
       } as ItemAddEntry;
     })
     .filter((e): e is ItemAddEntry => e !== null);
@@ -531,7 +533,7 @@ export async function generateState(input: StateGenerateInput): Promise<StatePar
   const opts: RunPipelineOptions = {
     defaultTemperature: 0.55,
     defaultMaxTokens: 32768,
-    system: STATE_SYSTEM_PRESET,
+    system: STATE_SYSTEM_FULL,
     user: userContent,
     logTag: "状态更新",
   };

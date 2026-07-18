@@ -12,15 +12,9 @@ import type {
   GongfaItemDefinition,
   InventoryStackItem,
   TreasureItemDefinition,
-} from "./types/itemInfo";
-import type { TreasureSpecialEffect } from "./types/treasure";
-import { rollTreasureFunction, rollTreasureSpecialEffect } from "./types/treasure";
-import type { GongfaSpecialEffect, GongfaSystem } from "./types/gongfa";
-import { rollGongfaFunction, normalizeGongfaSystem, normalizeGongfaRole } from "./types/gongfa";
-import { GONGFA_GRADE_ATTRI_TABLE, rollGradeAttriValue, getItemSellPrice } from "./types/gameConstants";
+} from "./types/items";
+import { getItemSellPrice } from "./types/gameConstants";
 import { parseStorageObject } from "../ai_core/shared/parseItems";
-
-type SpecialEffect = TreasureSpecialEffect | GongfaSpecialEffect;
 
 function migrateSpecialEffect(fn: any): any {
   if (!fn || typeof fn !== "object") return fn;
@@ -49,10 +43,10 @@ import {
 import {
   type SpiritStoneName,
 } from "./types/spiritStone";
-import type { ElixirItemDefinition } from "./types/elixir";
-import { elixirEffectToStatKey, applyLinggenElixirBoost } from "./types/elixir";
+import type { ElixirItemDefinition } from "./types/items";
+import { elixirStatBoostKey, applyLinggenElixirBoost } from "./types/items";
 import { craftElixirDef } from "./alchemy";
-import type { MaterialItemDefinition } from "./types/itemInfo";
+import type { MaterialItemDefinition } from "./types/items";
 import type { InitStateParsed } from "../ai_core";
 import type { StateParsed } from "../ai_core";
 import {
@@ -80,7 +74,7 @@ import {
 import { getCultivationRequired, addGongfaMasteryExp } from "./realmUtils";
 
 const VALID_ITEM_TYPES: ReadonlySet<string> = new Set([
-  "法宝", "功法", "丹药", "材料", "杂物",
+  "法宝", "功法", "丹药", "符箓", "阵法", "炼丹材料", "炼器材料", "杂物",
 ]);
 
 /** 主角玩家类：继承 Character，增加修为、叙事人称、出身、天赋等主角特有状态。 */
@@ -319,7 +313,7 @@ export class Protagonist extends Character {
     Protagonist.notifyChanged();
   }
 
-  override setGongfaSlot(index: number, item: import("./types/itemInfo").GongfaItemDefinition | null): boolean {
+  override setGongfaSlot(index: number, item: import("./types/items").GongfaItemDefinition | null): boolean {
     const result = super.setGongfaSlot(index, item);
     this.recomputeMaxHpMpAndClamp();
     Protagonist.notifyChanged();
@@ -354,7 +348,7 @@ export class Protagonist extends Character {
     if (this.currentMp > maxMp) this.currentMp = maxMp;
   }
 
-  override setEquippedSlot(slot: import("./types/playInfo").EquipSlotKey, item: import("./types/itemInfo").TreasureItemDefinition | null): boolean {
+  override setEquippedSlot(slot: import("./types/playInfo").EquipSlotKey, item: import("./types/items").TreasureItemDefinition | null): boolean {
     const result = super.setEquippedSlot(slot, item);
     this.recomputeMaxHpMpAndClamp();
     Protagonist.notifyChanged();
@@ -403,27 +397,50 @@ export class Protagonist extends Character {
 
   consumeElixir(cellIndex: number): boolean {
     const cell = this.inventorySlots[cellIndex];
-    if (!cell || !("itemType" in cell) || cell.itemType !== "丹药") return false;
+    if (!cell || !("itemType" in cell) || !(cell.itemType === "丹药" || cell.itemType === "符箓" || cell.itemType === "阵法")) return false;
     const pill = cell as ElixirItemDefinition;
-    const { effectType, effects } = pill;
-    const { value, isPercent } = effects;
+    if (!pill.effect) return false;
 
-    const statKey = elixirEffectToStatKey(effectType);
-    if (statKey) {
-      this.elixirBonuses[statKey] = (this.elixirBonuses[statKey] ?? 0) + value;
-    } else if (effectType === "恢复血量") {
-      const amount = isPercent ? Math.round(this.maxHp * value / 100) : value;
-      this.currentHp = Math.min(this.currentHp + amount, this.maxHp);
-    } else if (effectType === "恢复法力") {
-      const amount = isPercent ? Math.round(this.maxMp * value / 100) : value;
-      this.currentMp = Math.min(this.currentMp + amount, this.maxMp);
-    } else if (effectType === "提升修为") {
-      this.addXiuwei(isPercent ? Math.round(this.maxHp * value / 100) : value);
-    } else if (effectType === "提升寿元") {
-      this.shouyuan += value;
-    } else {
-      return false;
+    let applied = false;
+    for (const eff of pill.effect.effects) {
+      switch (eff.type) {
+        case "statBoost": {
+          const v = typeof eff.value === "number" ? eff.value : eff.value[0];
+          this.elixirBonuses[eff.statKey] = (this.elixirBonuses[eff.statKey] ?? 0) + v;
+          applied = true;
+          break;
+        }
+        case "healHp": {
+          const v = typeof eff.value === "number" ? eff.value : eff.value[0];
+          const amount = eff.isPercent ? Math.round(this.maxHp * v / 100) : v;
+          this.currentHp = Math.min(this.currentHp + amount, this.maxHp);
+          applied = true;
+          break;
+        }
+        case "healMp": {
+          const v = typeof eff.value === "number" ? eff.value : eff.value[0];
+          const amount = eff.isPercent ? Math.round(this.maxMp * v / 100) : v;
+          this.currentMp = Math.min(this.currentMp + amount, this.maxMp);
+          applied = true;
+          break;
+        }
+        case "xiuweiBoost": {
+          const v = typeof eff.value === "number" ? eff.value : eff.value[0];
+          this.addXiuwei(eff.isPercent ? Math.round(this.maxHp * v / 100) : v);
+          applied = true;
+          break;
+        }
+        case "shouyuanBoost": {
+          const v = typeof eff.value === "number" ? eff.value : eff.value[0];
+          this.shouyuan += v;
+          applied = true;
+          break;
+        }
+        default:
+          break;
+      }
     }
+    if (!applied) return false;
 
     pill.count -= 1;
     if (pill.count <= 0) {
@@ -485,8 +502,8 @@ export class Protagonist extends Character {
       const i = Math.floor(raw);
       if (i < 0 || i >= this.inventorySlots.length) return null;
       const cell = this.inventorySlots[i];
-      if (!cell || !("itemType" in cell) || cell.itemType !== "材料") return null;
-      const mat = cell as MaterialItemDefinition;
+      if (!cell || !("itemType" in cell) || cell.itemType !== "炼丹材料") return null;
+      const mat = cell as import("./types/items").AlchemyMaterialItemDefinition;
       if (typeof mat.count !== "number" || mat.count < 1) return null;
       usage.set(i, (usage.get(i) ?? 0) + 1);
       picks.push(mat);
@@ -696,55 +713,12 @@ export class Protagonist extends Character {
       console.error("[Protagonist] 灵石更新失败：" + (e instanceof Error ? e.message : String(e)));
     }
 
-    // 物品添加（每个物品独立容错）
+    // 物品添加（每个物品独立容错；统一走 parseStorageObject 解析，含效果原型与品阶校验）
     for (const item of state.itemAdds) {
       try {
         if (item.type === "灵石") continue;
-        const itemType = VALID_ITEM_TYPES.has(item.type) ? item.type as CategorizedItemDefinition["itemType"] : "杂物";
-        const grade = item.grade as import("./types/itemInfo").ItemGrade;
-        if (itemType === "功法") {
-          const itemRec = item as unknown as Record<string, unknown>;
-          const system = normalizeGongfaSystem(itemRec.system);
-          const role = normalizeGongfaRole(itemRec.role);
-          const bonusName = typeof itemRec.bonus === "string" ? itemRec.bonus.trim() : "";
-          const validBonus = new Set(Object.keys(GONGFA_GRADE_ATTRI_TABLE));
-          const bonus = validBonus.has(bonusName)
-            ? { [bonusName]: rollGradeAttriValue(bonusName, grade, GONGFA_GRADE_ATTRI_TABLE) }
-            : {};
-          this.addToInventory({
-            name: item.name,
-            desc: item.intro,
-            grade,
-            count: item.count,
-            itemType,
-            system,
-            role,
-            mastery: 1,
-            bonus,
-            function: rollGongfaFunction(system, grade, role),
-          } as InventoryStackItem);
-          continue;
-        }
-        if (itemType === "丹药") {
-          const parsed = parseStorageObject(item, this.realm.major, this.realm.minor);
-          if (parsed) this.addToInventory(parsed);
-          continue;
-        }
-        let fn: SpecialEffect | undefined;
-        let se: import("./types/treasure").TreasureConversionEffect | undefined;
-        if (itemType === "法宝") {
-          fn = rollTreasureFunction(grade);
-          se = rollTreasureSpecialEffect(grade);
-        }
-        this.addToInventory({
-          name: item.name,
-          desc: item.intro,
-          grade,
-          count: item.count,
-          itemType,
-          ...(fn ? { function: fn } : {}),
-          ...(se ? { specialEffect: se } : {}),
-        } as InventoryStackItem);
+        const parsed = parseStorageObject(item, this.realm.major, this.realm.minor);
+        if (parsed) this.addToInventory(parsed);
       } catch (e) {
         console.error(`[Protagonist] 物品「${item.name}」入库失败：` + (e instanceof Error ? e.message : String(e)));
       }

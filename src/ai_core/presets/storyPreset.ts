@@ -6,6 +6,7 @@
  */
 
 import { PRESET } from "./globalPreset";
+import { buildStoryItemEffectHint } from "../shared/itemEffectVocabulary";
 
 export const STORY_SYSTEM_PRESET = `
 [输出契约-最重要]
@@ -181,7 +182,7 @@ export function getStoryPreset(
   narrativeDirection?: string,
   previousStory?: string,
 ): string {
-  const parts = [PRESET, STORY_SYSTEM_PRESET];
+  const parts = [PRESET, STORY_SYSTEM_PRESET, buildStoryItemEffectHint()];
   if (previousStory) {
     parts.push("【之前的剧情】\n" + previousStory);
   }

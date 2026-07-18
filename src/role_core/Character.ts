@@ -1,4 +1,4 @@
-import type { InventoryStackItem } from "./types/itemInfo";
+import type { InventoryStackItem } from "./types/items";
 import type {
   CultivationRealm,
   EquippedSlotsState,
@@ -38,8 +38,9 @@ import {
   unequipToInventory as eqUnequip,
   applyDetailAction as eqApply,
 } from "./CharacterEquip";
-import { applyLinggenElixirBoost } from "./types/elixir";
-import { applyStatConversions, applyResourceConversions, type TreasureConversion } from "./types/treasure";
+import { applyLinggenElixirBoost } from "./types/items";
+import { applyStatConversions, applyResourceConversions } from "./types/effects";
+import type { Effect } from "./types/effects";
 
 const HP_PER_PHYSIQUE = 10;
 const MP_PER_SPIRIT = 10;
@@ -170,7 +171,7 @@ export class Character {
       if (typeof v === "number" && v !== 0) primaryStats[k] = (primaryStats[k] ?? 0) + v;
     }
     // 法宝特殊效果：主属性转换（仅仙品/神品法宝生效）
-    const statConversions = this.collectEquippedConversions().filter(c => c.target === "stat");
+    const statConversions = this.collectEquippedConversions().filter(c => c.type === "conversion" && c.target === "stat");
     if (statConversions.length > 0) {
       const converted = applyStatConversions(primaryStats as Record<PrimaryStatKey, number>, statConversions);
       for (const k of PRIMARY_STAT_KEYS) primaryStats[k] = converted[k];
@@ -181,13 +182,15 @@ export class Character {
   /**
    * 汇总当前已装备法宝的特殊效果转换项。
    *
-   * @returns 所有已装备法宝 `specialEffect.conversions` 的扁平列表。
+   * @returns 所有已装备法宝 effect 中 conversion 效果的扁平列表。
    */
-  protected collectEquippedConversions(): TreasureConversion[] {
-    const out: TreasureConversion[] = [];
+  protected collectEquippedConversions(): Effect[] {
+    const out: Effect[] = [];
     for (const tr of this.equippedSlots) {
-      if (tr && tr.specialEffect) {
-        for (const c of tr.specialEffect.conversions) out.push(c);
+      if (tr && tr.effect) {
+        for (const e of tr.effect.effects) {
+          if (e.type === "conversion") out.push(e);
+        }
       }
     }
     return out;
@@ -209,7 +212,7 @@ export class Character {
     let maxHp = Math.max(1, Math.round((baseHp + stats.physique * HP_PER_PHYSIQUE) * (1 + stats.physique / 1000)));
     let maxMp = Math.max(1, Math.round((baseMp + stats.spirit * MP_PER_SPIRIT) * (1 + stats.spirit / 1000)));
     // 法宝特殊效果：血量/法力上限转换（仅仙品/神品法宝生效）
-    const resConversions = this.collectEquippedConversions().filter(c => c.target === "mpToHp" || c.target === "hpToMp");
+    const resConversions = this.collectEquippedConversions().filter(c => c.type === "conversion" && (c.target === "mpToHp" || c.target === "hpToMp"));
     if (resConversions.length > 0) {
       const r = applyResourceConversions(maxHp, maxMp, resConversions);
       maxHp = r.maxHp;
@@ -311,7 +314,7 @@ export class Character {
   // 功法（委托给 CharacterEquip）
   // ===================================================================
 
-  setGongfaSlot(index: number, item: import("./types/itemInfo").GongfaItemDefinition | null): boolean {
+  setGongfaSlot(index: number, item: import("./types/items").GongfaItemDefinition | null): boolean {
     return eqSetGongfa(this, index, item);
   }
 
@@ -327,7 +330,7 @@ export class Character {
   // 穿戴（委托给 CharacterEquip）
   // ===================================================================
 
-  setEquippedSlot(slot: EquipSlotKey, item: import("./types/itemInfo").TreasureItemDefinition | null): boolean {
+  setEquippedSlot(slot: EquipSlotKey, item: import("./types/items").TreasureItemDefinition | null): boolean {
     return eqSetEquip(this, slot, item);
   }
 

@@ -21,7 +21,7 @@
  *   16. 物品售卖价格表 — 按境界大阶×品阶的售卖价（灵石）
  */
 
-import type { GradeDropRate } from "./itemInfo";
+import type { GradeDropRate } from "./items";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. 境界主属性表（按阶段索引：练气初期~化神后期，共 15 行）
@@ -164,45 +164,9 @@ export const GONGFA_GRADE_ATTRI_TABLE: Readonly<Record<string, readonly (readonl
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 7c. 品阶属性表 — 丹药效果（效果类型中文名 → 按品阶固定值）
-//     6 个值依次对应：下品 / 中品 / 上品 / 极品 / 仙品 / 神品
+// 7c. 丹药效果数值表已迁移至 effects.ts（EFFECT_NUMBERS）
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const ELIXIR_GRADE_EFFECT_TABLE: Readonly<Record<string, readonly number[]>> = {
-  "恢复血量": [50, 100, 1000, 30, 50, 80],
-  "恢复法力": [50, 100, 1000, 30, 50, 80],
-  "提升修为": [200, 1000, 5000, 10, 20, 30],
-  "提升寿元": [5, 10, 20, 50, 100, 200],
-  "提升体魄": [2, 5, 8, 12, 20, 30],
-  "提升灵力": [2, 5, 8, 12, 20, 30],
-  "提升劲力": [2, 5, 8, 12, 20, 30],
-  "提升护体": [2, 5, 8, 12, 20, 30],
-  "提升灵御": [2, 5, 8, 12, 20, 30],
-  "提升神识": [2, 5, 8, 12, 20, 30],
-  "提升身法": [2, 5, 8, 12, 15, 20],
-  "提升悟性": [2, 5, 8, 12, 15, 20],
-};
-
-/**
- * 丹药效果类型随机权重（AI 未提供有效 effectType 时使用）。
- * 恢复类（血量/法力）高概率；属性提升类中等；修为/寿元稀有。
- */
-export const ELIXIR_EFFECT_WEIGHTS: Readonly<Record<string, number>> = {
-  "恢复血量": 25,
-  "恢复法力": 25,
-  "提升体魄": 5,
-  "提升灵力": 5,
-  "提升劲力": 5,
-  "提升护体": 5,
-  "提升灵御": 5,
-  "提升神识": 5,
-  "提升身法": 5,
-  "提升悟性": 5,
-  "提升修为": 5,
-  "提升寿元": 5,
-};
-
-export const ELIXIR_PERCENT_GRADE_THRESHOLD = 3;
 
 /** 根据属性中文名和品阶从指定表中随机取一个范围值。被 parseAiItem 用于功法属性随机分配 */
 export function rollGradeAttriValue(statZh: string, grade: string, table: Readonly<Record<string, readonly (readonly [number, number])[]>>): number {
@@ -285,7 +249,7 @@ export const GRADE_INDEX: Readonly<Record<string, number>> = {
   "神品": 5,
 };
 
-export const GONGFA_MP_COST_BY_GRADE = [15, 30, 60, 120, 250, 500] as const;
+// GONGFA_MP_COST_BY_GRADE 已迁移至 effects.ts（ACTIVE_MP_COST_BY_GRADE）
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 12. 功法品阶修炼速度倍率

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import type { GongfaItemDefinition } from "../role_core/types/itemInfo";
+import type { GongfaItemDefinition } from "../role_core/types/items";
 import { GONGFA_GRADE_CULTIVATION_MULT, LINGGEN_CULTIVATION_MULT } from "../role_core/types/gameConstants";
 import { getGongfaMasteryProgress } from "./protagonistPanelDisplay";
 import { useScrollLock } from "../composables/useScrollLock";

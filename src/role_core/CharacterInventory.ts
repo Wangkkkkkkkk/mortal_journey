@@ -5,7 +5,7 @@
  * 不变量：slot 0 永远是 SpiritStoneInventoryStack（count 可为 0）。
  */
 
-import type { InventoryStackItem } from "./types/itemInfo";
+import type { InventoryStackItem } from "./types/items";
 import { createSpiritStoneInventoryStack } from "./types/spiritStone";
 import { gameLog } from "../log/gameLog";
 
