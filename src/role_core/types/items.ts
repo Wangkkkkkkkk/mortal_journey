@@ -208,15 +208,10 @@ export function resolveTreasureEffect(entries: readonly EffectEntry[], grade: It
   return { name: labels.filter(Boolean).join(" ") || "法宝效果", intro: "", effects, type: "被动" };
 }
 
-const ELIXIR_KINDS = ["healHp", "healMp", "statBoost", "xiuweiBoost", "shouyuanBoost"];
-
-/** 丹药效果 → EffectBundle。多条 Entry（应为消耗 kind）。 */
+/** 丹药/符箓/阵法效果 → EffectBundle */
 export function resolveElixirEffect(entries: readonly EffectEntry[], grade: ItemGrade): EffectBundle {
   const list = entries.length > 0 ? entries : [{ kind: "healHp", params: {} }];
-  const { effects, name } = expandEntries(
-    list.map(e => (e && typeof e.kind === "string" && ELIXIR_KINDS.includes(e.kind) ? e : { kind: "healHp", params: e?.params ?? {} })),
-    grade,
-  );
+  const { effects, name } = expandEntries(list, grade);
   return { name, intro: "", effects };
 }
 

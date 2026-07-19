@@ -12,6 +12,7 @@ import { runPipeline, type RunPipelineOptions } from "../shared/runPipeline";
 import { callChatCompletions } from "../bridge/openAiBridge";
 import { PRESET } from "../presets/globalPreset";
 import { INIT_STORY_SYSTEM_PRESET } from "../presets/initStoryPreset";
+import { buildStoryItemEffectHint } from "../shared/itemEffectVocabulary";
 import { extractTaggedBody, hasCompleteTaggedBody, MJ_STORY_BODY_OPEN, MJ_STORY_BODY_CLOSE } from "../shared/tagSpec";
 
 export interface InitStoryInput extends AiRequestConfig {
@@ -66,7 +67,7 @@ export async function generateInitStory(input: InitStoryInput): Promise<InitStor
   const opts: RunPipelineOptions = {
     defaultTemperature: 0.55,
     defaultMaxTokens: 65535,
-    system: [PRESET, INIT_STORY_SYSTEM_PRESET].join("\n\n"),
+    system: [PRESET, INIT_STORY_SYSTEM_PRESET, buildStoryItemEffectHint()].join("\n\n"),
     user: buildInitStoryUserContent(input.protagonist, input.userStoryHint),
     retryIf: (raw) => hasCompleteTaggedBody(raw, MJ_STORY_BODY_OPEN, MJ_STORY_BODY_CLOSE),
     logTag: "开局剧情",

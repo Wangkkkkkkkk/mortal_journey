@@ -143,8 +143,12 @@ export function parseInitStateAiResponse(
   const magicArr = tryParseJsonArray(magicText) ?? [];
   const storageArr = tryParseJsonArray(storageText) ?? [];
 
-  const equips = equipArr.map((e: unknown) => parseEquipObject(e, realmMajor, realmMinor));
-  const gongfas = magicArr.map((e: unknown) => parseGongfaObject(e, realmMajor, realmMinor, playerLinggen));
+  const equips = equipArr
+    .filter((e): e is NonNullable<typeof e> => e != null)
+    .map((e: unknown) => parseEquipObject(e, realmMajor, realmMinor));
+  const gongfas = magicArr
+    .filter((e): e is NonNullable<typeof e> => e != null)
+    .map((e: unknown) => parseGongfaObject(e, realmMajor, realmMinor, playerLinggen));
   const storage = storageArr
     .map((e: unknown) => parseStorageObject(e, realmMajor, realmMinor, playerLinggen))
     .filter((item): item is InventoryStackItem => item !== null);
