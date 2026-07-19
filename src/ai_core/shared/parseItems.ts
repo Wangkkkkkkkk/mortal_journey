@@ -95,7 +95,7 @@ function readEffectEntries(obj: Record<string, unknown>): EffectEntry[] {
 
 export function parseEquipObject(e: unknown, realmMajor: string, realmMinor: string): TreasureItemDefinition {
   const obj = e as Record<string, unknown>;
-  const grade = validateGrade(obj.grade, realmMajor) ?? rollGrade(realmMajor, realmMinor);
+  const grade = validateGrade(obj.grade) ?? rollGrade(realmMajor, realmMinor);
   return {
     itemType: "法宝",
     name: safeStr(obj.name, "未命名法宝"),
@@ -113,7 +113,7 @@ export function parseGongfaObject(
   _playerLinggen?: readonly string[] | null,
 ): GongfaItemDefinition {
   const obj = e as Record<string, unknown>;
-  const grade = validateGrade(obj.grade, realmMajor) ?? rollGrade(realmMajor, realmMinor);
+  const grade = validateGrade(obj.grade) ?? rollGrade(realmMajor, realmMinor);
   return {
     itemType: "功法",
     name: safeStr(obj.name, "未命名功法"),
@@ -142,7 +142,7 @@ export function parseStorageObject(
 
   const name = safeStr(obj.name, "未命名物品");
   const desc = safeStr(obj.intro, "");
-  const grade = validateGrade(obj.grade, realmMajor) ?? rollGrade(realmMajor, realmMinor);
+  const grade = validateGrade(obj.grade) ?? rollGrade(realmMajor, realmMinor);
   const count = safeCount(obj.count);
   const itemType = TYPE_TO_ITEM_TYPE[typeStr] ?? "杂物";
   const entries = readEffectEntries(obj);

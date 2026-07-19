@@ -116,19 +116,15 @@ export type InventoryStackItem = SpiritStoneInventoryStack | CategorizedItemDefi
 // 品阶校验
 // ---------------------------------------------------------------------------
 
+/** 品阶合法集合（仍保留 REALM_GRADE_FLOOR 供其他用途查阅）。 */
 const VALID_GRADES: readonly ItemGrade[] = ["下品", "中品", "上品", "极品", "仙品", "神品"];
 const REALM_GRADE_FLOOR: Readonly<Record<string, ItemGrade>> = { 练气: "下品", 筑基: "中品", 结丹: "上品", 元婴: "极品", 化神: "仙品" };
 
-export function validateGrade(raw: unknown, realmMajor?: string): ItemGrade | null {
+export function validateGrade(raw: unknown, _realmMajor?: string): ItemGrade | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   if (!VALID_GRADES.includes(trimmed as ItemGrade)) return null;
-  let grade = trimmed as ItemGrade;
-  if (realmMajor) {
-    const floor = REALM_GRADE_FLOOR[realmMajor];
-    if (floor && GRADE_INDEX[grade] < GRADE_INDEX[floor]) grade = floor;
-  }
-  return grade;
+  return trimmed as ItemGrade;
 }
 
 export function rollGrade(realmMajor: string, realmMinor: string): ItemGrade {

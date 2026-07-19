@@ -179,6 +179,9 @@ export function useOpeningStoryFromFateChoice(
 
         storyStore.storyBody.value = storyResult.storyBody;
 
+        // 剧情生成后立即显示，不等状态
+        seedOpeningChatMessage();
+
         // ── 2. 开局状态 ──
         try {
           const stateInput: InitStateInput = {
@@ -199,6 +202,11 @@ export function useOpeningStoryFromFateChoice(
           }
           if (stateResult.storySnapshot.trim()) {
             storyStore.initSnapshot.value = stateResult.storySnapshot.trim();
+            // 更新已显示的开局消息的 snapshot（种子时尚未拿到）
+            const msg = storyStore.chatMessages.value[0];
+            if (msg && msg.type === "story") {
+              msg.snapshot = storyStore.initSnapshot.value;
+            }
           }
           if (stateResult.actionOptions) {
             storyStore.actionOptions.value = stateResult.actionOptions;
@@ -236,8 +244,7 @@ export function useOpeningStoryFromFateChoice(
           traitsOwner.applyTraitEffects();
         }
 
-        // ── 7. 注入开局剧情到聊天 + 设为 ready ──
-        seedOpeningChatMessage();
+        // ── 7. 设为 ready ──
         storyStore.phase.value = "ready";
 
         // ── 8. 保存 ──

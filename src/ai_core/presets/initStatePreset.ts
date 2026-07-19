@@ -33,23 +33,23 @@ export const INIT_STATE_SYSTEM_PRESET = `
 [法宝开局配置规则]
 1. 主角的法宝开局配置：法宝的名称需要与剧情描述、主角背景一致。
 2. 输出格式：<mj_equip_body> … </mj_equip_body>，内为 JSON 数组。开局法宝一般给到2-3个。
-3. 法宝信息：包含 type（法宝）、name、intro、effect（从「物品效果词汇表」被动效果中选一个 kind 与名称/外观契合的）。不需要输出 function 字段，法宝效果由你选定 kind 后系统填充数值。
+3. 法宝信息：包含 type（法宝）、name、intro、grade、effect（从「物品效果词汇表」被动效果中选一个 kind 与名称/外观契合的）。grade 只能是下品、中品、上品、极品、仙品、神品中的一个，由你根据剧情和主角境界决定，系统尊重你的输出。不需要输出 function 字段，法宝效果由你选定 kind 后系统填充数值。
 4. intro 规则：只描述法宝的外观、材质、来历，不要描述功能效果。
 5. 法宝命名约束：
   5.1 法宝是经过灵气淬炼的修仙灵器，名称必须体现珍稀或灵异之感。
   5.2 禁止使用凡俗日用品名称（如布衣、草鞋、铁剑、破刀）。
   5.3 正确示例：青锋剑、灵丝道袍、玄铁护甲、紫电飞剑。
   5.4 错误示例：布衣、精刚剑、粗布劲装。
-6. 示例：<mj_equip_body> [{"type":"法宝","name":"青锋剑","intro":"外门制式灵剑，刃口隐隐泛着灵光","effects":[{"kind":"applyModifier","modifierType":"damageDealt"}]},{"type":"法宝","name":"玄铁护甲","intro":"以玄铁炼制的护身甲片，轻便坚韧","effects":[{"kind":"applyModifier","modifierType":"damageTaken"}]}] </mj_equip_body>
+6. 示例：<mj_equip_body> [{"type":"法宝","name":"青锋剑","intro":"外门制式灵剑，刃口隐隐泛着灵光","grade":"下品","effects":[{"kind":"applyModifier","modifierType":"damageDealt"}]},{"type":"法宝","name":"玄铁护甲","intro":"以玄铁炼制的护身甲片，轻便坚韧","grade":"下品","effects":[{"kind":"applyModifier","modifierType":"damageTaken"}]}] </mj_equip_body>
 
 [功法开局配置规则]
 1. 主角的功法开局配置：攻击功法和辅助功法各一个，名称需要与剧情描述、主角背景一致。
 2. 输出格式：<mj_magic_body> … </mj_magic_body>，内为 JSON 数组。
-3. 功法信息：包含 type（功法）、name、intro、bonus、effect（从「物品效果词汇表」中选一个 kind 与名称/描述契合的）。不需要输出 function 字段，无 system/role，主动/被动由所选 kind 自动决定。
+3. 功法信息：包含 type（功法）、name、intro、grade、bonus、effect（从「物品效果词汇表」中选一个 kind 与名称/描述契合的）。grade 只能是下品、中品、上品、极品、仙品、神品中的一个，由你根据剧情和主角境界决定，系统尊重你的输出。不需要输出 function 字段，无 system/role，主动/被动由所选 kind 自动决定。
 4. bonus 类型：只能是体魄、灵力、劲力、神识、护体、灵御、身法、悟性其中一个。
 5. intro 规则：只描述功法的来历、传承渊源、外观形态、修炼时的意境感受。不得描述功法的具体功能效果，应采用修仙世界的玄学化描述风格。示例："据传源自上古力修一脉，修炼时周身气血如山岳崩裂"。
 6. 功法命名硬约束：功法名称的最后一个字必须是"功""诀""术""法"之一，禁止使用其他字结尾。正确示例：长春功、聚灵诀、烈火术、御剑法；错误示例：碎石掌、混元劲、金钟罩。
-7. 示例：<mj_magic_body> [{"type":"功法","name":"崩山诀","intro":"据传源自上古力修一脉，修炼时周身气血如山岳崩裂","bonus":"劲力","effects":[{"kind":"dealDamage","damageType":"physical"}]},{"type":"功法","name":"聚灵诀","intro":"宗门世代相传的基础功法，修炼时丹田如清泉汇聚","bonus":"灵力","effects":[{"kind":"applyModifier","modifierType":"mpRecover"}]}] </mj_magic_body>
+7. 示例：<mj_magic_body> [{"type":"功法","name":"崩山诀","intro":"据传源自上古力修一脉，修炼时周身气血如山岳崩裂","grade":"下品","bonus":"劲力","effects":[{"kind":"dealDamage","damageType":"physical"}]},{"type":"功法","name":"聚灵诀","intro":"宗门世代相传的基础功法，修炼时丹田如清泉汇聚","grade":"下品","bonus":"灵力","effects":[{"kind":"applyModifier","modifierType":"mpRecover"}]}] </mj_magic_body>
 
 [储物袋开局配置规则]
 1. 主角储物袋开局配置：可以生成灵石、丹药、符箓、阵法、材料、杂物等。
@@ -62,13 +62,14 @@ export const INIT_STATE_SYSTEM_PRESET = `
       - 元婴修士约500~3000灵石。
       - 化神修士约3000~10000灵石。
 3. 其他物品根据主角出身和境界适当生成。
-4. 输出格式：<mj_storage_body> … </mj_storage_body>，内为 JSON 数组。
-5. 示例：<mj_storage_body> [{"type":"灵石","name":"灵石","count":10},{"type":"丹药","name":"辟谷丹","intro":"碧绿丹丸，隐有草木清香","effects":[{"kind":"healMp"}],"count":2},{"type":"杂物","name":"宗门令牌","intro":"外门弟子通行木牌","count":1}] </mj_storage_body>
+4. 储物袋物品信息：所有物品（除灵石外）必须输出 grade，只能是下品、中品、上品、极品、仙品、神品中的一个，由你根据剧情和主角境界决定，系统尊重你的输出。丹药/符箓/阵法还需包含 effects 字段。
+5. 输出格式：<mj_storage_body> … </mj_storage_body>，内为 JSON 数组。
+6. 示例：<mj_storage_body> [{"type":"灵石","name":"灵石","count":10},{"type":"丹药","name":"辟谷丹","intro":"碧绿丹丸，隐有草木清香","grade":"下品","effects":[{"kind":"healMp"}],"count":2},{"type":"杂物","name":"宗门令牌","intro":"外门弟子通行木牌","grade":"下品","count":1}] </mj_storage_body>
 
 [消耗品效果规则（丹药/符箓/阵法）]
   1. 丹药/符箓/阵法携带 effects 字段（数组，每项 {kind}），表示消耗品效果（可选值见下方「物品效果词汇表」消耗品部分）。
   2. effect 须与物品名称和介绍描述契合。
-  3. 丹药/符箓/阵法不含品阶（品阶由系统根据境界自动分配）。
+   3. 丹药/符箓/阵法必须输出 grade（品阶由你根据剧情和主角境界决定，系统尊重你的输出）。
 
 [NPC生成规则]
 1. 开局剧情中出现的周围人物，必须在 <NPC_NEARBY_TAG> 中生成对应角色卡。
@@ -77,8 +78,8 @@ export const INIT_STATE_SYSTEM_PRESET = `
 4. NPC的法宝结构：
   4.1 法宝须含 type（法宝）、name、intro、effect（从「物品效果词汇表」被动效果中选一个 kind）。不需要 function 字段。
   4.2 功法结构与主角相同：功法须含 type（功法）、name、intro、bonus、effect（从「物品效果词汇表」中选一个 kind）。不需要 function 字段，无 system/role。
-  4.3 功法不含 grade（品阶由系统根据境界自动分配）。主动/被动由所选 kind 自动决定。
-  4.4 NPC储物袋中的消耗品（丹药/符箓/阵法）须含 effects（[{kind}]），不含 grade。
+   4.3 功法必须输出 grade（品阶由你根据剧情和主角境界决定，系统尊重你的输出）。主动/被动由所选 kind 自动决定。
+   4.4 NPC储物袋中的消耗品（丹药/符箓/阵法）须含 grade 和 effects（[{kind}]），品阶由你决定。
 5. NPC生成需要包含的信息：
   5.1 基本信息：displayName（2-4字）、identity、gender、age、favorability。
   5.2 种族与外貌（用于文生图角色立绘，须具体可视，禁止空泛）：
@@ -108,12 +109,12 @@ export const INIT_STATE_SYSTEM_PRESET = `
     "linggen": ["水"],
     "realm": { "major": "练气", "minor": "初期" },
     "equippedSlots": [
-      {"type": "法宝", "name": "青锋剑", "intro": "外门制式灵剑，刃口隐隐泛着灵光", "effects": [{"kind": "applyModifier", "modifierType": "damageDealt"}]},
-      {"type": "法宝", "name": "灵丝道袍", "intro": "以灵蚕丝织就的道袍，轻便坚韧", "effects": [{"kind": "applyModifier", "modifierType": "damageTaken"}]}
+      {"type": "法宝", "name": "青锋剑", "intro": "外门制式灵剑，刃口隐隐泛着灵光", "grade": "下品", "effects": [{"kind": "applyModifier", "modifierType": "damageDealt"}]},
+      {"type": "法宝", "name": "灵丝道袍", "intro": "以灵蚕丝织就的道袍，轻便坚韧", "grade": "下品", "effects": [{"kind": "applyModifier", "modifierType": "damageTaken"}]}
     ],
     "gongfaSlots": [
-      {"type": "功法", "name": "长春功", "intro": "外门弟子入门必修，功法运转后灵台清明、气息绵长", "bonus": "灵力", "effects": [{"kind": "applyModifier", "modifierType": "mpRecover"}]},
-      {"type": "功法", "name": "崩山诀", "intro": "据传源自上古力修一脉，修炼时周身气血如山岳崩裂", "bonus": "劲力", "effects": [{"kind": "dealDamage", "damageType": "physical"}]},
+      {"type": "功法", "name": "长春功", "intro": "外门弟子入门必修，功法运转后灵台清明、气息绵长", "grade": "下品", "bonus": "灵力", "effects": [{"kind": "applyModifier", "modifierType": "mpRecover"}]},
+      {"type": "功法", "name": "崩山诀", "intro": "据传源自上古力修一脉，修炼时周身气血如山岳崩裂", "grade": "下品", "bonus": "劲力", "effects": [{"kind": "dealDamage", "damageType": "physical"}]},
       null, null, null, null, null, null
     ],
     "inventorySlots": [

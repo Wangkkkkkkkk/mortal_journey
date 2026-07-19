@@ -234,8 +234,8 @@ export const STATE_SYSTEM_PRESET = `
 7. NPC的功法结构：
   7.1 功法须含 type（功法）、name、intro、bonus、effect（从「物品效果词汇表」中选一个 kind 与名称/描述契合的）。不需要 function，无 system/role。
   7.2 功法命名硬约束：功法名称的最后一个字必须是"功""诀""术""法"之一，禁止使用其他字结尾。
-  7.3 功法不含 grade（品阶由系统根据境界自动分配）。主动/被动由所选 kind 自动决定。
-8. NPC储物袋中的消耗品（丹药/符箓/阵法）须含 effects（[{kind}]），不含 grade。
+   7.3 功法必须输出 grade（品阶由你决定，系统尊重你的输出）。主动/被动由所选 kind 自动决定。
+8. NPC储物袋中的消耗品（丹药/符箓/阵法）须含 grade 和 effects（[{kind}]），品阶由你决定。
 9. NPC生成需要包含的信息：
   9.1 基本信息：displayName（名字2-4字）、identity、gender、age、favorability（-99~99）。
   9.2 种族与外貌（用于文生图角色立绘，须具体可视，禁止空泛）：
@@ -285,12 +285,12 @@ export const STATE_SYSTEM_PRESET = `
     "realm": { "major": "练气", "minor": "初期" },
     "currentLocation": { "region": "天南", "country": "越国", "area": "七玄门", "detail": "外门" },
     "equippedSlots": [
-      {"type": "法宝", "name": "青锋剑", "intro": "外门制式灵剑，刃口隐隐泛着灵光", "effects": [{"kind": "applyModifier", "modifierType": "damageDealt"}]},
-      {"type": "法宝", "name": "灵丝道袍", "intro": "以灵蚕丝织就的道袍，轻便坚韧", "effects": [{"kind": "applyModifier", "modifierType": "damageTaken"}]}
+      {"type": "法宝", "name": "青锋剑", "intro": "外门制式灵剑，刃口隐隐泛着灵光", "grade": "下品", "effects": [{"kind": "applyModifier", "modifierType": "damageDealt"}]},
+      {"type": "法宝", "name": "灵丝道袍", "intro": "以灵蚕丝织就的道袍，轻便坚韧", "grade": "下品", "effects": [{"kind": "applyModifier", "modifierType": "damageTaken"}]}
     ],
     "gongfaSlots": [
-      {"type": "功法", "name": "长春功", "intro": "外门弟子入门必修，功法运转后灵台清明、气息绵长", "bonus": "灵力", "effects": [{"kind": "applyModifier", "modifierType": "mpRecover"}]},
-      {"type": "功法", "name": "崩山诀", "intro": "据传源自上古力修一脉，修炼时周身气血如山岳崩裂", "bonus": "劲力", "effects": [{"kind": "dealDamage", "damageType": "physical"}]},
+      {"type": "功法", "name": "长春功", "intro": "外门弟子入门必修，功法运转后灵台清明、气息绵长", "grade": "下品", "bonus": "灵力", "effects": [{"kind": "applyModifier", "modifierType": "mpRecover"}]},
+      {"type": "功法", "name": "崩山诀", "intro": "据传源自上古力修一脉，修炼时周身气血如山岳崩裂", "grade": "下品", "bonus": "劲力", "effects": [{"kind": "dealDamage", "damageType": "physical"}]},
       null, null, null, null, null, null
     ],
     "inventorySlots": [

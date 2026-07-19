@@ -933,9 +933,9 @@ watch(
         aria-label="剧情正文区域"
         aria-live="polite"
       >
-        <p v-if="phase === 'loading' && chatMessages.length === 0" class="main-panel__story-status main-panel__story-status--loading">
-          正在生成开局剧情…
-        </p>
+         <p v-if="phase === 'loading' && chatMessages.length === 0" class="main-panel__placeholder">
+           完成命运抉择并进入主界面后，开局剧情将显示于此。
+         </p>
         <p
           v-else-if="phase === 'error' && chatMessages.length === 0"
           class="main-panel__story-status main-panel__story-status--error"
@@ -983,9 +983,9 @@ watch(
         </template>
       </div>
       <div class="main-panel__composer-area">
-        <div v-if="generating || (phase === 'loading' && chatMessages.length > 0)" class="main-panel__composer-status main-panel__composer-status--loading">
+        <div v-if="generating || phase === 'loading'" class="main-panel__composer-status main-panel__composer-status--loading">
           <span class="main-panel__status-pulse"></span>
-          {{ phase === 'loading' && chatMessages.length > 0 ? 'AI 正在更新开局状态…' : (generatingPhase === 'state' ? 'AI 正在更新状态…' : (generatingPhase === 'summary' ? 'AI 正在整理过往经历…' : 'AI 正在生成剧情…')) }}
+          {{ phase === 'loading' && chatMessages.length > 0 ? 'AI 正在更新开局状态…' : phase === 'loading' ? 'AI 正在生成剧情…' : (generatingPhase === 'state' ? 'AI 正在更新状态…' : (generatingPhase === 'summary' ? 'AI 正在整理过往经历…' : 'AI 正在生成剧情…')) }}
         </div>
         <div v-else-if="genError" class="main-panel__composer-status main-panel__composer-status--error">
           <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>{{ genError }}
