@@ -9,7 +9,6 @@ import { getRow } from "../role_core/realmUtils";
 import type { NpcPlayInfo } from "../role_core/types/playInfo";
 import type { FateChoiceResult } from "../fate_choice/types";
 import type { BattleTriggerEntry } from "../ai_core";
-import type { CultivationInput } from "../ai_core";
 import type { BattleResult } from "../battle_engine/types";
 import type { WorldLocation } from "../role_core/types/worldLocation";
 import SideToolbarPanel from "./SideToolbarPanel.vue";
@@ -40,22 +39,12 @@ const emit = defineEmits<{
   back: [];
   battleTrigger: [value: BattleTriggerEntry];
   consumeBattleResult: [];
-  cultivate: [value: CultivationInput];
   gameOver: [reason: string];
 }>();
 
-const pendingCultivation = ref<CultivationInput | null>(null);
 const chatGenerating = ref(false);
 
 const isBusy = computed(() => phase.value !== "ready" || chatGenerating.value);
-
-function onCultivate(input: CultivationInput) {
-  pendingCultivation.value = input;
-}
-
-function consumeCultivation() {
-  pendingCultivation.value = null;
-}
 
 function onBack() {
   emit("back");
@@ -162,7 +151,6 @@ function startTestBattle() {
           :world-time="worldTime"
           :world-time-baseline="worldTimeBaseline"
           @update:world-time="worldTime = $event"
-          @cultivate="onCultivate"
         />
       </aside>
       <main class="main-screen__pane main-screen__pane--chat" aria-label="中栏：剧情">
@@ -171,12 +159,10 @@ function startTestBattle() {
           :error-message="errorMessage"
           :current-world-location="worldLocation"
           :battle-result="props.battleResult"
-          :cultivation-input="pendingCultivation"
           v-model:world-time="worldTime"
           @update:world-location="worldLocation = $event"
           @battle-trigger="emit('battleTrigger', $event)"
           @consume-battle-result="emit('consumeBattleResult')"
-          @consume-cultivation="consumeCultivation"
           @generating-change="chatGenerating = $event"
           @game-over="emit('gameOver', $event)"
         />

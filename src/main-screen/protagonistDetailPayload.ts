@@ -400,13 +400,6 @@ export function buildGongfaDetailPayload(
 
   const actions: ProtagonistDetailActionButton[] = [];
   if (source?.type === "bar") {
-    if (mastery < 10) {
-      actions.push({
-        label: "修炼",
-        primary: true,
-        action: { id: "cultivateGongfa", gongfaIndex: source.gongfaIndex },
-      });
-    }
     actions.push({
       label: "卸下",
       primary: mastery >= 10,

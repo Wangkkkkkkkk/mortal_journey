@@ -36,15 +36,12 @@ import {
   getShouyuanWarningLevel,
 } from "./protagonistPanelDisplay";
 import ProtagonistDetailModal from "./ProtagonistDetailModal.vue";
-import GongfaCultivateModal from "./GongfaCultivateModal.vue";
-import type { CultivationInput, CultivationConfirmPayload } from "../ai_core";
+
 import {
   calendarYearsElapsed,
   formatWorldTimeZhDisplay,
   type WorldTime,
 } from "../role_core/worldTime";
-import { getSpiritStoneCount } from "../role_core/CharacterInventory";
-import { getGongfaMasteryProgress } from "./protagonistPanelDisplay";
 import { writeActiveSave } from "../save/gameSave";
 import { generateProtagonistPortrait, isImageApiConfigured } from "../image_generate";
 import PortraitHistoryModal from "./PortraitHistoryModal.vue";
@@ -57,7 +54,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "update:worldTime": [value: WorldTime];
-  "cultivate": [value: CultivationInput];
 }>();
 const worldTimeTitle = computed(() => formatWorldTimeZhDisplay(props.worldTime));
 
@@ -233,55 +229,9 @@ function onBagSlotClick(index: number) {
 }
 
 function onDetailAction(a: ProtagonistDetailAction) {
-  if (a.id === "cultivateGongfa") {
-    cultivateGongfaIndex.value = a.gongfaIndex;
-    closeDetail();
-    cultivateOpen.value = true;
-    return;
-  }
   props.protagonist?.applyDetailAction(a);
   writeActiveSave();
   closeDetail();
-}
-
-const cultivateOpen = ref(false);
-const cultivateGongfaIndex = ref(-1);
-
-const cultivateGongfa = computed(() => {
-  const p = props.protagonist;
-  if (!p || cultivateGongfaIndex.value < 0) return null;
-  return p.gongfaSlots[cultivateGongfaIndex.value] ?? null;
-});
-
-const spiritStoneCount = computed(() => {
-  return props.protagonist ? getSpiritStoneCount(props.protagonist) : 0;
-});
-
-function closeCultivate() {
-  cultivateOpen.value = false;
-  cultivateGongfaIndex.value = -1;
-}
-
-function onCultivateConfirm(payload: CultivationConfirmPayload) {
-  const p = props.protagonist;
-  const gf = cultivateGongfa.value;
-  if (!p || !gf || payload.spiritStoneCount <= 0) return;
-
-  const mp = getGongfaMasteryProgress(gf);
-
-  emit("cultivate", {
-    gongfaIndex: cultivateGongfaIndex.value,
-    gongfaName: gf.name,
-    gongfaGrade: gf.grade,
-    gongfaSystem: gf.effect?.name ?? "",
-    currentMastery: mp.mastery,
-    currentMasteryExp: mp.exp,
-    masteryThreshold: mp.threshold,
-    spiritStoneCount: payload.spiritStoneCount,
-    estimatedMonths: payload.estimatedMonths,
-  });
-
-  closeCultivate();
 }
 
 function onSlotKeydown(e: KeyboardEvent, fn: () => void) {
@@ -298,15 +248,6 @@ function onSlotKeydown(e: KeyboardEvent, fn: () => void) {
       :payload="detailPayload"
       @close="closeDetail"
       @action="onDetailAction"
-    />
-    <GongfaCultivateModal
-      :open="cultivateOpen"
-      :gongfa="cultivateGongfa"
-      :spirit-stone-count="spiritStoneCount"
-      :linggen-count="protagonist?.linggen?.length ?? 0"
-      :insight="protagonist?.getPrimaryStats()?.insight ?? 0"
-      @close="closeCultivate"
-      @confirm="onCultivateConfirm"
     />
     <header class="main-panel__meta-strip" aria-label="世界时间" :title="worldTimeTitle">
       <p class="main-panel__meta-strip-text">{{ worldTimeTitle }}</p>

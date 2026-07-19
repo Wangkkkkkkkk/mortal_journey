@@ -17,6 +17,8 @@ import { callChatCompletions } from "../bridge/openAiBridge";
 import { getStoryPreset } from "../presets/storyPreset";
 import { buildProtagonistBrief, type BriefContext, type BriefOptions } from "../shared/protagonistBrief";
 import { extractTaggedBody, extractThinking, hasCompleteTaggedBody, parseActionTag, MJ_STORY_BODY_OPEN, MJ_STORY_BODY_CLOSE } from "../shared/tagSpec";
+import { matchWorldBookEntries } from "../world_books/detect";
+import type { WorldBookEntry } from "../world_books/types";
 
 export interface StoryChatEntry {
   role: "user" | "assistant";
@@ -29,6 +31,7 @@ export interface StoryInput extends AiRequestConfig {
   sceneNpcSnapshot?: string;
   currentWorldLocation?: string;
   worldBookContext?: string;
+  worldBookEntries?: WorldBookEntry[];
   narrativeDirection?: string;
 }
 
@@ -63,8 +66,21 @@ export async function generateStory(input: StoryInput): Promise<StoryParsed> {
     ? storyParts.join("\n\n---\n\n")
     : undefined;
 
+  const lastAssistantContent = storyParts.length > 0
+    ? storyParts[storyParts.length - 1]
+    : undefined;
+
+  const combinedText = [lastUserContent, lastAssistantContent]
+    .filter(Boolean)
+    .join("\n");
+
+  const worldBookContext = input.worldBookContext
+    ?? (input.worldBookEntries && combinedText
+      ? matchWorldBookEntries(combinedText, input.worldBookEntries)
+      : undefined);
+
   const system = getStoryPreset(
-    input.worldBookContext,
+    worldBookContext,
     input.narrativeDirection,
     previousStory,
   );

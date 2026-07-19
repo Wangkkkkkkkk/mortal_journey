@@ -4,10 +4,10 @@ import type { OpeningStoryPhase } from "../ai_core";
 import { useApiConfig } from "../ai_core";
 import { generateStory, type StoryChatEntry } from "../ai_core";
 import { generateState, type StateParsed, type BattleTriggerEntry, npcEventsToLegacyFormat } from "../ai_core";
-import { generateCultivationStory } from "../ai_core";
+import { CULTIVATION_WORLD_BOOK } from "../ai_core/world_books/cultivationWorldBook";
+import type { WorldBookEntry } from "../ai_core/world_books/types";
 import { generateFinaleStory } from "../ai_core";
 import { generateGrandSummary } from "../ai_core";
-import type { CultivationInput } from "../ai_core";
 import { protagonist, Protagonist } from "../role_core/Protagonist";
 import { npcStore } from "../role_core/npcStore";
 import { worldMapStore, type WorldMapSerialData } from "../role_core/worldMapStore";
@@ -37,7 +37,6 @@ const props = withDefaults(
     currentWorldLocation?: WorldLocation | null;
     worldTime?: WorldTime;
     battleResult?: BattleResult | null;
-    cultivationInput?: CultivationInput | null;
   }>(),
   {
     phase: "idle",
@@ -45,7 +44,6 @@ const props = withDefaults(
     currentWorldLocation: null,
     worldTime: undefined,
     battleResult: undefined,
-    cultivationInput: null,
   },
 );
 
@@ -56,7 +54,6 @@ const emit = defineEmits<{
   "update:worldTime": [value: WorldTime];
   "battleTrigger": [value: BattleTriggerEntry];
   "consumeBattleResult": [];
-  "consumeCultivation": [];
   "generatingChange": [value: boolean];
   "gameOver": [reason: string];
 }>();
@@ -213,12 +210,12 @@ async function maybeGenerateGrandSummary(
   }
 }
 
-type RoundKind = "chat" | "battle" | "cultivation";
+type RoundKind = "chat" | "battle";
 
 interface RoundContext {
   kind: RoundKind;
   userContent: string;
-  cultivationInput?: CultivationInput;
+  worldBookEntries?: WorldBookEntry[];
 }
 
 /** 一轮「生成前」的完整状态快照，用于重试时回退该轮的全部副作用。 */
@@ -488,16 +485,15 @@ async function handleSend(): Promise<void> {
   inputText.value = "";
   if (textareaRef.value) textareaRef.value.style.height = "auto";
 
-  await runStoryGenerationRound({ kind: "chat", userContent: msg });
+  await runStoryGenerationRound({ kind: "chat", userContent: msg, worldBookEntries: CULTIVATION_WORLD_BOOK });
 }
 
 /**
  * 通用生成管道：push 用户消息 → 生成剧情 → push 剧情消息 → 生成状态 → 应用状态 → 落盘。
  *
- * 三个入口共用此函数：
+ * 两个入口共用此函数：
  * - handleSend（普通对话）：kind="chat"，用 generateStory。
  * - 战斗结果回写：kind="battle"，用 generateStory。
- * - 修炼回写：kind="cultivation"，用 generateCultivationStory（需要 cultivationInput）。
  *
  * 在 push 用户消息之前捕获完整快照到 `lastPreGenSnapshot`，供重试回退使用。
  */
@@ -530,42 +526,19 @@ async function runStoryGenerationRound(ctx: RoundContext): Promise<void> {
   abortCtl = ac;
 
   try {
-    // 阶段 1：生成剧情正文（修炼走 generateCultivationStory，其余走 generateStory）。
-    let storyBody: string;
-    if (ctx.kind === "cultivation" && ctx.cultivationInput) {
-      const ci = ctx.cultivationInput;
-      const cultResult = await generateCultivationStory({
-        apiUrl: url,
-        apiKey: String(apiKey.value || "").trim() || undefined,
-        model,
-        gongfaName: ci.gongfaName,
-        gongfaGrade: ci.gongfaGrade,
-        gongfaSystem: ci.gongfaSystem,
-        currentMastery: ci.currentMastery,
-        currentMasteryExp: ci.currentMasteryExp,
-        masteryThreshold: ci.masteryThreshold,
-        spiritStoneCount: ci.spiritStoneCount,
-        estimatedMonths: ci.estimatedMonths,
-        protagonist: p,
-        currentWorldLocation: props.currentWorldLocation ?? undefined,
-        npcSnapshot: npcSnapshot || undefined,
-        chatHistory,
-        signal: ac.signal,
-      });
-      storyBody = cultResult.storyBody;
-    } else {
-      const storyResult = await generateStory({
-        apiUrl: url,
-        apiKey: String(apiKey.value || "").trim() || undefined,
-        model,
-        protagonist: p,
-        chatHistory,
-        sceneNpcSnapshot: buildSceneNpcSnapshot() || undefined,
-        currentWorldLocation: props.currentWorldLocation ? formatWorldLocationDash(props.currentWorldLocation) : undefined,
-        signal: ac.signal,
-      });
-      storyBody = storyResult.storyBody;
-    }
+    // 阶段 1：生成剧情正文。
+    const storyResult = await generateStory({
+      apiUrl: url,
+      apiKey: String(apiKey.value || "").trim() || undefined,
+      model,
+      protagonist: p,
+      chatHistory,
+      worldBookEntries: ctx.worldBookEntries,
+      sceneNpcSnapshot: buildSceneNpcSnapshot() || undefined,
+      currentWorldLocation: props.currentWorldLocation ? formatWorldLocationDash(props.currentWorldLocation) : undefined,
+      signal: ac.signal,
+    });
+    const storyBody = storyResult.storyBody;
 
     if (abortCtl !== ac) return;
 
@@ -855,30 +828,6 @@ function formatBattleResultMessage(r: BattleResult): string {
 
   return parts.join("");
 }
-
-function formatCultivationMessage(input: CultivationInput): string {
-  const years = Math.floor(input.estimatedMonths / 12);
-  const months = input.estimatedMonths % 12;
-  const timeParts: string[] = [];
-  if (years > 0) timeParts.push(`${years}年`);
-  if (months > 0) timeParts.push(`${months}个月`);
-  const timeStr = timeParts.join("") || "数日";
-
-  return `取出${input.spiritStoneCount}枚灵石，开始闭关修炼${input.gongfaName}，预计需要${timeStr}。`;
-}
-
-watch(
-  () => props.cultivationInput,
-  async (input) => {
-    if (!input) return;
-    emit("consumeCultivation");
-    await runStoryGenerationRound({
-      kind: "cultivation",
-      userContent: formatCultivationMessage(input),
-      cultivationInput: input,
-    });
-  },
-);
 
 watch(
   () => props.battleResult,

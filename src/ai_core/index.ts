@@ -35,7 +35,7 @@ export type {
   StateGenerateInput,
 } from "./types/stateDiff";
 
-export type { CultivationInput, CultivationConfirmPayload } from "./types/cultivation";
+
 
 // ── Shared ──
 export { runPipeline, type RunPipelineOptions, type RunPipelineResult } from "./shared/runPipeline";
@@ -82,7 +82,7 @@ export { callChatCompletions, extractResponse, extractOpenAiNonStreamMessageText
 export { generateStory, type StoryInput, type StoryParsed, type StoryChatEntry } from "./pipelines/story";
 export { generateInitStory, type InitStoryInput, type InitStoryParsed } from "./pipelines/initStory";
 export { generateInitState, parseInitStateAiResponse, buildEquippedSlotsFromParsed, buildGongfaSlotsFromParsed, buildInventoryFromParsed, type InitStateInput, type InitStateParsed } from "./pipelines/initState";
-export { generateCultivationStory, type CultivationStoryInput, type CultivationStoryParsed } from "./pipelines/cultivationStory";
+
 export { generateFinaleStory, type FinaleStoryInput, type FinaleStoryParsed } from "./pipelines/finaleStory";
 export { generateGrandSummary, type GrandSummaryInput, type GrandSummaryParsed } from "./pipelines/grandSummary";
 export { generateState, npcEventsToLegacyFormat, type StateGenerateInput as StateGenInput } from "./pipelines/state";
