@@ -42,23 +42,9 @@ export interface SettleBattleOptions {
 export function settleBattle(state: BattleState, opts?: SettleBattleOptions): BattleResult {
   const trigger = state.triggerEntry as BattleTriggerEntry;
   const protagonistCombatant = state.allies.find(a => a.isProtagonist);
-  const elixirsUsed: { name: string; count: number }[] = [];
   const enemiesKilled: string[] = [];
   const protagonistCanDie = opts?.protagonistCanDie ?? true;
   const companionsCanDie = opts?.companionsCanDie ?? true;
-
-  const elixirMap = new Map<string, number>();
-  for (const ally of state.allies) {
-    for (const el of ally.elixirs) {
-      const original = el.count;
-      if (original <= 0) continue;
-      const used = (elixirMap.get(el.name) ?? 0) + (original > el.count ? original - el.count : 0);
-      elixirMap.set(el.name, used);
-    }
-  }
-  for (const [name, count] of elixirMap) {
-    if (count > 0) elixirsUsed.push({ name, count });
-  }
 
   for (const enemy of state.enemies) {
     if (enemy.isDead && enemy.sourceNpcName) {
@@ -92,19 +78,7 @@ export function settleBattle(state: BattleState, opts?: SettleBattleOptions): Ba
     }
   }
 
-  if (elixirsUsed.length > 0 && p) {
-    for (const used of elixirsUsed) {
-      let remaining = used.count;
-      for (let i = 0; i < p.inventorySlots.length && remaining > 0; i++) {
-        const slot = p.inventorySlots[i];
-        if (!slot || !("name" in slot) || slot.name !== used.name) continue;
-        const take = Math.min(remaining, slot.count);
-        slot.count -= take;
-        remaining -= take;
-        if (slot.count <= 0) p.setInventorySlot(i, null);
-      }
-    }
-  }
+
 
   // 消耗型技能（符箓/阵法）结算：将战斗中剩余次数写回主角背包
   if (p && protagonistCombatant) {
@@ -186,7 +160,7 @@ export function settleBattle(state: BattleState, opts?: SettleBattleOptions): Ba
     actionCount: state.actionCount,
     protagonistHpPercent: protagonistCombatant ? Math.round(protagonistCombatant.hp / Math.max(1, protagonistCombatant.stats.maxHp) * 100) : 0,
     protagonistMpPercent: protagonistCombatant ? Math.round(protagonistCombatant.mp / Math.max(1, protagonistCombatant.stats.maxMp) * 100) : 0,
-    elixirsUsed,
+    elixirsUsed: [],
     enemiesKilled,
     triggerReason: trigger.triggerReason,
     allyNames: trigger.allies.map(a => a.displayName),

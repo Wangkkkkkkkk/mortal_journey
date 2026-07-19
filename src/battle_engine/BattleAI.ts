@@ -16,19 +16,17 @@ export class BattleAI {
       if (skillAction) return skillAction;
     }
 
+    // 低血量：尝试使用消耗品回血
     if (actor.hp < actor.stats.maxHp * 0.3) {
-      const elixirIdx = actor.elixirs.findIndex(e => e.effectType === "healHp" && e.count > 0);
-      if (elixirIdx >= 0) {
-        return { type: "elixir", elixirIndex: elixirIdx };
+      const idx = (actor.consumableSkills ?? []).findIndex(cs =>
+        cs.remainingCount > 0 && cs.skill.effects.some(e => e.type === "heal")
+      );
+      if (idx >= 0) {
+        return { type: "consumableSkill", consumableIndex: idx, targetId: actor.id };
       }
     }
 
-    if (actor.mp < actor.stats.maxMp * 0.3) {
-      const elixirIdx = actor.elixirs.findIndex(e => e.effectType === "healMp" && e.count > 0);
-      if (elixirIdx >= 0) {
-        return { type: "elixir", elixirIndex: elixirIdx };
-      }
-    }
+    // 低法力：尝试使用消耗品回蓝（healMp 目前不经过 SkillEffect 管线，暂不支持 AI 使用）
 
     const target = this.selectTarget(aliveEnemies);
     if (target) return { type: "normalAttack", targetId: target.id };

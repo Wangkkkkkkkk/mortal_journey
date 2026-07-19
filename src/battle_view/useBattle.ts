@@ -67,7 +67,7 @@ export function useBattle() {
 
   function getPlayerActionOptions(): ActionOptions {
     const e = engine.value;
-    if (!e) return { canNormalAttack: false, normalAttackCost: 50, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: 30, fleeActionCost: 100, canFlee: false, skills: [], elixirs: [], consumableSkills: [] };
+    if (!e) return { canNormalAttack: false, normalAttackCost: 50, normalAttackDamage: 0, skillActionCost: 100, consumableActionCost: 30, fleeActionCost: 100, canFlee: false, skills: [], consumableSkills: [] };
     return e.getPlayerActionOptions();
   }
 
@@ -92,14 +92,9 @@ export function useBattle() {
       }
     }
 
-    if (action.type === "flee" || action.type === "elixir") {
+    if (action.type === "flee") {
       s.phase = "targetSelection";
-      if (action.type === "elixir") {
-        const currentActorId = s.activeCombatantId;
-        if (currentActorId) selectTarget(currentActorId);
-      } else {
-        selectTarget("");
-      }
+      selectTarget("");
       return;
     }
 
@@ -139,7 +134,7 @@ export function useBattle() {
     s.selectedTargetId = targetId;
 
     const action = s.pendingAction;
-    if (action.type !== "flee" && action.type !== "elixir") {
+    if (action.type !== "flee") {
       (action as { targetId: string }).targetId = targetId;
     }
 

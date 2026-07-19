@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, watch } from "vue";
 import type { BattleTriggerEntry } from "../ai_core/types/npcEvents";
-import type { BattleAction, BattleCombatant, BattleResult, SkillActionItem, ElixirActionItem, ConsumableSkillActionItem, FloatingText, BattleEffect } from "../battle_engine/types";
+import type { BattleAction, BattleCombatant, BattleResult, SkillActionItem, ConsumableSkillActionItem, FloatingText, BattleEffect } from "../battle_engine/types";
 import { useBattle } from "./useBattle";
 import { gameLog } from "../log/gameLog";
 import { useScrollLock } from "../composables/useScrollLock";
@@ -78,15 +78,6 @@ function onSkillSelect(item: SkillActionItem) {
   if (!item.usable) return;
   selectAction({ type: "skill", skillIndex: item.skillIndex, targetId: "" });
 }
-
-function onElixirSelect(item: ElixirActionItem) {
-  selectAction({ type: "elixir", elixirIndex: item.elixirIndex });
-  const currentActorId = state.value?.activeCombatantId;
-  if (currentActorId) {
-    selectTarget(currentActorId);
-  }
-}
-
 function onFlee() {
   selectAction({ type: "flee" });
   selectTarget("");
@@ -194,25 +185,16 @@ function logIcon(type: string): string {
 }
 
 const skillSubmenuOpen = ref(false);
-const elixirSubmenuOpen = ref(false);
 const consumableSubmenuOpen = ref(false);
 
 function toggleSkillSubmenu() {
   skillSubmenuOpen.value = !skillSubmenuOpen.value;
-  elixirSubmenuOpen.value = false;
-  consumableSubmenuOpen.value = false;
-}
-
-function toggleElixirSubmenu() {
-  elixirSubmenuOpen.value = !elixirSubmenuOpen.value;
-  skillSubmenuOpen.value = false;
   consumableSubmenuOpen.value = false;
 }
 
 function toggleConsumableSubmenu() {
   consumableSubmenuOpen.value = !consumableSubmenuOpen.value;
   skillSubmenuOpen.value = false;
-  elixirSubmenuOpen.value = false;
 }
 
 function onConsumableSelect(item: ConsumableSkillActionItem) {
@@ -273,42 +255,25 @@ function onConsumableSelect(item: ConsumableSkillActionItem) {
                     </div>
                   </div>
                   <div class="battle__action-group">
-                    <button class="battle__action-btn battle__action-btn--elixir" :class="{ 'battle__action-btn--active': elixirSubmenuOpen }" @click="toggleElixirSubmenu" :disabled="actionOptions.elixirs.length === 0">
-                      <span class="battle__action-label">💊 恢复丹药 {{ elixirSubmenuOpen ? '▲' : '▼' }}</span>
-                      <span class="battle__action-info">行动值:{{ actionOptions.elixirActionCost }}</span>
+                    <button class="battle__action-btn battle__action-btn--consumable" :class="{ 'battle__action-btn--active': consumableSubmenuOpen }" @click="toggleConsumableSubmenu" :disabled="actionOptions.consumableSkills.length === 0">
+                      <span class="battle__action-label">💊 消耗品（丹药/符箓/阵法） {{ consumableSubmenuOpen ? '▲' : '▼' }}</span>
+                      <span class="battle__action-info">行动值:{{ actionOptions.consumableActionCost }}</span>
                     </button>
-                    <div v-if="elixirSubmenuOpen" class="battle__submenu battle__submenu--elixir">
+                    <div v-if="consumableSubmenuOpen" class="battle__submenu battle__submenu--consumable">
                       <button
-                        v-for="item in actionOptions.elixirs"
-                        :key="item.elixirIndex"
+                        v-for="item in actionOptions.consumableSkills"
+                        :key="item.consumableIndex"
                         class="battle__submenu-item"
-                        @click="onElixirSelect(item)"
+                        :class="{ 'battle__submenu-item--disabled': !item.usable }"
+                        :disabled="!item.usable"
+                        @click="onConsumableSelect(item)"
                       >
-                        <span class="battle__submenu-name">{{ item.name }} ×{{ item.count }}</span>
+                        <span class="battle__submenu-name">{{ item.name }} ×{{ item.count }} <span v-if="item.isAoE" class="battle__aoe-tag">群</span></span>
                         <span class="battle__submenu-desc">{{ item.description }}</span>
                       </button>
                     </div>
-                   </div>
-                   <div class="battle__action-group">
-                     <button class="battle__action-btn battle__action-btn--consumable" :class="{ 'battle__action-btn--active': consumableSubmenuOpen }" @click="toggleConsumableSubmenu" :disabled="actionOptions.consumableSkills.length === 0">
-                       <span class="battle__action-label">🔮 符箓/阵法 {{ consumableSubmenuOpen ? '▲' : '▼' }}</span>
-                       <span class="battle__action-info">行动值:{{ actionOptions.elixirActionCost }}</span>
-                     </button>
-                     <div v-if="consumableSubmenuOpen" class="battle__submenu battle__submenu--consumable">
-                       <button
-                         v-for="item in actionOptions.consumableSkills"
-                         :key="item.consumableIndex"
-                         class="battle__submenu-item"
-                         :class="{ 'battle__submenu-item--disabled': !item.usable }"
-                         :disabled="!item.usable"
-                         @click="onConsumableSelect(item)"
-                       >
-                         <span class="battle__submenu-name">{{ item.name }} ×{{ item.count }} <span v-if="item.isAoE" class="battle__aoe-tag">群</span></span>
-                         <span class="battle__submenu-desc">{{ item.description }}</span>
-                       </button>
-                     </div>
-                   </div>
-                   <button class="battle__action-btn battle__action-btn--flee" @click="onFlee" :disabled="!actionOptions.canFlee">
+                  </div>
+                  <button class="battle__action-btn battle__action-btn--flee" @click="onFlee" :disabled="!actionOptions.canFlee">
                     <span class="battle__action-label">🏃 逃跑</span>
                     <span class="battle__action-info">行动值:{{ actionOptions.fleeActionCost }}</span>
                   </button>

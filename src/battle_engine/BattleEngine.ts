@@ -7,7 +7,6 @@ import type {
   ActionContext,
   ActionOptions,
   SkillActionItem,
-  ElixirActionItem,
   ConsumableSkillActionItem,
   BattleConsumableSkill,
   BattleEngineLike,
@@ -160,9 +159,6 @@ export class BattleEngine implements BattleEngineLike {
       case "skill":
         this.executeSkill(actor, action.skillIndex, action.targetId);
         break;
-      case "elixir":
-        this.executeElixir(actor, action.elixirIndex);
-        break;
       case "consumableSkill":
         this.executeConsumableSkill(actor, action.consumableIndex, action.targetId);
         break;
@@ -180,10 +176,7 @@ export class BattleEngine implements BattleEngineLike {
   }
 
   private resolveTargetOverride(actor: BattleCombatant, action: BattleAction): void {
-    if (action.type === "flee" || action.type === "elixir") return;
-    if (action.type === "consumableSkill") {
-      // 消耗型技能按普通技能的嘲讽/恐惧逻辑处理
-    }
+    if (action.type === "flee") return;
     if (!("targetId" in action)) return;
 
     const taunt = this.effectManager.isTaunted(actor);
@@ -294,39 +287,6 @@ export class BattleEngine implements BattleEngineLike {
     }
 
     this.gaugeManager.consumeGauge(actor, skill.actionCost);
-  }
-
-  private executeElixir(actor: BattleCombatant, elixirIndex: number): void {
-    const elixir = actor.elixirs[elixirIndex];
-    if (!elixir || elixir.count <= 0) return;
-
-    elixir.count--;
-
-    const healMult = 1 + this.effectManager.getModifierTotal(actor, "healReceived") / 100;
-
-    if (elixir.effectType === "healHp") {
-      const baseHeal = elixir.isPercent
-        ? Math.round(actor.stats.maxHp * elixir.value / 100)
-        : elixir.value;
-      const healed = this.applyHeal(actor, Math.round(baseHeal * healMult));
-      if (healed <= 0) {
-        this.addLog({ turn: this.state.actionCount, actorName: actor.name, action: "使用丹药", type: "info", narrative: `${actor.name}使用${elixir.name}，但生命已满`, team: actor.team });
-      } else {
-        this.addLog({ turn: this.state.actionCount, actorName: actor.name, action: "使用丹药", type: "heal", value: healed, narrative: `${actor.name}使用${elixir.name}，恢复${healed}点生命`, team: actor.team });
-      }
-    } else if (elixir.effectType === "healMp") {
-      const baseRestore = elixir.isPercent
-        ? Math.round(actor.stats.maxMp * elixir.value / 100)
-        : elixir.value;
-      const restored = this.applyMpChange(actor, baseRestore);
-      if (restored <= 0) {
-        this.addLog({ turn: this.state.actionCount, actorName: actor.name, action: "使用丹药", type: "info", narrative: `${actor.name}使用${elixir.name}，但法力已满`, team: actor.team });
-      } else {
-        this.addLog({ turn: this.state.actionCount, actorName: actor.name, action: "使用丹药", type: "heal", value: restored, narrative: `${actor.name}使用${elixir.name}，恢复${restored}点法力`, team: actor.team });
-      }
-    }
-
-    this.gaugeManager.consumeGauge(actor, ELIXIR_COST);
   }
 
   private executeConsumableSkill(actor: BattleCombatant, consumableIndex: number, targetId: string): void {
@@ -440,12 +400,12 @@ export class BattleEngine implements BattleEngineLike {
   getPlayerActionOptions(): ActionOptions {
     const actor = this.findCombatant(this.state.activeCombatantId ?? "");
     if (!actor || actor.isDead) {
-      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], elixirs: [], consumableSkills: [] };
+      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, consumableActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], consumableSkills: [] };
     }
 
     const canAct = this.effectManager.canAct(actor);
     if (!canAct) {
-      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], elixirs: [], consumableSkills: [] };
+      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, consumableActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], consumableSkills: [] };
     }
 
     const canUseSkills = this.effectManager.canUseSkills(actor);
@@ -485,21 +445,6 @@ export class BattleEngine implements BattleEngineLike {
       });
     }
 
-    const elixirs: ElixirActionItem[] = [];
-    for (let i = 0; i < actor.elixirs.length; i++) {
-      const el = actor.elixirs[i];
-      if (!el || el.count <= 0) continue;
-      const statLabel = el.effectType === "healHp" ? "生命" : "法力";
-      elixirs.push({
-        elixirIndex: i,
-        name: el.name,
-        effectType: el.effectType,
-        value: el.value,
-        count: el.count,
-        description: `恢复${el.value}${el.isPercent ? "%" : "点"}${statLabel}`,
-      });
-    }
-
     const consumableSkills: ConsumableSkillActionItem[] = [];
     const consumables = actor.consumableSkills ?? [];
     for (let i = 0; i < consumables.length; i++) {
@@ -522,11 +467,10 @@ export class BattleEngine implements BattleEngineLike {
       normalAttackCost: NORMAL_ATTACK_COST,
       normalAttackDamage: actor.stats.physAttack,
       skillActionCost: 100,
-      elixirActionCost: ELIXIR_COST,
+      consumableActionCost: ELIXIR_COST,
       canFlee: actor.isProtagonist,
       fleeActionCost: FLEE_COST,
       skills,
-      elixirs,
       consumableSkills,
     };
   }
@@ -598,8 +542,9 @@ export class BattleEngine implements BattleEngineLike {
   }
 
   applyHeal(target: BattleCombatant, rawHeal: number): number {
-    const mult = target.linggenHealMult ?? 1;
-    const totalHeal = Math.round(rawHeal * mult);
+    const ling = target.linggenHealMult ?? 1;
+    const healRecv = 1 + this.effectManager.getModifierTotal(target, "healReceived") / 100;
+    const totalHeal = Math.round(rawHeal * ling * healRecv);
     const deficit = target.stats.maxHp - target.hp;
     const healed = Math.min(deficit, totalHeal);
     target.hp += healed;

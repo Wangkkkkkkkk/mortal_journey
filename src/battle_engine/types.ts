@@ -130,8 +130,7 @@ export interface BattleCombatant {
 
   skills: BattleSkill[];
   cooldowns: number[];
-  elixirs: BattleElixir[];
-  /** 消耗型技能（符箓/阵法）：一次性使用的技能，使用后从库存扣除。 */
+  /** 消耗型物品（丹药/符箓/阵法）：一次性使用的技能，使用后从库存扣除。 */
   consumableSkills?: BattleConsumableSkill[];
 
   effects: BattleEffect[];
@@ -176,15 +175,6 @@ export interface BattleConsumableSkill {
   itemName: string;
 }
 
-export interface BattleElixir {
-  name: string;
-  desc: string;
-  effectType: "healHp" | "healMp";
-  value: number;
-  isPercent: boolean;
-  count: number;
-}
-
 // ─── 技能效果（联合类型） ───
 
 export type SkillEffect =
@@ -195,6 +185,7 @@ export type SkillEffect =
   | { type: "consumePoisonDamage" }
   | { type: "sacrificeHp"; percent: number }
   | { type: "heal"; value: number }
+  | { type: "healMp"; value: number }
   | { type: "lifesteal"; damageType: DamageType; damagePercent: number }
   | { type: "applyModifier"; modifierType: ModifierType; value: number; duration: number; maxStacks: number; targetSelf?: boolean }
   | { type: "applyCc"; ccType: CcType; chance: number; duration: number }
@@ -260,7 +251,6 @@ export interface BattleEffect {
 export type BattleAction =
   | { type: "normalAttack"; targetId: string }
   | { type: "skill"; skillIndex: number; targetId: string }
-  | { type: "elixir"; elixirIndex: number }
   | { type: "consumableSkill"; consumableIndex: number; targetId: string }
   | { type: "flee" };
 
@@ -361,15 +351,6 @@ export interface SkillActionItem {
   disabledReason?: string;
 }
 
-export interface ElixirActionItem {
-  elixirIndex: number;
-  name: string;
-  effectType: "healHp" | "healMp";
-  value: number;
-  count: number;
-  description: string;
-}
-
 export interface ConsumableSkillActionItem {
   consumableIndex: number;
   name: string;
@@ -387,11 +368,10 @@ export interface ActionOptions {
   normalAttackCost: number;
   normalAttackDamage: number;
   skillActionCost: number;
-  elixirActionCost: number;
+  consumableActionCost: number;
   fleeActionCost: number;
   canFlee: boolean;
   skills: SkillActionItem[];
-  elixirs: ElixirActionItem[];
   consumableSkills: ConsumableSkillActionItem[];
 }
 

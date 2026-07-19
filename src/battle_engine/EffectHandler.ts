@@ -222,6 +222,7 @@ export class EffectHandler {
       case "consumePoisonDamage": return this.doConsumePoisonDamage(ctx, engine, sourceName);
       case "sacrificeHp": return this.doSacrificeHp(eff.percent, ctx);
       case "heal": return this.doHeal(eff.value, ctx, engine);
+      case "healMp": return this.doHealMp(eff.value, ctx, engine);
       case "lifesteal": return this.doLifesteal(eff, ctx, engine, sourceName);
       case "applyModifier": return this.doApplyModifier(eff, ctx, engine);
       case "applyCc": return this.doApplyCc(eff, ctx, engine);
@@ -361,6 +362,16 @@ export class EffectHandler {
     if (healed > 0) {
       return [log(ctx.turn, ctx.actor.name, "治疗", "heal",
         `${target.name}恢复${healed}点生命`, target.team, target.name, healed)];
+    }
+    return [];
+  }
+
+  private doHealMp(value: number, ctx: ActionContext, engine: BattleEngineLike): BattleLogEntry[] {
+    const target = ctx.target ?? ctx.actor;
+    const restored = engine.applyMpChange(target, value);
+    if (restored > 0) {
+      return [log(ctx.turn, ctx.actor.name, "恢复法力", "heal",
+        `${target.name}恢复${restored}点法力`, target.team, target.name, restored)];
     }
     return [];
   }
