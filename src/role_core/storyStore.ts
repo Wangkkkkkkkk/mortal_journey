@@ -41,6 +41,24 @@ export interface StorySerialData {
   grandSummary: string;
   /** 大总结覆盖到的 chatMessages 索引（不含）；index < 此值的 story 已被吃进大总结。 */
   grandSummaryUpTo: number;
+  /** 路线剧情大纲（约 1000 字散文蓝图，含近期回顾与 2-3 条多方向钩子）。空串表示无大纲。 */
+  plotOutline: string;
+  /** 自上次大纲生成以来的短期剧情回合数；达阈值则重生大纲。 */
+  outlineTurnCounter: number;
+  /** 上次生成大纲时主角所在地点（用于检测跨大区域/国家移动以触发重生）。 */
+  outlineWorldLocation: WorldLocation | null;
+  /** 是否启用剧情回忆检索（RAG）。缺省/老存档视为 true。 */
+  recallEnabled?: boolean;
+  /** 回忆检索最早触发的回合数阈值；缺省视为 10。 */
+  recallMinRound?: number;
+  /** 回忆检索语料中保留原文的最近条数 N；缺省视为 20。 */
+  recallFullN?: number;
+  /** 中期记忆：回忆档案批次压缩结果（每条约 300-500 字，覆盖约 30 回合）。 */
+  midTermMemory?: string[];
+  /** 长期记忆：中期记忆批次再压缩结果（每条约 800-1000 字，覆盖约 50 条中期）。 */
+  longTermMemory?: string[];
+  /** 回忆档案中已被压入中期记忆的回合数（不含）；未压缩区 = archive[compressedUpTo:]。 */
+  archiveCompressedUpTo?: number;
 }
 
 const storyBody = ref("");
@@ -55,6 +73,24 @@ const chatMessages = ref<ChatMessage[]>([]);
 const grandSummary = ref("");
 /** 大总结覆盖到的 chatMessages 索引（不含）；index < 此值的 story 已被吃进大总结。 */
 const grandSummaryUpTo = ref(0);
+/** 路线剧情大纲（约 1000 字散文蓝图）。空串表示尚无大纲。 */
+const plotOutline = ref("");
+/** 自上次大纲生成以来的短期剧情回合数。 */
+const outlineTurnCounter = ref(0);
+/** 上次生成大纲时主角所在地点。 */
+const outlineWorldLocation = ref<WorldLocation | null>(null);
+/** 是否启用剧情回忆检索（RAG）。 */
+const recallEnabled = ref(true);
+/** 回忆检索最早触发的回合数阈值。 */
+const recallMinRound = ref(10);
+/** 回忆检索语料中保留原文的最近条数 N。 */
+const recallFullN = ref(20);
+/** 中期记忆：回忆档案批次压缩结果。 */
+const midTermMemory = ref<string[]>([]);
+/** 长期记忆：中期记忆批次再压缩结果。 */
+const longTermMemory = ref<string[]>([]);
+/** 回忆档案中已被压入中期记忆的回合数（不含）。 */
+const archiveCompressedUpTo = ref(0);
 /** 游戏结束原因（战败/寿尽），仅在 phase==="ended" 时展示用；不持久化，进入 ended 状态时实时写入。 */
 const gameOverReason = ref("");
 
@@ -78,6 +114,15 @@ function clearStory(): void {
     chatMessages.value = [];
     grandSummary.value = "";
     grandSummaryUpTo.value = 0;
+    plotOutline.value = "";
+    outlineTurnCounter.value = 0;
+    outlineWorldLocation.value = null;
+    recallEnabled.value = true;
+    recallMinRound.value = 10;
+    recallFullN.value = 20;
+    midTermMemory.value = [];
+    longTermMemory.value = [];
+    archiveCompressedUpTo.value = 0;
     gameOverReason.value = "";
     restored.value = false;
 }
@@ -95,6 +140,15 @@ function serializeStory(): StorySerialData {
     chatMessages: chatMessages.value.map((m) => ({ ...m })),
     grandSummary: grandSummary.value,
     grandSummaryUpTo: grandSummaryUpTo.value,
+    plotOutline: plotOutline.value,
+    outlineTurnCounter: outlineTurnCounter.value,
+    outlineWorldLocation: outlineWorldLocation.value ? { ...outlineWorldLocation.value } : null,
+    recallEnabled: recallEnabled.value,
+    recallMinRound: recallMinRound.value,
+    recallFullN: recallFullN.value,
+    midTermMemory: [...midTermMemory.value],
+    longTermMemory: [...longTermMemory.value],
+    archiveCompressedUpTo: archiveCompressedUpTo.value,
   };
 }
 
@@ -114,6 +168,18 @@ function restoreStory(data: StorySerialData | null | undefined): void {
   chatMessages.value = (d.chatMessages ?? []).map((m) => ({ ...m }));
   grandSummary.value = d.grandSummary ?? "";
   grandSummaryUpTo.value = d.grandSummaryUpTo ?? 0;
+  plotOutline.value = d.plotOutline ?? "";
+  outlineTurnCounter.value = d.outlineTurnCounter ?? 0;
+  outlineWorldLocation.value = d.outlineWorldLocation ? { ...d.outlineWorldLocation } : null;
+  recallEnabled.value = d.recallEnabled ?? true;
+  recallMinRound.value = d.recallMinRound ?? 10;
+  recallFullN.value = d.recallFullN ?? 20;
+  midTermMemory.value = Array.isArray(d.midTermMemory) ? [...d.midTermMemory] : [];
+  // 老存档迁移：若无长期记忆但存在旧版 grandSummary，把它作为长期记忆的种子。
+  longTermMemory.value = Array.isArray(d.longTermMemory)
+    ? [...d.longTermMemory]
+    : (d.grandSummary && d.grandSummary.trim() ? [d.grandSummary.trim()] : []);
+  archiveCompressedUpTo.value = d.archiveCompressedUpTo ?? 0;
   restored.value = true;
 }
 
@@ -138,6 +204,17 @@ function applyStorySnapshot(data: StorySerialData | null | undefined): void {
   chatMessages.value = (d.chatMessages ?? []).map((m) => ({ ...m }));
   grandSummary.value = d.grandSummary ?? "";
   grandSummaryUpTo.value = d.grandSummaryUpTo ?? 0;
+  plotOutline.value = d.plotOutline ?? "";
+  outlineTurnCounter.value = d.outlineTurnCounter ?? 0;
+  outlineWorldLocation.value = d.outlineWorldLocation ? { ...d.outlineWorldLocation } : null;
+  recallEnabled.value = d.recallEnabled ?? true;
+  recallMinRound.value = d.recallMinRound ?? 10;
+  recallFullN.value = d.recallFullN ?? 20;
+  midTermMemory.value = Array.isArray(d.midTermMemory) ? [...d.midTermMemory] : [];
+  longTermMemory.value = Array.isArray(d.longTermMemory)
+    ? [...d.longTermMemory]
+    : (d.grandSummary && d.grandSummary.trim() ? [d.grandSummary.trim()] : []);
+  archiveCompressedUpTo.value = d.archiveCompressedUpTo ?? 0;
 }
 
 export const storyStore = {
@@ -151,6 +228,15 @@ export const storyStore = {
   chatMessages,
   grandSummary,
   grandSummaryUpTo,
+  plotOutline,
+  outlineTurnCounter,
+  outlineWorldLocation,
+  recallEnabled,
+  recallMinRound,
+  recallFullN,
+  midTermMemory,
+  longTermMemory,
+  archiveCompressedUpTo,
   gameOverReason,
   restored,
   clearStory,

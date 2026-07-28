@@ -22,6 +22,7 @@ import type { WorldLocation } from "./types/worldLocation";
 import type { WorldTime } from "./worldTime";
 import { createDefaultWorldTime, cloneWorldTime, ensureWorldTime } from "./worldTime";
 import { gameLog } from "../log/gameLog";
+import { appendNpcMemory, normalizeNpcMemories, type NpcMemory } from "./npcMemory";
 
 const VALID_POWER_TIERS = new Set<string>(["小怪", "精英怪", "小boss", "大boss", "普通NPC"]);
 
@@ -80,6 +81,10 @@ export class Npc extends Character {
   avatarCandidates: string[];
   /** 剧情近况快照（追加+限长）：跨轮 NPC 记忆，供状态/剧情 AI 延续上下文。 */
   storySnapshot: string;
+  /** 互动记忆日志（append-only，带上限）：与主角的关键互动按时间顺序记录。 */
+  memories: NpcMemory[];
+  /** 好感度突破条件（上涨门槛文本）：正向 delta 跨档前须满足；缺失则无门槛。 */
+  favorBreakthroughCondition: string;
 
   constructor(data: NpcPlayInfo) {
     super(data);
@@ -108,6 +113,10 @@ export class Npc extends Character {
       this.avatarCandidates = [this.avatarUrl];
     }
     this.storySnapshot = typeof data.storySnapshot === "string" ? data.storySnapshot : "";
+    this.memories = normalizeNpcMemories(data.memories);
+    this.favorBreakthroughCondition = typeof data.favorBreakthroughCondition === "string"
+      ? data.favorBreakthroughCondition.trim()
+      : "";
   }
 
   static fromAiData(
@@ -225,7 +234,9 @@ export class Npc extends Character {
     if (this.isDead) return;
 
     if (entry.identity) this.identity = entry.identity;
-    if (typeof entry.favorability === "number") this.favorability = Math.max(-99, Math.min(99, entry.favorability));
+    // 已存在 NPC 的 favorability 不再从 nearbyNpcs 覆盖（历史缺陷：绝对值覆盖导致乱跳）。
+    // 好感度变化只走 applyFavorChange（增量通道，由 <mj_npc_favor_changes> 驱动）。
+    // entry.favorability 仅在 Npc.fromAiData（新 NPC 建档）时用作初始值。
     if (entry.isDead === true) {
       this.isDead = true;
       this.currentHp = 0;
@@ -303,6 +314,40 @@ export class Npc extends Character {
     this.storySnapshot = appendNpcSnapshot(this.storySnapshot, addition);
   }
 
+  /** 追加一条互动记忆到 memories（自动限长保尾部，返回新数组以触发响应式）。 */
+  appendMemory(worldTime: WorldTime | null, text: string): void {
+    this.memories = appendNpcMemory(this.memories, { worldTime: worldTime ?? undefined, text });
+  }
+
+  /**
+   * 应用一次好感度增量变化（显式事件驱动，替代旧的绝对值覆盖）。
+   *
+   * 单回合上限：常规事件 ±10；major=true（重大事件）±25。超出截断并告警。
+   * 最终值 clamp 到 [-99, 99]。返回实际应用的增量（可能与传入 delta 不同）。
+   */
+  applyFavorChange(change: { delta: number; major?: boolean; reason?: string }): {
+    applied: number;
+    clamped: boolean;
+  } {
+    if (this.isDead) return { applied: 0, clamped: false };
+    const rawDelta = Math.trunc(Number(change.delta) || 0);
+    if (rawDelta === 0) return { applied: 0, clamped: false };
+    const cap = change.major === true ? 25 : 10;
+    const sign = Math.sign(rawDelta);
+    const magnitude = Math.min(Math.abs(rawDelta), cap);
+    const effective = sign * magnitude;
+    const prev = this.favorability;
+    const next = Math.max(-99, Math.min(99, prev + effective));
+    const applied = next - prev;
+    this.favorability = next;
+    if (Math.abs(rawDelta) > cap) {
+      gameLog.warn(
+        `[Npc.favor] ${this.displayName} 好感度增量 ${rawDelta} 超上限 ±${cap}（${change.reason || "无原因"}），已截断为 ${effective}（${prev}→${next}）`,
+      );
+    }
+    return { applied, clamped: applied !== rawDelta };
+  }
+
   toData(): NpcPlayInfo {
     const base = this.toCommonData();
     return {
@@ -323,6 +368,11 @@ export class Npc extends Character {
       encounterCount: this.encounterCount,
       avatarCandidates: [...this.avatarCandidates],
       storySnapshot: this.storySnapshot,
+      memories: this.memories.map((m) => ({
+        worldTime: cloneWorldTime(m.worldTime),
+        text: m.text,
+      })),
+      favorBreakthroughCondition: this.favorBreakthroughCondition,
     };
   }
 

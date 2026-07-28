@@ -13,6 +13,8 @@ import type { AiRequestConfig } from "../shared/apiTypes";
 import type {
   StateParsed,
   NpcSnapshotEntry,
+  NpcMemoryEntry,
+  NpcFavorChangeEntry,
   HpMpState,
   UserStateChange,
   BreakthroughState,
@@ -41,7 +43,8 @@ import type {
   BattleTriggerEntry,
   BattleCombatant,
 } from "../types/npcEvents";
-import { parseWorldLocationFromDash } from "../../role_core/types/worldLocation";
+import { parseWorldLocationFromDash, formatWorldLocationDash } from "../../role_core/types/worldLocation";
+import { formatWorldTimeZhDisplay } from "../../role_core/worldTime";
 import { runPipeline, type RunPipelineOptions } from "../shared/runPipeline";
 import { callChatCompletions } from "../bridge/openAiBridge";
 import { STATE_SYSTEM_PRESET } from "../presets/statePreset";
@@ -65,6 +68,8 @@ import {
   TAG_NPC_CORE_CHANGE_OPEN, TAG_NPC_CORE_CHANGE_CLOSE,
   TAG_BATTLE_TRIGGER_OPEN, TAG_BATTLE_TRIGGER_CLOSE,
   TAG_NPC_SNAPSHOTS_OPEN, TAG_NPC_SNAPSHOTS_CLOSE,
+  TAG_NPC_MEMORIES_OPEN, TAG_NPC_MEMORIES_CLOSE,
+  TAG_NPC_FAVOR_CHANGES_OPEN, TAG_NPC_FAVOR_CHANGES_CLOSE,
 } from "../shared/tagSpec";
 import { tryParseJsonArray, safeJsonParse } from "../shared/parseJson";
 import {
@@ -78,6 +83,10 @@ export interface StateGenerateInput extends AiRequestConfig {
   currentWorldLocation?: WorldLocation | null;
   currentWorldTime?: WorldTime;
   npcSnapshot?: string;
+  /** 路线大纲（含 2-3 条多方向钩子），用于使行动建议与剧情分支对齐。 */
+  plotOutline?: string;
+  /** 已注册地点扁平列表（region-country-area-detail），注入上下文供 AI 逐字复用。 */
+  registeredLocations?: string[];
 }
 
 /**
@@ -125,12 +134,12 @@ export function npcEventsToLegacyFormat(events: NpcEvent[]): {
       }
       case "npc_present": {
         // 把 dynamic 字段包装为 nearbyNpcs 条目（npcStore 按 npcId 匹配后 mergeFromAi）
+        // 注意：已存在 NPC 的 favorability 不在此处传递——好感度变化只走 npcFavorChanges 增量通道。
         nearbyNpcs.push({
           npcId: event.npcId,
           displayName: "", // npcStore 会按 npcId 查找，displayName 可为空
           identity: event.dynamic.identity ?? "",
           isDead: false,
-          favorability: event.dynamic.favorability ?? 0,
           race: "修仙者",
           appearance: "",
           clothing: "",
@@ -489,6 +498,43 @@ function parseNpcSnapshots(raw: string): NpcSnapshotEntry[] {
   return out;
 }
 
+function parseNpcMemories(raw: string): NpcMemoryEntry[] {
+  const text = extractTagContent(raw, TAG_NPC_MEMORIES_OPEN, TAG_NPC_MEMORIES_CLOSE);
+  if (!text.trim()) return [];
+  const arr = tryParseJsonArray(text) ?? [];
+  const out: NpcMemoryEntry[] = [];
+  for (const e of arr) {
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    const npcId = typeof o.npcId === "string" ? o.npcId.trim() : "";
+    const textVal = typeof o.text === "string" ? o.text.trim() : "";
+    if (npcId && textVal) out.push({ npcId, text: textVal });
+  }
+  return out;
+}
+
+function parseNpcFavorChanges(raw: string): NpcFavorChangeEntry[] {
+  const text = extractTagContent(raw, TAG_NPC_FAVOR_CHANGES_OPEN, TAG_NPC_FAVOR_CHANGES_CLOSE);
+  if (!text.trim()) return [];
+  const arr = tryParseJsonArray(text) ?? [];
+  const out: NpcFavorChangeEntry[] = [];
+  for (const e of arr) {
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    const npcId = typeof o.npcId === "string" ? o.npcId.trim() : "";
+    const delta = Number(o.delta);
+    const reason = typeof o.reason === "string" ? o.reason.trim() : "";
+    if (!npcId || !Number.isFinite(delta) || delta === 0 || !reason) continue;
+    out.push({
+      npcId,
+      delta: Math.trunc(delta),
+      reason,
+      major: o.major === true,
+    });
+  }
+  return out;
+}
+
 function parseStateFromXml(raw: string): StateParsed {
   const worldLocation = extractWorldBody(raw);
   const hpMp = parseHpMp(raw);
@@ -505,6 +551,8 @@ function parseStateFromXml(raw: string): StateParsed {
   const battleTrigger = parseBattleTrigger(raw);
   const { nearbyNpcs, npcCoreChanges } = npcEventsToLegacyFormat(npcEvents);
   const npcSnapshots = parseNpcSnapshots(raw);
+  const npcMemories = parseNpcMemories(raw);
+  const npcFavorChanges = parseNpcFavorChanges(raw);
 
   return {
     worldLocation,
@@ -521,14 +569,37 @@ function parseStateFromXml(raw: string): StateParsed {
     storySnapshot,
     actionOptions,
     npcSnapshots,
+    npcMemories,
+    npcFavorChanges,
   };
 }
 
 export async function generateState(input: StateGenerateInput): Promise<StateParsed> {
   const npcCtx = input.npcSnapshot?.trim();
-  const userContent = npcCtx
-    ? `${input.storyBody}\n\n[当前在场 NPC 现状（含储物/装备/功法物品名与近况，据此准确输出其核心变更）]\n${npcCtx}`
-    : input.storyBody;
+  const outlineCtx = input.plotOutline?.trim();
+
+  const sections: string[] = [];
+  // 注入当前世界时间，让 AI 产出自洽的 timeAdvance（对照"当前 + delta = 终时刻"）。
+  if (input.currentWorldTime) {
+    const t = input.currentWorldTime;
+    sections.push(`【当前世界时间】${formatWorldTimeZhDisplay(t)} ${String(t.hour).padStart(2, "0")}时`);
+  }
+  // 注入当前所在地点 + 已注册地点树，让 AI 复用规范字符串，避免重复分支。
+  if (input.currentWorldLocation) {
+    sections.push(`【当前所在地点】${formatWorldLocationDash(input.currentWorldLocation)}`);
+  }
+  const registered = (input.registeredLocations ?? []).filter((s) => s && s.trim());
+  if (registered.length > 0) {
+    sections.push(`【已注册地点·返回时须逐字沿用既有字符串】\n${registered.join("\n")}`);
+  }
+  if (outlineCtx) {
+    sections.push(`【路线大纲·据此对齐行动建议与剧情分支】\n${outlineCtx}`);
+  }
+  sections.push(input.storyBody);
+  if (npcCtx) {
+    sections.push(`[当前在场 NPC 现状（含储物/装备/功法物品名与近况，据此准确输出其核心变更）]\n${npcCtx}`);
+  }
+  const userContent = sections.join("\n\n");
 
   const opts: RunPipelineOptions = {
     defaultTemperature: 0.55,

@@ -10,6 +10,7 @@
 import { ref, watch, type Ref, type ComputedRef } from "vue";
 import { generateInitStory, type InitStoryInput } from "../pipelines/initStory";
 import { generateInitState, type InitStateInput, type InitStateParsed } from "../pipelines/initState";
+import { generatePlotOutline } from "../pipelines/plotOutline";
 import type { ActionSuggestions } from "../types/stateDiff";
 import type { WorldTime } from "../../role_core/worldTime";
 import {
@@ -102,6 +103,9 @@ export function useOpeningStoryFromFateChoice(
     errorMessage.value = "";
     storyStore.phase.value = "idle";
     storyStore.chatMessages.value = [];
+    storyStore.plotOutline.value = "";
+    storyStore.outlineTurnCounter.value = 0;
+    storyStore.outlineWorldLocation.value = null;
     resetWorldClock();
   }
 
@@ -242,6 +246,36 @@ export function useOpeningStoryFromFateChoice(
         const traitsOwner = protagonist.value;
         if (traitsOwner) {
           traitsOwner.applyTraitEffects();
+        }
+
+        // ── 6.5 生成首条路线大纲（开局即关键节点）──
+        try {
+          const owner = protagonist.value;
+          if (owner) {
+            const openingLoc = storyStore.worldLocation.value;
+            const outlineInput = {
+              apiUrl: url,
+              apiKey: String(apiKey || "").trim() || undefined,
+              model,
+              signal: ac.signal,
+              protagonist: owner,
+              grandSummary: storyStore.grandSummary.value || undefined,
+              recentSnapshots: [storyStore.initSnapshot.value.trim() || storyStore.storyBody.value.trim()].filter(Boolean),
+              currentWorldLocation: openingLoc,
+              sceneNpcSnapshot: undefined,
+            };
+            const outlineResult = await generatePlotOutline(outlineInput);
+            if (abortCtl !== ac) return;
+            const outline = outlineResult.outline.trim();
+            if (outline) {
+              storyStore.plotOutline.value = outline;
+              storyStore.outlineTurnCounter.value = 0;
+              storyStore.outlineWorldLocation.value = openingLoc ? { ...openingLoc } : null;
+              gameLog.info("[OpeningStory] 首条路线大纲已生成。");
+            }
+          }
+        } catch (outlineErr) {
+          gameLog.error("[OpeningStory] 路线大纲生成失败：" + (outlineErr instanceof Error ? outlineErr.message : String(outlineErr)));
         }
 
         // ── 7. 设为 ready ──

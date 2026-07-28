@@ -13,6 +13,8 @@ import type {
   GongfaItemDefinition,
   InventoryStackItem,
 } from "./items";
+import type { NpcMemory } from "../npcMemory";
+export type { NpcMemory };
 import type { WorldLocation } from "./worldLocation";
 import type { WorldTime } from "../worldTime";
 
@@ -262,6 +264,10 @@ export interface NpcPlayInfo extends CharacterPlayInfoCommon {
   avatarCandidates?: string[];
   /** 剧情近况快照（追加+限长）：状态 AI 每轮为有显著行为的 NPC 追加一句话，用于跨轮记忆。旧存档缺省为空。 */
   storySnapshot?: string;
+  /** 互动记忆日志（append-only，带上限）：与主角的关键互动按时间顺序记录，用于深度连续性。旧存档缺省为空。 */
+  memories?: NpcMemory[];
+  /** 好感度突破条件（上涨门槛文本）：正向 delta 跨档前须满足；旧存档缺省为空（无门槛）。 */
+  favorBreakthroughCondition?: string;
 }
 
 export type EquipSlotKey = number;

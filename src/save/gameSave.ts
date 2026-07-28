@@ -23,6 +23,7 @@ import { npcStore } from "../role_core/npcStore";
 import { worldMapStore } from "../role_core/worldMapStore";
 import { locationImageStore, type LocationImagesSerialData } from "../role_core/locationImageStore";
 import { storyStore, type StorySerialData } from "../role_core/storyStore";
+import { memoryArchiveStore, type MemoryArchiveSerialData } from "../role_core/memoryArchive";
 import { gameLog } from "../log/gameLog";
 
 export const SAVE_VERSION = 1;
@@ -124,6 +125,8 @@ export interface MjSavePayload {
   worldMap?: WorldMapSerialData;
   locationImages?: LocationImagesSerialData;
   story?: StorySerialData;
+  /** 回忆档案（全量回合索引）；懒回填：老存档缺省视为空。 */
+  memoryArchive?: MemoryArchiveSerialData;
 }
 
 export interface SaveIndexEntry {
@@ -235,6 +238,7 @@ export function serializeAll(now = Date.now()): MjSavePayload | null {
     worldMap: worldMapStore.serializeWorldMap(),
     locationImages: locationImageStore.serialize(),
     story: storyStore.serializeStory(),
+    memoryArchive: memoryArchiveStore.serializeArchive(),
   };
 }
 
@@ -391,6 +395,7 @@ export function restoreSave(payload: MjSavePayload): void {
   worldMapStore.restoreWorldMap(payload.worldMap ?? null);
   locationImageStore.restore(payload.locationImages ?? null);
   storyStore.restoreStory(payload.story ?? null);
+  memoryArchiveStore.restoreArchive(payload.memoryArchive ?? null);
   activeFateChoice = payload.fateChoice;
 }
 
@@ -404,6 +409,7 @@ export function resetAllGameState(): void {
   worldMapStore.clearWorldMap();
   locationImageStore.clearAll();
   storyStore.clearStory();
+  memoryArchiveStore.clearArchive();
   activeSaveId = null;
   activeCreatedAt = 0;
   activeFateChoice = null;

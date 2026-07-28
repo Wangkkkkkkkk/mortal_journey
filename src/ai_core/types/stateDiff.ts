@@ -79,6 +79,23 @@ export interface NpcSnapshotEntry {
   snapshot: string;
 }
 
+/** 本轮某 NPC 与主角的关键互动记忆（追加到 npc.memories）。 */
+export interface NpcMemoryEntry {
+  npcId: string;
+  text: string;
+}
+
+/** 本轮 NPC 好感度增量变化（显式事件驱动，替代旧的绝对值覆盖）。 */
+export interface NpcFavorChangeEntry {
+  npcId: string;
+  /** 增量，正为涨负为跌；运行时会按上限裁剪。 */
+  delta: number;
+  /** 变化原因（一句话，须有正文依据）。 */
+  reason: string;
+  /** 是否重大事件（true 时单回合上限放宽到 ±25；否则 ±10）。 */
+  major?: boolean;
+}
+
 export interface StateParsed {
   worldLocation: WorldLocation | null;
   hpMp: HpMpState | null;
@@ -95,4 +112,8 @@ export interface StateParsed {
   actionOptions: ActionSuggestions | null;
   /** 本轮有显著行为的 NPC 各一句话近况（追加到 npc.storySnapshot）。无则空数组。 */
   npcSnapshots: NpcSnapshotEntry[];
+  /** 本轮 NPC 与主角的关键互动记忆（追加到 npc.memories）。无则空数组。 */
+  npcMemories: NpcMemoryEntry[];
+  /** 本轮 NPC 好感度增量变化（显式事件驱动）。无则空数组。 */
+  npcFavorChanges: NpcFavorChangeEntry[];
 }

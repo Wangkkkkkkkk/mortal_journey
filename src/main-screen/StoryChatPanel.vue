@@ -2,7 +2,7 @@
 import { ref, watch, computed, nextTick } from "vue";
 import type { OpeningStoryPhase } from "../ai_core";
 import { useApiConfig } from "../ai_core";
-import { generateStory, type StoryChatEntry } from "../ai_core";
+import { generateShortTermStory, generatePlotOutline, generateRecallStory, generateMemoryCompress, OUTLINE_REFRESH_TURNS, type StoryChatEntry } from "../ai_core";
 import { generateState, type StateParsed, type BattleTriggerEntry, npcEventsToLegacyFormat } from "../ai_core";
 import { CULTIVATION_WORLD_BOOK } from "../ai_core/world_books/cultivationWorldBook";
 import type { WorldBookEntry } from "../ai_core/world_books/types";
@@ -12,6 +12,7 @@ import { protagonist, Protagonist } from "../role_core/Protagonist";
 import { npcStore } from "../role_core/npcStore";
 import { worldMapStore, type WorldMapSerialData } from "../role_core/worldMapStore";
 import { storyStore, type StorySerialData, type ChatMessage } from "../role_core/storyStore";
+import { memoryArchiveStore } from "../role_core/memoryArchive";
 import { writeActiveSave, getActiveDifficulty } from "../save/gameSave";
 import type { NpcPlayInfo } from "../role_core/types/playInfo";
 import type { InventoryStackItem } from "../role_core/types/items";
@@ -26,7 +27,10 @@ import {
 import type { BattleResult } from "../battle_engine/types";
 import type { WorldLocation } from "../role_core/types/worldLocation";
 import { formatWorldLocationDash, isEmptyWorldLocation, isWorldLocationEqual } from "../role_core/types/worldLocation";
+import { reconcileLocation, flattenLocationTree } from "../role_core/worldLocationReconcile";
+import { enforceTimeFloor } from "../ai_core/shared/timeFloor";
 import type { Npc } from "../role_core/Npc";
+import { formatNpcMemories } from "../role_core/npcMemory";
 import { autoGeneratePortraits, autoGenerateLocationBackgrounds } from "../image_generate";
 import { locationImageStore } from "../role_core/locationImageStore";
 
@@ -70,7 +74,7 @@ const chatBgUrl = computed(() => {
 });
 const inputText = ref("");
 const generating = ref(false);
-const generatingPhase = ref<"story" | "state" | "summary">("story");
+const generatingPhase = ref<"outline" | "story" | "state" | "summary">("story");
 const genError = ref("");
 /** 当前显示的四个行动建议（来自状态 AI）。null 时隐藏按钮区。 */
 const actionOptions = storyStore.actionOptions;
@@ -83,6 +87,11 @@ function beginGenerating(): void {
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const pendingBattleTrigger = ref<BattleTriggerEntry | null>(null);
 const battlePending = computed(() => pendingBattleTrigger.value !== null);
+/**
+ * 上一回合检测到大境界突破成功时置 true，下一回合开始时据此触发路线大纲重生。
+ * 仅会话内有效，不持久化（reload 后由回合计数/地点变化兜底）。
+ */
+const needOutlineRefresh = ref(false);
 
 function autoResizeTextarea(): void {
   const el = textareaRef.value;
@@ -154,6 +163,13 @@ function buildChatHistory(): StoryChatEntry[] {
 const GRAND_SUMMARY_THRESHOLD = 30;
 const GRAND_SUMMARY_KEEP_RECENT = 30;
 
+/** 多层记忆压缩阈值：回忆档案未压缩区达此数 → 压一条中期记忆。 */
+const MID_TERM_COMPRESS_THRESHOLD = 30;
+/** 中期记忆条数达此数 → 取最旧一批压一条长期记忆。 */
+const LONG_TERM_COMPRESS_THRESHOLD = 50;
+/** 中期→长期时每批取多少条最旧中期记忆。 */
+const LONG_TERM_COMPRESS_BATCH = 50;
+
 async function maybeGenerateGrandSummary(
   url: string,
   model: string,
@@ -207,6 +223,86 @@ async function maybeGenerateGrandSummary(
     }
   } catch (e) {
     gameLog.error("[StoryChat] 大总结生成失败：" + (e instanceof Error ? e.message : String(e)));
+  }
+}
+
+/**
+ * 多层记忆压缩：在 memoryArchive 维度做分层压缩，产出 midTermMemory / longTermMemory，
+ * 供 plotOutline 作为更丰富的长期背景。失败不影响回合。
+ *
+ * 与 maybeGenerateGrandSummary 的区别：本函数压缩的是永不删除的回忆档案（按 archive 维度），
+ * 而 grandSummary 压缩的是会被物理裁剪的 chatMessages。
+ */
+async function maybeCompressMemory(
+  url: string,
+  model: string,
+  apiKey: string | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  const archive = memoryArchiveStore.memoryArchive.value;
+  const compressedUpTo = storyStore.archiveCompressedUpTo.value ?? 0;
+  const uncompressedCount = Math.max(0, archive.length - compressedUpTo);
+
+  // 短期→中期：未压缩回忆达阈值，取最早一批压成一条中期记忆。
+  if (uncompressedCount >= MID_TERM_COMPRESS_THRESHOLD) {
+    const batch = archive
+      .slice(compressedUpTo, compressedUpTo + MID_TERM_COMPRESS_THRESHOLD)
+      .map((m) => (m.summary && m.summary.trim()) || m.raw || `第${m.round}回合`)
+      .filter(Boolean);
+    if (batch.length > 0) {
+      generatingPhase.value = "summary";
+      try {
+        const result = await generateMemoryCompress({
+          apiUrl: url,
+          apiKey,
+          model,
+          tier: "short2mid",
+          existingSummary: "",
+          batch,
+          signal,
+        });
+        if (signal.aborted) return;
+        const summary = result.summary.trim();
+        if (summary) {
+          storyStore.midTermMemory.value.push(summary);
+          storyStore.archiveCompressedUpTo.value = compressedUpTo + batch.length;
+          gameLog.info(`[StoryChat] 中期记忆压缩完成（压缩 ${batch.length} 回合，现有中期记忆 ${storyStore.midTermMemory.value.length} 条）。`);
+        }
+      } catch (e) {
+        if (signal.aborted) return;
+        gameLog.warn("[StoryChat] 中期记忆压缩失败：" + (e instanceof Error ? e.message : String(e)));
+      }
+    }
+  }
+
+  // 中期→长期：中期记忆条数达阈值，取最旧一批压成一条长期记忆。
+  const midMem = storyStore.midTermMemory.value;
+  if (midMem.length >= LONG_TERM_COMPRESS_THRESHOLD) {
+    const batch = midMem.slice(0, LONG_TERM_COMPRESS_BATCH);
+    const longExisting = storyStore.longTermMemory.value[storyStore.longTermMemory.value.length - 1] || "";
+    generatingPhase.value = "summary";
+    try {
+      const result = await generateMemoryCompress({
+        apiUrl: url,
+        apiKey,
+        model,
+        tier: "mid2long",
+        existingSummary: longExisting,
+        batch,
+        signal,
+      });
+      if (signal.aborted) return;
+      const summary = result.summary.trim();
+      if (summary) {
+        // 丢弃被压缩的最旧中期记忆，追加新的长期记忆。
+        storyStore.midTermMemory.value = midMem.slice(LONG_TERM_COMPRESS_BATCH);
+        storyStore.longTermMemory.value.push(summary);
+        gameLog.info(`[StoryChat] 长期记忆压缩完成（压缩 ${batch.length} 条中期，现有长期记忆 ${storyStore.longTermMemory.value.length} 条）。`);
+      }
+    } catch (e) {
+      if (signal.aborted) return;
+      gameLog.warn("[StoryChat] 长期记忆压缩失败：" + (e instanceof Error ? e.message : String(e)));
+    }
   }
 }
 
@@ -292,11 +388,15 @@ function handleLocationEnter(
   npcStore.wakeDormantAtLocation(newLocation, worldTime);
 }
 
-async function applyStateResult(stateResult: StateParsed, linggen: string[]): Promise<{ gameOverReason?: string }> {
+async function applyStateResult(stateResult: StateParsed, linggen: string[], storyBody?: string): Promise<{ gameOverReason?: string }> {
   let gameOverReason: string | undefined;
   const oldLocation = props.currentWorldLocation ?? null;
-  const newLocation = stateResult.worldLocation && !isEmptyWorldLocation(stateResult.worldLocation)
+  // 归并：把 AI 输出地点对齐到已注册地点树（归一化 + 包含匹配），避免重复分支。
+  const rawLocation = stateResult.worldLocation && !isEmptyWorldLocation(stateResult.worldLocation)
     ? stateResult.worldLocation
+    : null;
+  const newLocation = rawLocation
+    ? reconcileLocation(rawLocation, worldMapStore.locationTree.value)
     : oldLocation;
   const locationChanged = !isWorldLocationEqual(oldLocation, newLocation);
 
@@ -334,8 +434,15 @@ async function applyStateResult(stateResult: StateParsed, linggen: string[]): Pr
 
     try {
       if (stateResult.timeAdvance && props.worldTime) {
-        const delta = stateResult.timeAdvance;
-        newWorldTime = advanceWorldTime(props.worldTime, delta);
+        // 防时间冻结：扫描正文关键词，命中跨日/跨月等则强制抬升 delta 下限（只升不降）。
+        const raw = stateResult.timeAdvance;
+        const { delta: enforced, floorHit } = enforceTimeFloor(storyBody ?? "", raw);
+        if (floorHit.length > 0) {
+          gameLog.warn(
+            `[StoryChat] 时间地板触发：正文命中 ${floorHit.join("，")}，delta ${JSON.stringify(raw)} → ${JSON.stringify(enforced)}`,
+          );
+        }
+        newWorldTime = advanceWorldTime(props.worldTime, enforced);
         emit("update:worldTime", newWorldTime);
 
         // 寿元耗尽检查：当前年龄 = 开局档案年龄 + 自基线起经过的整年数。
@@ -393,10 +500,12 @@ async function applyStateResult(stateResult: StateParsed, linggen: string[]): Pr
       }
     }
 
-    if (nearbyNpcsToApply.length > 0 || stateResult.npcCoreChanges.length > 0 || stateResult.npcSnapshots.length > 0) {
+    if (nearbyNpcsToApply.length > 0 || stateResult.npcCoreChanges.length > 0 || stateResult.npcSnapshots.length > 0 || stateResult.npcMemories.length > 0 || stateResult.npcFavorChanges.length > 0) {
       const createdNpcs = npcStore.applyNpcUpdates(nearbyNpcsToApply, linggen, {
         coreChangeEvents: stateResult.npcCoreChanges,
         snapshots: stateResult.npcSnapshots,
+        memoryEntries: stateResult.npcMemories,
+        favorChanges: stateResult.npcFavorChanges,
         currentLocation: newLocation,
         currentWorldTime: newWorldTime ?? null,
       });
@@ -464,6 +573,78 @@ function findMissingBattleCombatants(trigger: BattleTriggerEntry): string[] {
   return missing;
 }
 
+/**
+ * 收集最近 count 条 story 消息的快照（优先 snapshot，回退到正文），供大纲生成时撰写"近期经历回顾"。
+ */
+function collectRecentSnapshots(count: number): string[] {
+  const msgs = chatMessages.value;
+  const snaps: string[] = [];
+  for (let i = msgs.length - 1; i >= 0 && snaps.length < count; i--) {
+    const m = msgs[i];
+    if (m.type === "story") {
+      const s = (m.snapshot && m.snapshot.trim()) || m.content.trim();
+      if (s) snaps.unshift(s);
+    }
+  }
+  return snaps;
+}
+
+/**
+ * 判定是否需要在本次回合开始前重生路线大纲。
+ * 命中任一条件即重生：无大纲 / 回合计数耗尽 / 上回合大境界突破 / 跨大区域或国家移动。
+ */
+function shouldRegenOutline(): boolean {
+  if (!storyStore.plotOutline.value.trim()) return true;
+  if (storyStore.outlineTurnCounter.value >= OUTLINE_REFRESH_TURNS) return true;
+  if (needOutlineRefresh.value) return true;
+  const cur = props.currentWorldLocation ?? null;
+  const gen = storyStore.outlineWorldLocation.value;
+  if (cur && gen && (cur.region !== gen.region || cur.country !== gen.country)) return true;
+  return false;
+}
+
+/**
+ * 若命中重生条件，则生成新路线大纲并写入 storyStore。
+ * 在回合的剧情生成之前调用，纳入同一 AbortController 生命周期。
+ */
+async function maybeRegenOutline(
+  p: Protagonist,
+  url: string,
+  model: string,
+  apiKey: string | undefined,
+  ac: AbortController,
+): Promise<void> {
+  if (!shouldRegenOutline()) return;
+
+  generatingPhase.value = "outline";
+  const result = await generatePlotOutline({
+    apiUrl: url,
+    apiKey,
+    model,
+    signal: ac.signal,
+    protagonist: p,
+    grandSummary: storyStore.grandSummary.value || undefined,
+    longTermMemory: storyStore.longTermMemory.value,
+    midTermMemory: storyStore.midTermMemory.value,
+    recentSnapshots: collectRecentSnapshots(3),
+    currentWorldLocation: props.currentWorldLocation ?? null,
+    sceneNpcSnapshot: buildSceneNpcSnapshot() || undefined,
+  });
+
+  if (abortCtl !== ac) return;
+
+  const outline = result.outline.trim();
+  if (outline) {
+    storyStore.plotOutline.value = outline;
+    storyStore.outlineTurnCounter.value = 0;
+    storyStore.outlineWorldLocation.value = props.currentWorldLocation
+      ? { ...props.currentWorldLocation }
+      : null;
+    needOutlineRefresh.value = false;
+    gameLog.info("[StoryChat] 路线大纲已（重新）生成。");
+  }
+}
+
 async function handleSend(): Promise<void> {
   const msg = inputText.value.trim();
   if (!msg || generating.value) return;
@@ -526,16 +707,52 @@ async function runStoryGenerationRound(ctx: RoundContext): Promise<void> {
   abortCtl = ac;
 
   try {
-    // 阶段 1：生成剧情正文。
-    const storyResult = await generateStory({
+    // 阶段 0：若命中关键节点（无大纲/回合耗尽/上回合突破/跨大区域移动），先（重新）生成路线大纲。
+    await maybeRegenOutline(p, url, model, String(apiKey.value || "").trim() || undefined, ac);
+    if (abortCtl !== ac) return;
+
+    // 阶段 0.5：剧情回忆检索（RAG）。达到阈值回合后，按玩家输入从回忆档案召回强/弱回忆，
+    // 注入主剧情上下文。失败静默降级（空 tag），不打断回合。
+    let recallTag = "";
+    const recallRound = memoryArchiveStore.memoryArchive.value.length;
+    const recallEnabled = storyStore.recallEnabled.value ?? true;
+    const recallMinRound = storyStore.recallMinRound.value ?? 10;
+    const recallFullN = storyStore.recallFullN.value ?? 20;
+    if (recallEnabled && recallRound >= recallMinRound && ctx.userContent.trim()) {
+      try {
+        const recalled = await generateRecallStory({
+          apiUrl: url,
+          apiKey: String(apiKey.value || "").trim() || undefined,
+          model,
+          playerInput: ctx.userContent,
+          archive: memoryArchiveStore.memoryArchive.value,
+          fullN: recallFullN,
+          signal: ac.signal,
+        });
+        if (abortCtl !== ac) return;
+        recallTag = recalled.tagContent;
+        gameLog.info(`[StoryChat] 剧情回忆检索完成：${recalled.previewText}`);
+      } catch (recallErr) {
+        if (ac.signal.aborted) return;
+        gameLog.warn(
+          "[StoryChat] 剧情回忆检索失败，静默降级：" +
+            (recallErr instanceof Error ? recallErr.message : String(recallErr)),
+        );
+      }
+    }
+
+    // 阶段 1：生成短期剧情正文（消费路线大纲 + 近期交互，严格止步于玩家意图）。
+    generatingPhase.value = "story";
+    const storyResult = await generateShortTermStory({
       apiUrl: url,
       apiKey: String(apiKey.value || "").trim() || undefined,
       model,
       protagonist: p,
-      chatHistory,
-      worldBookEntries: ctx.worldBookEntries,
+      plotOutline: storyStore.plotOutline.value,
+      recentHistory: chatHistory.slice(-5),
       sceneNpcSnapshot: buildSceneNpcSnapshot() || undefined,
-      currentWorldLocation: props.currentWorldLocation ? formatWorldLocationDash(props.currentWorldLocation) : undefined,
+      currentWorldLocation: props.currentWorldLocation ?? null,
+      recallTag: recallTag || undefined,
       signal: ac.signal,
     });
     const storyBody = storyResult.storyBody;
@@ -548,6 +765,7 @@ async function runStoryGenerationRound(ctx: RoundContext): Promise<void> {
     }
 
     chatMessages.value.push({ type: "story", content: storyBody.trim() });
+    storyStore.outlineTurnCounter.value += 1;
 
     try {
       generatingPhase.value = "state";
@@ -559,13 +777,23 @@ async function runStoryGenerationRound(ctx: RoundContext): Promise<void> {
         protagonist: p,
         currentWorldLocation: props.currentWorldLocation ?? undefined,
         currentWorldTime: props.worldTime,
+        registeredLocations: flattenLocationTree(worldMapStore.locationTree.value, {
+          onlyRegion: props.currentWorldLocation?.region,
+          onlyCountry: props.currentWorldLocation?.country,
+        }),
         npcSnapshot: buildStateNpcSnapshot() || undefined,
+        plotOutline: storyStore.plotOutline.value || undefined,
         signal: ac.signal,
       });
 
       if (abortCtl !== ac) return;
 
-      const { gameOverReason } = await applyStateResult(stateResult, p.linggen);
+      const { gameOverReason } = await applyStateResult(stateResult, p.linggen, storyBody);
+
+      // 大境界突破成功：标记下一回合重生路线大纲。
+      if (stateResult.breakthrough?.realmBreakthrough) {
+        needOutlineRefresh.value = true;
+      }
 
       if (stateResult.storySnapshot.trim()) {
         const last = chatMessages.value[chatMessages.value.length - 1];
@@ -574,8 +802,18 @@ async function runStoryGenerationRound(ctx: RoundContext): Promise<void> {
         }
       }
 
+      // 写入回忆档案（全量回合索引，供 RAG 剧情回忆检索）。
+      memoryArchiveStore.pushMemoryEntry({
+        summary: stateResult.storySnapshot,
+        raw: storyBody,
+        worldTime: props.worldTime ?? storyStore.worldTime.value,
+      });
+
       // 滚动大总结：当待总结区达阈值时同步压缩旧快照（失败不影响本轮）。
       await maybeGenerateGrandSummary(url, model, String(apiKey.value || "").trim() || undefined, ac.signal);
+
+      // 多层记忆压缩：在回忆档案维度做分层压缩，产出中/长期记忆供大纲消费（失败不影响本轮）。
+      await maybeCompressMemory(url, model, String(apiKey.value || "").trim() || undefined, ac.signal);
 
       if (gameOverReason) {
         // 寿元耗尽：生成走马灯结局叙事（不走状态 AI），然后触发 game over。
@@ -699,8 +937,12 @@ function npcBaseLine(npc: Npc): string {
 }
 
 function formatNpcFullLine(npc: Npc): string {
+  const parts: string[] = [];
   const snap = truncateText(npc.storySnapshot, 30);
-  return snap ? `${npcBaseLine(npc)} 近况:${snap}` : npcBaseLine(npc);
+  if (snap) parts.push(`近况:${snap}`);
+  const mem = formatNpcMemories(npc.memories, 5);
+  if (mem) parts.push(`互动记忆:${mem}`);
+  return parts.length ? `${npcBaseLine(npc)} ${parts.join("，")}` : npcBaseLine(npc);
 }
 
 function formatNpcBriefLine(npc: Npc): string {
@@ -734,6 +976,10 @@ function formatNpcStateLine(npc: Npc): string {
   if (inventory) extra.push(`储物:${inventory}`);
   const snap = npc.storySnapshot.trim();
   if (snap) extra.push(`近况:${snap}`);
+  const mem = formatNpcMemories(npc.memories, 5);
+  if (mem) extra.push(`互动记忆:${mem}`);
+  const fbc = npc.favorBreakthroughCondition.trim();
+  if (fbc) extra.push(`好感突破条件:${fbc}`);
   return extra.length ? `${npcBaseLine(npc)} ${extra.join("，")}` : npcBaseLine(npc);
 }
 

@@ -32,6 +32,8 @@ export type {
   ActionSuggestions,
   StateParsed,
   NpcSnapshotEntry,
+  NpcMemoryEntry,
+  NpcFavorChangeEntry,
   StateGenerateInput,
 } from "./types/stateDiff";
 
@@ -56,6 +58,7 @@ export {
   TAG_STORY_SNAPSHOT_OPEN, TAG_STORY_SNAPSHOT_CLOSE,
   TAG_ACTION_OPTIONS_OPEN, TAG_ACTION_OPTIONS_CLOSE,
   MJ_STORY_BODY_OPEN, MJ_STORY_BODY_CLOSE,
+  MJ_PLOT_OUTLINE_OPEN, MJ_PLOT_OUTLINE_CLOSE,
   MJ_CULTIVATION_BODY_OPEN, MJ_CULTIVATION_BODY_CLOSE,
   MJ_FINALE_BODY_OPEN, MJ_FINALE_BODY_CLOSE,
   MJ_EQUIP_BODY_OPEN, MJ_EQUIP_BODY_CLOSE,
@@ -80,21 +83,29 @@ export { callChatCompletions, extractResponse, extractOpenAiNonStreamMessageText
 
 // ── Pipelines ──
 export { generateStory, type StoryInput, type StoryParsed, type StoryChatEntry } from "./pipelines/story";
+export { generatePlotOutline, type PlotOutlineInput, type PlotOutlineParsed, OUTLINE_REFRESH_TURNS } from "./pipelines/plotOutline";
+export { generateShortTermStory, type ShortTermStoryInput, type ShortTermStoryParsed, type ShortTermChatEntry } from "./pipelines/shortTermStory";
 export { generateInitStory, type InitStoryInput, type InitStoryParsed } from "./pipelines/initStory";
 export { generateInitState, parseInitStateAiResponse, buildEquippedSlotsFromParsed, buildGongfaSlotsFromParsed, buildInventoryFromParsed, type InitStateInput, type InitStateParsed } from "./pipelines/initState";
 
 export { generateFinaleStory, type FinaleStoryInput, type FinaleStoryParsed } from "./pipelines/finaleStory";
 export { generateGrandSummary, type GrandSummaryInput, type GrandSummaryParsed } from "./pipelines/grandSummary";
+export { generateRecallStory, type RecallStoryInput, type RecallStoryParsed } from "./pipelines/recallStory";
+export { generateMemoryCompress, type MemoryCompressInput, type MemoryCompressParsed } from "./pipelines/memoryCompress";
 export { generateState, npcEventsToLegacyFormat, type StateGenerateInput as StateGenInput } from "./pipelines/state";
 
 // ── Presets ──
 export { getStoryPreset, STORY_SYSTEM_PRESET } from "./presets/storyPreset";
 export { PRESET } from "./presets/globalPreset";
+export { PLOT_OUTLINE_SYSTEM_PRESET } from "./presets/plotOutlinePreset";
+export { SHORT_TERM_STORY_SYSTEM_PRESET } from "./presets/shortTermStoryPreset";
 export { INIT_STORY_SYSTEM_PRESET } from "./presets/initStoryPreset";
 export { INIT_STATE_SYSTEM_PRESET } from "./presets/initStatePreset";
 export { CULTIVATION_STORY_SYSTEM_PRESET } from "./presets/cultivationStoryPreset";
 export { FINALE_STORY_SYSTEM_PRESET } from "./presets/finaleStoryPreset";
 export { GRAND_SUMMARY_SYSTEM_PRESET } from "./presets/grandSummaryPreset";
+export { RECALL_STORY_SYSTEM_PRESET } from "./presets/recallStoryPreset";
+export { buildMemoryCompressSystemPreset, MEMORY_COMPRESS_SHORT2MID_SYSTEM_PRESET, MEMORY_COMPRESS_MID2LONG_SYSTEM_PRESET, type MemoryCompressPresetOptions } from "./presets/memoryCompressPreset";
 
 // ── Composables ──
 export { useOpeningStoryFromFateChoice, type OpeningStoryPhase, type OpeningStoryApiSlice } from "./composables/useOpeningStory";

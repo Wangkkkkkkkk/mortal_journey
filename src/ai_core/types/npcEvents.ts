@@ -122,7 +122,8 @@ export interface NpcNearbyEntry {
   displayName: string;
   identity: string;
   isDead: boolean;
-  favorability: number;
+  /** 仅新 NPC 首次建档时填初始值；已存在 NPC 的好感度变化走 npcFavorChanges 增量通道。 */
+  favorability?: number;
   race: import("../../role_core/types/playInfo").NpcRace;
   appearance: string;
   clothing: string;

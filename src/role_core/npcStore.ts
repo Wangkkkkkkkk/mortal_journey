@@ -1,7 +1,7 @@
 import { ref, type Ref } from "vue";
 import { Npc } from "./Npc";
 import type { NpcPlayInfo, PowerTier } from "./types/playInfo";
-import type { NpcNearbyEntry, NpcSnapshotEntry } from "../ai_core";
+import type { NpcNearbyEntry, NpcSnapshotEntry, NpcMemoryEntry, NpcFavorChangeEntry } from "../ai_core";
 import type { NpcCoreChangeEvent } from "./npcCoreChange";
 import { applyCoreChange } from "./npcCoreChange";
 import type { WorldLocation } from "./types/worldLocation";
@@ -17,6 +17,10 @@ export interface ApplyNpcUpdatesOptions {
   coreChangeEvents?: NpcCoreChangeEvent[];
   /** 本轮有显著行为 NPC 的近况快照（来自 <mj_npc_snapshots>），追加到 npc.storySnapshot。 */
   snapshots?: NpcSnapshotEntry[];
+  /** 本轮 NPC 与主角的关键互动记忆（来自 <mj_npc_memories>），追加到 npc.memories。 */
+  memoryEntries?: NpcMemoryEntry[];
+  /** 本轮 NPC 好感度增量变化（来自 <mj_npc_favor_changes>），由 npc.applyFavorChange 应用。 */
+  favorChanges?: NpcFavorChangeEntry[];
   /** 当前所在地点，用于为新建 NPC 合成稳定的 npcId 并作为 currentLocation 回退。 */
   currentLocation?: WorldLocation | null;
   /** 当前世界时间，用于写入 NPC.lastSeenWorldTime。 */
@@ -184,6 +188,22 @@ export function useNpcStore() {
       for (const snap of options.snapshots) {
         const npc = findByNpcId(snap.npcId);
         if (npc) npc.appendStorySnapshot(snap.snapshot);
+      }
+    }
+
+    // 追加本轮 NPC 互动记忆（按 npcId 匹配）。
+    if (options?.memoryEntries && options.memoryEntries.length > 0) {
+      for (const mem of options.memoryEntries) {
+        const npc = findByNpcId(mem.npcId);
+        if (npc) npc.appendMemory(currentWorldTime, mem.text);
+      }
+    }
+
+    // 应用本轮 NPC 好感度增量变化（按 npcId 匹配；单回合上限由 npc.applyFavorChange 裁剪）。
+    if (options?.favorChanges && options.favorChanges.length > 0) {
+      for (const fc of options.favorChanges) {
+        const npc = findByNpcId(fc.npcId);
+        if (npc) npc.applyFavorChange(fc);
       }
     }
 

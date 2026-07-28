@@ -42,6 +42,7 @@ export const STATE_SYSTEM_PRESET = `
 2. 标签内格式为四级地点，用"-"分隔：大区域-国家-区域-具体地点。例如：天南-越国-黄枫谷-外门。须非空。
 3. 需要根据剧情判断是否发生了地点变化来判断是否需要重新生成地点，如果没有发生地点变化，就保持上一次的地点（完整四级格式不变）。
 4. 四级含义：第一级为大区域（如天南、乱星海、大晋），第二级为国家或势力范围（如越国、九国盟），第三级为区域或宗门（如黄枫谷、七玄门），第四级为具体地点（如外门、坊市、洞府）。
+5. 【逐字复用·重要】输入会给出【当前所在地点】与【已注册地点】列表。当主角返回或停留在已注册地点时，<mj_world_body> 的四级字符串必须与既有条目**逐字一致**，不得改写为近义表达（已注册"外门"不得写成"外门区域"/"外门弟子居"；已注册"黄枫谷"不得写成"黄枫谷谷"）。只有真正抵达全新地点时才生成新字符串。
 
 [血量法力规则]
 1. 根据剧情描述和主角的当前状态，用百分比表示主角的血量和法力。hpPercent 为血量百分比（0-100），mpPercent 为法力百分比（0-100）。100 表示满血/满蓝，80 表示轻微受伤/消耗少量法力，50 表示半血/半蓝，0 表示死亡。
@@ -85,6 +86,7 @@ export const STATE_SYSTEM_PRESET = `
   7.5 <USER_STATE_TAG> {"gongfaMasteryChanges":[{"gongfaName":"紫阳混元功","masteryExpIncrease":500}]} </USER_STATE_TAG>
 
 [时间推进规则]
+0. 【自洽校验·重要】输入会给出【当前世界时间】。输出 timeAdvance 前，先在脑中算出"当前时间 + delta = 终时刻"，确认终时刻与本回合正文描述的时段一致（如正文写"直至深夜"，则终时刻 hour 应在 21-23；正文写"次日清晨"，则 days≥1 且终时刻 hour 在 5-9）。若正文明确出现隔夜/次日/数日/闭关等跨越，delta 必须体现对应量级，不得只推进 1-2 小时。
 1. 每次状态更新都必须输出 <MJ_TIME_TAG> 标签，表示世界时间的推进。timeAdvance 是一个 JSON 对象，包含以下字段：
   - hour（整数，必填）：当前剧情花费的小时数。即使短暂交谈也至少消耗 1 小时。
   - years（整数，可选）：经过的年数。闭关修炼、长途旅行等长时间行为使用。
@@ -254,7 +256,8 @@ export const STATE_SYSTEM_PRESET = `
 11. NPC补充约束：
   11.1 输出时数组须列出本回合仍应在面板中可见者的完整名单。
   11.2 若本回合触发战斗，所有参战者（含新出现的敌人、妖兽）也必须在此数组中输出完整角色卡——这是战斗系统的硬性前置条件，不可省略。
-  11.3 【核心字段冻结·重要】已存在 NPC 的核心字段（realm 境界、equippedSlots 法宝、gongfaSlots 功法、inventorySlots 储物袋、race 种族、appearance 外貌、clothing 服装）默认冻结，禁止在 nearbyNpcs 里直接修改或重写——文生图要求角色长相稳定。只有以下 dynamic 字段可自由更新：identity、favorability、isDead、hpPercent、mpPercent。核心字段变化必须通过 <MJ_NPC_CORE_CHANGE_TAG> 显式声明（见「NPC核心变更规则」）。
+  11.3 【核心字段冻结·重要】已存在 NPC 的核心字段（realm 境界、equippedSlots 法宝、gongfaSlots 功法、inventorySlots 储物袋、race 种族、appearance 外貌、clothing 服装）默认冻结，禁止在 nearbyNpcs 里直接修改或重写——文生图要求角色长相稳定。只有以下 dynamic 字段可自由更新：identity、isDead、hpPercent、mpPercent。核心字段变化必须通过 <MJ_NPC_CORE_CHANGE_TAG> 显式声明（见「NPC核心变更规则」）。
+  11.3a 【好感度·重要】favorability 不再作为 dynamic 字段在 nearbyNpcs 里对已存在 NPC 重发。已存在 NPC 的好感度变化只通过 <mj_npc_favor_changes> 增量通道输出（见「好感度变更规则」）。nearbyNpcs 里的 favorability 仅用于新 NPC 首次建档时的初始值（-19~19 中性区）；已存在 NPC 在 nearbyNpcs 里不要带 favorability 字段。
   11.4 新首次出现的 NPC 必须输出完整角色卡（含核心字段），并附带 npcId（首次出现时生成一个稳定的 UUID 字符串，后续所有回合对该 NPC 必须沿用同一 npcId）。
   11.4b 【currentLocation 必填·重要】每个 nearbyNpcs 条目必须携带 currentLocation 字段，表示该 NPC 当前所在地点。格式为四级地点对象 {"region":"...","country":"...","area":"...","detail":"..."}。
     - 在场者（与主角同行/同场）的 currentLocation 必须等于本回合 <mj_world_body> 的四级地点。
@@ -333,6 +336,27 @@ export const STATE_SYSTEM_PRESET = `
 4. 输出格式：<mj_npc_snapshots> … </mj_npc_snapshots>，内为 JSON 数组（无则 []）。
 5. 示例：<mj_npc_snapshots>[{"npcId":"f3a2c1d8-...","snapshot":"以积攒的灵石换得碧水剑，并入库存放"}]</mj_npc_snapshots>
 
+[NPC互动记忆规则]
+1. 输入会给出每个在场 NPC 的「互动记忆」（其与主角的关键互动日志，带时间戳）。你需要为本轮与主角发生过关键互动的 NPC 各写一条互动记忆，放入 <mj_npc_memories> 标签，内为 JSON 数组，每个元素 {npcId, text}。
+2. 「关键互动」指：结交/结怨、承诺或约定、利益交换、冲突或和解、重要情感变化、共同经历险事等会被该 NPC 长期记住的事件。无关键互动的 NPC 不必输出；全场无则输出 []。
+3. 与「近况快照」的区别：近况是一句话动态概括（用于场景即时延续），互动记忆是该 NPC 视角下值得长期记住的具体事件（用于深度连续性，如「韩立曾在坊市救其脱困，欠下人情」）。两者可并存。
+4. text 为一句话（简体中文，约 20~60 字），从该 NPC 视角描述这次互动的具体内容与性质，承接其旧互动记忆。前端会把它追加进该 NPC 的互动记忆日志。
+5. 输出格式：<mj_npc_memories> … </mj_npc_memories>，内为 JSON 数组（无则 []）。
+6. 示例：<mj_npc_memories>[{"npcId":"f3a2c1d8-...","text":"在坊市因丹药议价与韩立起过争执，对其市侩作风心生轻视"}]</mj_npc_memories>
+
+[好感度变更规则]
+1. 已存在 NPC 的 favorability 不在 nearbyNpcs 里重发；好感度变化只通过 <mj_npc_favor_changes> 显式输出增量。新 NPC 首次建档时在 nearbyNpcs 里填初始 favorability（-19~19 中性区）。
+2. <mj_npc_favor_changes> 内为 JSON 数组，每个元素 {npcId, delta, reason, major?}：
+   - delta：整数增量（正涨负跌），0 或无变化则不要输出该 NPC。
+   - reason：一句话正文依据（如"赠予回春丹，示好之意明显"），须与本回合正文事实对应。
+   - major：布尔，是否重大事件（救命、背叛、正式结交、重大赠予、严重羞辱、生死与共等）；true 时单回合上限放宽到 ±25，否则 ±10。
+3. 单回合上限：常规事件 |delta|≤10；重大事件 |delta|≤25。超出部分前端会截断，请勿主动超限。
+4. 【非对称·重要】上涨需谨慎：单次感谢、试探、短期合作、偏护、气氛升温，通常只够写「互动记忆」或「近况」，不输出正向 delta；只有关系事实跨档落地（多次互助累积成型、正式结交/拜师、明确表白或定情、共同经历生死、重大赠予换来真心接纳）才输出正向 delta。
+5. 下跌不受门槛保护：失约、伤害、背叛、羞辱、立场冲突、食言、见死不救等可自由输出负向 delta，不必累积。
+6. 若快照中该 NPC 带有「好感突破条件」字段，输出正向 delta 前先评估本回合是否真的满足该条件；不满足则把 delta 压到当前档位内，或只写互动记忆而不输出 delta。
+7. 无任何好感度变化时输出空数组 []。
+8. 示例：<mj_npc_favor_changes>[{"npcId":"f3a2c1d8-...","delta":8,"reason":"主角在妖兽袭击中救其脱险，心生感激","major":false}]</mj_npc_favor_changes>
+
 [战斗触发规则]
 1. 战斗触发输出格式：<BATTLE_TRIGGER_TAG> … </BATTLE_TRIGGER_TAG>，内为 JSON 对象；字段包含 shouldEnterBattle（布尔值）、triggerKind（"active"或"passive"）、triggerReason（字符串，简述触发原因）、allies（我方参战名单）、enemies（敌方参战名单）。
 2. 何时可触发（shouldEnterBattle=true）：须同时满足——（A）所有 allies/enemies 必须在本回合 <NPC_NEARBY_TAG> 中输出完整角色卡（含本回合新出现的敌人/妖兽，无论之前是否在快照中存在）；（B）满足以下任一条件：
@@ -360,20 +384,22 @@ export const STATE_SYSTEM_PRESET = `
 4. 示例：<mj_story_snapshot>韩立前往坊市丹药铺，以120灵石购得三颗回春丹，并与店主攀谈得知近期秘境即将开启的消息。</mj_story_snapshot>
 
 [行动建议规则·重要]
-1. 你必须在 <MJ_ACTION_OPTIONS_TAG> 中为玩家输出四个不同倾向的下一步行动建议，供玩家快捷选择。四个字段含义：
-   - aggressive（激进）：主动出击、抢先出手、硬碰硬、强势进取、冒险夺取机缘。适合实力占优或机不可失的场景。
-   - moderate（中庸）：正常应对、对话交涉、按部就班、平稳推进、理性权衡。适合势均力敌或信息不全的场景。
-   - cautious（谨慎）：观察试探、防御戒备、保留实力、谋定后动、迂回探查。适合敌情不明或风险较高的场景。
-   - veryCautious（最谨慎）：撤退回避、藏拙隐忍、不轻举妄动、保命优先、暂避锋芒。适合实力悬殊或凶险莫测的场景。
-2. 每条建议须是具体的行动描述（15~30字，简体中文，以"我"或主角姓名为主语，描述具体做什么），紧扣本轮剧情结尾的处境，不得泛泛而谈（禁止"继续探索""谨慎行事"等空话）。
-3. 四条建议须体现明显的倾向差异，不得雷同；且都应符合修仙世界的行事逻辑与主角当前境界/实力。
-4. 若本轮已触发战斗（输出了 <BATTLE_TRIGGER_TAG>），行动建议可围绕战斗中的即时抉择；若本轮是日常/赶路/交易等非战斗场景，建议应围绕当前场景的自然延展。
-5. 输出格式：<MJ_ACTION_OPTIONS_TAG> … </MJ_ACTION_OPTIONS_TAG>，内为 JSON 对象，含四个字符串字段 aggressive、moderate、cautious、veryCautious。
-6. 示例：
-   <MJ_ACTION_OPTIONS_TAG>{"aggressive":"我趁墨牙狼重伤之际，催动青锋剑直取其要害","moderate":"我稳住阵脚，以崩山诀牵制墨牙狼等待其力竭","cautious":"我后撤数丈拉开距离，先观察墨牙狼的扑击路数再应对","veryCautious":"我祭出灵丝道袍护身，寻机向洞口撤退暂避锋芒"}</MJ_ACTION_OPTIONS_TAG>
+1. 你必须在 <MJ_ACTION_OPTIONS_TAG> 中为玩家输出四个下一步行动建议，供玩家快捷选择。本游戏是视觉小说式分支叙事——四个建议应尽量对应「路线大纲」中的后续钩子，让玩家的选择直接决定剧情走向。
+2. 四个字段含义（按风险倾向分档，把大纲钩子按其天然风险归入相应档位）：
+   - aggressive（激进）：主动出击、抢先出手、硬碰硬、强势进取、冒险夺取机缘。把最大胆/最高风险收益的钩子放这里。
+   - moderate（中庸）：正常应对、对话交涉、按部就班、平稳推进、理性权衡。把稳妥推进主线的钩子放这里。
+   - cautious（谨慎）：观察试探、防御戒备、保留实力、谋定后动、迂回探查。把谨慎/迂回型的钩子放这里。
+   - veryCautious（最谨慎）：撤退回避、藏拙隐忍、不轻举妄动、保命优先、暂避锋芒。把最保守/避险型的钩子放这里。
+3. 若路线大纲提供了 2-3 条钩子，应将其分别归入最贴切的风险档位；钩子不足四条时，补足一条紧扣当前场景的兜底选项（不可与已有建议雷同）。
+4. 每条建议须是具体的行动描述（15~30字，简体中文，以"我"或主角姓名为主语，描述具体做什么），紧扣本轮剧情结尾的处境，不得泛泛而谈（禁止"继续探索""谨慎行事"等空话）。
+5. 四条建议须体现明显的差异（对应不同的剧情分支），不得雷同；且都应符合修仙世界的行事逻辑与主角当前境界/实力。
+6. 若本轮已触发战斗（输出了 <BATTLE_TRIGGER_TAG>），行动建议围绕战斗中的即时抉择；若本轮是日常/赶路/交易等非战斗场景，建议围绕当前场景的自然延展与大纲钩子。
+7. 输出格式：<MJ_ACTION_OPTIONS_TAG> … </MJ_ACTION_OPTIONS_TAG>，内为 JSON 对象，含四个字符串字段 aggressive、moderate、cautious、veryCautious。
+8. 示例（大纲钩子：①寻机夺筑基丹材料 ②向林师姐打听秘境消息 ③藏拙闭关）：
+   <MJ_ACTION_OPTIONS_TAG>{"aggressive":"我前往坊市黑市，寻机低价购入或夺取筑基丹材料","moderate":"我主动去找林师姐，打听秘境开启的消息与门径","cautious":"我先在洞府闭关数日精进功法，静观宗门风向","veryCautious":"我藏拙低调，暂避纷争，先摸清各方虚实再行动"}</MJ_ACTION_OPTIONS_TAG>
 
 [输出契约·必须遵守]
-你将收到一段剧情正文、主角当前状态，以及在场 NPC 的现状（含其储物/装备/功法物品名与近况）。你需要根据剧情内容，按以下固定顺序输出十四段标签：
+你将收到一段剧情正文、主角当前状态，以及在场 NPC 的现状（含其储物/装备/功法物品名与近况、互动记忆、好感突破条件）。你需要根据剧情内容，按以下固定顺序输出十六段标签：
 1. <mj_world_body>根据剧情判断是否发生地点变化</mj_world_body>
 2. <MJ_HP_MP_TAG>主角血量法力百分比</MJ_HP_MP_TAG>
 3. <USER_STATE_TAG>修为增加与功法熟练度变化</USER_STATE_TAG>
@@ -382,11 +408,13 @@ export const STATE_SYSTEM_PRESET = `
 6. <SPIRIT_STONE_TAG>灵石变动</SPIRIT_STONE_TAG>
 7. <ITEM_ADD_TAG>物品添加</ITEM_ADD_TAG>
 8. <ITEM_REMOVE_TAG>物品减少</ITEM_REMOVE_TAG>
-9. <NPC_NEARBY_TAG>周围人物列表（已存在 NPC 仅含 dynamic 字段，核心字段须冻结）</NPC_NEARBY_TAG>
+9. <NPC_NEARBY_TAG>周围人物列表（已存在 NPC 仅含 dynamic 字段且不含 favorability，核心字段须冻结）</NPC_NEARBY_TAG>
 10. <MJ_NPC_CORE_CHANGE_TAG>NPC 核心字段变更事件（含物品得失，按「NPC核心变更规则」主动输出）</MJ_NPC_CORE_CHANGE_TAG>
 11. <BATTLE_TRIGGER_TAG>战斗触发（未满足触发条件时不输出此标签）</BATTLE_TRIGGER_TAG>
 12. <mj_story_snapshot>剧情快照（本轮剧情的2~3句简述）</mj_story_snapshot>
 13. <MJ_ACTION_OPTIONS_TAG>四个倾向的行动建议（激进/中庸/谨慎/最谨慎）</MJ_ACTION_OPTIONS_TAG>
 14. <mj_npc_snapshots>本轮有显著行为 NPC 的近况（无则 []）</mj_npc_snapshots>
-禁止缺少第1~10段和第12~14段标签；第11段仅在满足战斗触发条件时输出。无数据的标签输出空对象 {}（数组型标签输出 []）。禁止改写标签名的大小写或字符；禁止用 Markdown 代码围栏包裹标签。
+15. <mj_npc_memories>本轮与主角有关键互动 NPC 的互动记忆（无则 []）</mj_npc_memories>
+16. <mj_npc_favor_changes>本轮好感度变化的增量（无则 []）</mj_npc_favor_changes>
+禁止缺少第1~10段和第12~16段标签；第11段仅在满足战斗触发条件时输出。无数据的标签输出空对象 {}（数组型标签输出 []）。禁止改写标签名的大小写或字符；禁止用 Markdown 代码围栏包裹标签。
 `;
