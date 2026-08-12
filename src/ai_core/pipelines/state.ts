@@ -49,6 +49,7 @@ import { runPipeline, type RunPipelineOptions } from "../shared/runPipeline";
 import { callChatCompletions } from "../bridge/openAiBridge";
 import { STATE_SYSTEM_PRESET } from "../presets/statePreset";
 import { buildItemEffectVocabularyPrompt } from "../shared/itemEffectVocabulary";
+import { block } from "../shared/promptBlock";
 
 /** 状态更新 system prompt：基础规则 + 物品效果词汇表（仅计算一次）。 */
 const STATE_SYSTEM_FULL = `${STATE_SYSTEM_PRESET}\n\n${buildItemEffectVocabularyPrompt()}`;
@@ -83,8 +84,8 @@ export interface StateGenerateInput extends AiRequestConfig {
   currentWorldLocation?: WorldLocation | null;
   currentWorldTime?: WorldTime;
   npcSnapshot?: string;
-  /** 路线大纲（含 2-3 条多方向钩子），用于使行动建议与剧情分支对齐。 */
-  plotOutline?: string;
+  /** 统一剧情调用产出的 <变量规划>（自然语言状态变化说明稿），据此对齐状态变化。 */
+  variablePlan?: string;
   /** 已注册地点扁平列表（region-country-area-detail），注入上下文供 AI 逐字复用。 */
   registeredLocations?: string[];
 }
@@ -574,38 +575,89 @@ function parseStateFromXml(raw: string): StateParsed {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 以下为 prompt 分节函数：每个函数产出一个块，供 buildStateUserContent 拼接。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 【当前世界时间】分节：让 AI 产出自洽的 timeAdvance（对照"当前 + delta = 终时刻"）。 */
+function sceneWorldTime(worldTime?: WorldTime): string {
+  if (!worldTime) return "";
+  const t = worldTime;
+  const text = `${formatWorldTimeZhDisplay(t)} ${String(t.hour).padStart(2, "0")}时`;
+  return block("【当前世界时间】", text);
+}
+
+/** 【当前所在地点】分节：让 AI 复用规范字符串，避免重复分支。 */
+function sceneWorldLocation(loc?: WorldLocation | null): string {
+  if (!loc) return "";
+  return block("【当前所在地点】", formatWorldLocationDash(loc));
+}
+
+/** 【已注册地点】分节：返回时须逐字沿用既有字符串。 */
+function sceneRegisteredLocations(registeredLocations?: string[]): string {
+  const registered = (registeredLocations ?? []).filter((s) => s && s.trim());
+  return block("【已注册地点·返回时须逐字沿用既有字符串】", registered.join("\n"));
+}
+
+/** 【变量规划】分节：统一剧情调用产出的自然语言变量说明稿，据此对齐状态变化。 */
+function sceneVariablePlan(variablePlan?: string): string {
+  return block("【变量规划·据此对齐状态变化】", variablePlan);
+}
+
+/** 【本轮剧情正文】分节：本轮故事正文，状态变化的直接依据。 */
+function sceneStoryBody(storyBody: string): string {
+  return block("【本轮剧情正文】", storyBody);
+}
+
+/** 【当前在场 NPC 现状】分节：含储物/装备/功法物品名与近况，据此准确输出核心变更。 */
+function sceneNpcSnapshot(npcSnapshot?: string): string {
+  return block(
+    "[当前在场 NPC 现状（含储物/装备/功法物品名与近况，据此准确输出其核心变更）]",
+    npcSnapshot,
+  );
+}
+
+/**
+ * 组装发送给 AI 的 user 消息。
+ *
+ * 构成（按顺序）：
+ * 1. 当前世界时间       —— sceneWorldTime()
+ * 2. 当前所在地点       —— sceneWorldLocation()
+ * 3. 已注册地点         —— sceneRegisteredLocations()
+ * 4. 变量规划           —— sceneVariablePlan()
+ * 5. 本轮剧情正文       —— sceneStoryBody()
+ * 6. 当前在场 NPC 现状  —— sceneNpcSnapshot()
+ */
+function buildStateUserContent(input: StateGenerateInput): string {
+  let msg = "";
+
+  // ── 1. 当前世界时间：为 timeAdvance 提供起点 ──
+  msg += sceneWorldTime(input.currentWorldTime);
+
+  // ── 2. 当前所在地点：四级地点字符串 ──
+  msg += sceneWorldLocation(input.currentWorldLocation);
+
+  // ── 3. 已注册地点：返回时须逐字沿用 ──
+  msg += sceneRegisteredLocations(input.registeredLocations);
+
+  // ── 4. 变量规划：故事调用给出的状态变化说明稿 ──
+  msg += sceneVariablePlan(input.variablePlan);
+
+  // ── 5. 本轮剧情正文：状态变化的直接依据 ──
+  msg += sceneStoryBody(input.storyBody);
+
+  // ── 6. 当前在场 NPC 现状 ──
+  msg += sceneNpcSnapshot(input.npcSnapshot);
+
+  return msg;
+}
+
 export async function generateState(input: StateGenerateInput): Promise<StateParsed> {
-  const npcCtx = input.npcSnapshot?.trim();
-  const outlineCtx = input.plotOutline?.trim();
-
-  const sections: string[] = [];
-  // 注入当前世界时间，让 AI 产出自洽的 timeAdvance（对照"当前 + delta = 终时刻"）。
-  if (input.currentWorldTime) {
-    const t = input.currentWorldTime;
-    sections.push(`【当前世界时间】${formatWorldTimeZhDisplay(t)} ${String(t.hour).padStart(2, "0")}时`);
-  }
-  // 注入当前所在地点 + 已注册地点树，让 AI 复用规范字符串，避免重复分支。
-  if (input.currentWorldLocation) {
-    sections.push(`【当前所在地点】${formatWorldLocationDash(input.currentWorldLocation)}`);
-  }
-  const registered = (input.registeredLocations ?? []).filter((s) => s && s.trim());
-  if (registered.length > 0) {
-    sections.push(`【已注册地点·返回时须逐字沿用既有字符串】\n${registered.join("\n")}`);
-  }
-  if (outlineCtx) {
-    sections.push(`【路线大纲·据此对齐行动建议与剧情分支】\n${outlineCtx}`);
-  }
-  sections.push(input.storyBody);
-  if (npcCtx) {
-    sections.push(`[当前在场 NPC 现状（含储物/装备/功法物品名与近况，据此准确输出其核心变更）]\n${npcCtx}`);
-  }
-  const userContent = sections.join("\n\n");
-
   const opts: RunPipelineOptions = {
     defaultTemperature: 0.55,
     defaultMaxTokens: 32768,
     system: STATE_SYSTEM_FULL,
-    user: userContent,
+    user: buildStateUserContent(input),
     logTag: "状态更新",
   };
 

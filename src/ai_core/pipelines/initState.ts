@@ -17,6 +17,7 @@ import { runPipeline, type RunPipelineOptions } from "../shared/runPipeline";
 import { callChatCompletions } from "../bridge/openAiBridge";
 import { INIT_STATE_SYSTEM_PRESET } from "../presets/initStatePreset";
 import { buildItemEffectVocabularyPrompt } from "../shared/itemEffectVocabulary";
+import { block } from "../shared/promptBlock";
 
 /** 开局状态 system prompt：基础规则 + 物品效果词汇表（仅计算一次）。 */
 const INIT_STATE_SYSTEM_FULL = `${INIT_STATE_SYSTEM_PRESET}\n\n${buildItemEffectVocabularyPrompt()}`;
@@ -61,18 +62,23 @@ export interface InitStateParsed {
 
 function buildInitStateUserContent(input: InitStateInput): string {
   const p = input.protagonist;
-  return [
-    "【开局剧情正文】",
-    input.storyBody,
-    "",
-    "【主角初始状态】",
+
+  let msg = "";
+
+  // ── 1. 【开局剧情正文】分节：给状态 AI 看的开局正文，据此推导初始状态 ──
+  msg += block("【开局剧情正文】", input.storyBody);
+
+  // ── 2. 【主角初始状态】分节：主角身份卡（姓名/性别/境界/灵根/出身地点）──
+  const initLines = [
     `姓名：${p.displayName}`,
     `性别：${p.gender || "—"}`,
     `境界：${p.realm.major}${p.realm.minor}`,
     `灵根：${p.linggen.join("") || "无"}`,
     `出身地点：${p.birthPlace ? formatWorldLocationDash(p.birthPlace) : "—"}`,
-    "",
-  ].join("\n");
+  ];
+  msg += block("【主角初始状态】", initLines.join("\n"));
+
+  return msg;
 }
 
 function parseInitNpcEvents(raw: string): NpcEvent[] {

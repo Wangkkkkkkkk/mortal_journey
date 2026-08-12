@@ -41,12 +41,8 @@ export interface StorySerialData {
   grandSummary: string;
   /** 大总结覆盖到的 chatMessages 索引（不含）；index < 此值的 story 已被吃进大总结。 */
   grandSummaryUpTo: number;
-  /** 路线剧情大纲（约 1000 字散文蓝图，含近期回顾与 2-3 条多方向钩子）。空串表示无大纲。 */
-  plotOutline: string;
-  /** 自上次大纲生成以来的短期剧情回合数；达阈值则重生大纲。 */
-  outlineTurnCounter: number;
-  /** 上次生成大纲时主角所在地点（用于检测跨大区域/国家移动以触发重生）。 */
-  outlineWorldLocation: WorldLocation | null;
+  /** 上回合统一剧情调用产出的 <剧情规划> 摘要（保留/延后/受阻/待承接/强制触发）。空串表示无。 */
+  plotPlan: string;
   /** 是否启用剧情回忆检索（RAG）。缺省/老存档视为 true。 */
   recallEnabled?: boolean;
   /** 回忆检索最早触发的回合数阈值；缺省视为 10。 */
@@ -73,12 +69,8 @@ const chatMessages = ref<ChatMessage[]>([]);
 const grandSummary = ref("");
 /** 大总结覆盖到的 chatMessages 索引（不含）；index < 此值的 story 已被吃进大总结。 */
 const grandSummaryUpTo = ref(0);
-/** 路线剧情大纲（约 1000 字散文蓝图）。空串表示尚无大纲。 */
-const plotOutline = ref("");
-/** 自上次大纲生成以来的短期剧情回合数。 */
-const outlineTurnCounter = ref(0);
-/** 上次生成大纲时主角所在地点。 */
-const outlineWorldLocation = ref<WorldLocation | null>(null);
+/** 上回合统一剧情调用产出的 <剧情规划> 摘要。空串表示尚无。 */
+const plotPlan = ref("");
 /** 是否启用剧情回忆检索（RAG）。 */
 const recallEnabled = ref(true);
 /** 回忆检索最早触发的回合数阈值。 */
@@ -114,9 +106,7 @@ function clearStory(): void {
     chatMessages.value = [];
     grandSummary.value = "";
     grandSummaryUpTo.value = 0;
-    plotOutline.value = "";
-    outlineTurnCounter.value = 0;
-    outlineWorldLocation.value = null;
+    plotPlan.value = "";
     recallEnabled.value = true;
     recallMinRound.value = 10;
     recallFullN.value = 20;
@@ -140,9 +130,7 @@ function serializeStory(): StorySerialData {
     chatMessages: chatMessages.value.map((m) => ({ ...m })),
     grandSummary: grandSummary.value,
     grandSummaryUpTo: grandSummaryUpTo.value,
-    plotOutline: plotOutline.value,
-    outlineTurnCounter: outlineTurnCounter.value,
-    outlineWorldLocation: outlineWorldLocation.value ? { ...outlineWorldLocation.value } : null,
+    plotPlan: plotPlan.value,
     recallEnabled: recallEnabled.value,
     recallMinRound: recallMinRound.value,
     recallFullN: recallFullN.value,
@@ -168,9 +156,7 @@ function restoreStory(data: StorySerialData | null | undefined): void {
   chatMessages.value = (d.chatMessages ?? []).map((m) => ({ ...m }));
   grandSummary.value = d.grandSummary ?? "";
   grandSummaryUpTo.value = d.grandSummaryUpTo ?? 0;
-  plotOutline.value = d.plotOutline ?? "";
-  outlineTurnCounter.value = d.outlineTurnCounter ?? 0;
-  outlineWorldLocation.value = d.outlineWorldLocation ? { ...d.outlineWorldLocation } : null;
+  plotPlan.value = d.plotPlan ?? "";
   recallEnabled.value = d.recallEnabled ?? true;
   recallMinRound.value = d.recallMinRound ?? 10;
   recallFullN.value = d.recallFullN ?? 20;
@@ -204,9 +190,7 @@ function applyStorySnapshot(data: StorySerialData | null | undefined): void {
   chatMessages.value = (d.chatMessages ?? []).map((m) => ({ ...m }));
   grandSummary.value = d.grandSummary ?? "";
   grandSummaryUpTo.value = d.grandSummaryUpTo ?? 0;
-  plotOutline.value = d.plotOutline ?? "";
-  outlineTurnCounter.value = d.outlineTurnCounter ?? 0;
-  outlineWorldLocation.value = d.outlineWorldLocation ? { ...d.outlineWorldLocation } : null;
+  plotPlan.value = d.plotPlan ?? "";
   recallEnabled.value = d.recallEnabled ?? true;
   recallMinRound.value = d.recallMinRound ?? 10;
   recallFullN.value = d.recallFullN ?? 20;
@@ -228,9 +212,7 @@ export const storyStore = {
   chatMessages,
   grandSummary,
   grandSummaryUpTo,
-  plotOutline,
-  outlineTurnCounter,
-  outlineWorldLocation,
+  plotPlan,
   recallEnabled,
   recallMinRound,
   recallFullN,

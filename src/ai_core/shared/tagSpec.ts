@@ -43,12 +43,23 @@ export const TAG_BREAKTHROUGH_CLOSE = "</MJ_BREAKTHROUGH_TAG>";
 
 export const MJ_STORY_BODY_OPEN = "<mj_story_body>";
 export const MJ_STORY_BODY_CLOSE = "</mj_story_body>";
-export const MJ_PLOT_OUTLINE_OPEN = "<mj_plot_outline>";
-export const MJ_PLOT_OUTLINE_CLOSE = "</mj_plot_outline>";
 export const MJ_CULTIVATION_BODY_OPEN = "<mj_cultivation_body>";
 export const MJ_CULTIVATION_BODY_CLOSE = "</mj_cultivation_body>";
 export const MJ_FINALE_BODY_OPEN = "<mj_finale_body>";
 export const MJ_FINALE_BODY_CLOSE = "</mj_finale_body>";
+
+// ── 统一剧情调用（MoRanJiangHu 风格）标签 ──
+
+export const MJ_NARRATIVE_BODY_OPEN = "<正文>";
+export const MJ_NARRATIVE_BODY_CLOSE = "</正文>";
+export const MJ_SHORT_TERM_MEMORY_OPEN = "<短期记忆>";
+export const MJ_SHORT_TERM_MEMORY_CLOSE = "</短期记忆>";
+export const MJ_VAR_PLAN_OPEN = "<变量规划>";
+export const MJ_VAR_PLAN_CLOSE = "</变量规划>";
+export const MJ_PLOT_PLAN_OPEN = "<剧情规划>";
+export const MJ_PLOT_PLAN_CLOSE = "</剧情规划>";
+export const MJ_STORY_ACTION_OPTIONS_OPEN = "<行动选项>";
+export const MJ_STORY_ACTION_OPTIONS_CLOSE = "</行动选项>";
 
 // ── Init state 标签 ──
 

@@ -4,7 +4,7 @@
  * 每回合（达到阈值轮次后）调用。复用主剧情 API 配置。
  * 流程：本地预筛 → 构建 corpus（近N原文/更早摘要）→ LLM 强/弱分类 → 失败兜底 → 组装标签。
  *
- * 返回的 tagContent 注入 shortTermStory 的【剧情回忆】段；
+ * 返回的 tagContent 注入统一剧情调用（generateStory）的【剧情回忆】段；
  * previewText 供调试/日志展示。
  */
 
@@ -21,6 +21,7 @@ import {
   buildRecallTag,
   type ParsedRecall,
 } from "../shared/recallLocal";
+import { block } from "../shared/promptBlock";
 
 export interface RecallStoryInput extends AiRequestConfig {
   /** 玩家本轮输入。 */
@@ -40,6 +41,39 @@ export interface RecallStoryParsed {
   parsed: ParsedRecall;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 以下为 prompt 分节函数：每个函数产出一个块，供 buildRecallUserContent 拼接。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 【玩家输入】分节：本次玩家输入（空输入时占位）。 */
+function scenePlayerInput(playerInput: string): string {
+  return block("【玩家输入】", playerInput || "（空输入）");
+}
+
+/** 【回忆库】分节：预筛后构建的回忆语料（近 N 条原文 + 更早摘要）。 */
+function sceneRecallCorpus(corpus: string): string {
+  return block("【回忆库】", corpus);
+}
+
+/**
+ * 组装发送给 AI 的 user 消息。
+ *
+ * 构成（按顺序）：
+ * 1. 玩家输入   —— scenePlayerInput()
+ * 2. 回忆库     —— sceneRecallCorpus()
+ */
+function buildRecallUserContent(playerInput: string, corpus: string): string {
+  let msg = "";
+
+  // ── 1. 玩家输入：作为检索依据 ──
+  msg += scenePlayerInput(playerInput);
+
+  // ── 2. 回忆库：候选回忆语料 ──
+  msg += sceneRecallCorpus(corpus);
+
+  return msg;
+}
+
 export async function generateRecallStory(input: RecallStoryInput): Promise<RecallStoryParsed> {
   const playerInput = (input.playerInput || "").trim();
   const archive = Array.isArray(input.archive) ? input.archive : [];
@@ -54,19 +88,11 @@ export async function generateRecallStory(input: RecallStoryInput): Promise<Reca
     candidateIds: candidates.map((item) => item.id),
   });
 
-  const userContent = [
-    "【玩家输入】",
-    playerInput || "（空输入）",
-    "",
-    "【回忆库】",
-    corpus,
-  ].join("\n");
-
   const opts: RunPipelineOptions = {
     defaultTemperature: 0.2,
     defaultMaxTokens: 256,
     system: RECALL_STORY_SYSTEM_PRESET,
-    user: userContent,
+    user: buildRecallUserContent(playerInput, corpus),
     logTag: "剧情回忆检索",
   };
 

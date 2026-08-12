@@ -58,13 +58,17 @@ export {
   TAG_STORY_SNAPSHOT_OPEN, TAG_STORY_SNAPSHOT_CLOSE,
   TAG_ACTION_OPTIONS_OPEN, TAG_ACTION_OPTIONS_CLOSE,
   MJ_STORY_BODY_OPEN, MJ_STORY_BODY_CLOSE,
-  MJ_PLOT_OUTLINE_OPEN, MJ_PLOT_OUTLINE_CLOSE,
   MJ_CULTIVATION_BODY_OPEN, MJ_CULTIVATION_BODY_CLOSE,
   MJ_FINALE_BODY_OPEN, MJ_FINALE_BODY_CLOSE,
   MJ_EQUIP_BODY_OPEN, MJ_EQUIP_BODY_CLOSE,
   MJ_MAGIC_BODY_OPEN, MJ_MAGIC_BODY_CLOSE,
   MJ_STORAGE_BODY_OPEN, MJ_STORAGE_BODY_CLOSE,
   TAG_AGE_OPEN, TAG_AGE_CLOSE,
+  MJ_NARRATIVE_BODY_OPEN, MJ_NARRATIVE_BODY_CLOSE,
+  MJ_SHORT_TERM_MEMORY_OPEN, MJ_SHORT_TERM_MEMORY_CLOSE,
+  MJ_VAR_PLAN_OPEN, MJ_VAR_PLAN_CLOSE,
+  MJ_PLOT_PLAN_OPEN, MJ_PLOT_PLAN_CLOSE,
+  MJ_STORY_ACTION_OPTIONS_OPEN, MJ_STORY_ACTION_OPTIONS_CLOSE,
 } from "./shared/tagSpec";
 export { safeJsonParse, tryParseJsonArray, sanitizeJsonLike, safeStr, safeCount } from "./shared/parseJson";
 export {
@@ -83,8 +87,6 @@ export { callChatCompletions, extractResponse, extractOpenAiNonStreamMessageText
 
 // ── Pipelines ──
 export { generateStory, type StoryInput, type StoryParsed, type StoryChatEntry } from "./pipelines/story";
-export { generatePlotOutline, type PlotOutlineInput, type PlotOutlineParsed, OUTLINE_REFRESH_TURNS } from "./pipelines/plotOutline";
-export { generateShortTermStory, type ShortTermStoryInput, type ShortTermStoryParsed, type ShortTermChatEntry } from "./pipelines/shortTermStory";
 export { generateInitStory, type InitStoryInput, type InitStoryParsed } from "./pipelines/initStory";
 export { generateInitState, parseInitStateAiResponse, buildEquippedSlotsFromParsed, buildGongfaSlotsFromParsed, buildInventoryFromParsed, type InitStateInput, type InitStateParsed } from "./pipelines/initState";
 
@@ -95,10 +97,8 @@ export { generateMemoryCompress, type MemoryCompressInput, type MemoryCompressPa
 export { generateState, npcEventsToLegacyFormat, type StateGenerateInput as StateGenInput } from "./pipelines/state";
 
 // ── Presets ──
-export { getStoryPreset, STORY_SYSTEM_PRESET } from "./presets/storyPreset";
+export { STORY_SYSTEM_PRESET } from "./presets/storyPreset";
 export { PRESET } from "./presets/globalPreset";
-export { PLOT_OUTLINE_SYSTEM_PRESET } from "./presets/plotOutlinePreset";
-export { SHORT_TERM_STORY_SYSTEM_PRESET } from "./presets/shortTermStoryPreset";
 export { INIT_STORY_SYSTEM_PRESET } from "./presets/initStoryPreset";
 export { INIT_STATE_SYSTEM_PRESET } from "./presets/initStatePreset";
 export { CULTIVATION_STORY_SYSTEM_PRESET } from "./presets/cultivationStoryPreset";
