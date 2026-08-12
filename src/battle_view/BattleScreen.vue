@@ -409,7 +409,7 @@ function onConsumableSelect(item: ConsumableSkillActionItem) {
                 <div v-if="state.phase === 'victory' && result && result.loot.length > 0" class="battle__loot">
                   <p class="battle__loot-title">战利品：</p>
                   <p v-for="(loot, idx) in result.loot" :key="idx" class="battle__loot-item">
-                    {{ loot.enemyName }} → {{ loot.itemKind }}「{{ loot.itemName }}」
+                    {{ loot.enemyName }} → {{ loot.itemKind }}「{{ loot.itemName }}」<template v-if="loot.count && loot.count > 1">×{{ loot.count }}</template>
                   </p>
                 </div>
                 <button class="battle__action-btn" @click="onBattleEnd">返回</button>

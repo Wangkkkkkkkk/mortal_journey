@@ -288,7 +288,7 @@ function parseItemAdds(raw: string): ItemAddEntry[] {
       const type = String(o.type || "").trim();
       const name = String(o.name || "").trim();
       const intro = String(o.intro || "").trim();
-      const grade = String(o.grade || "下品").trim();
+      const grade = String(o.grade || "").trim();
       const count = typeof o.count === "number" ? Math.max(1, Math.floor(o.count)) : 1;
       if (!name) return null;
       return {
@@ -587,6 +587,21 @@ function sceneWorldTime(worldTime?: WorldTime): string {
   return block("【当前世界时间】", text);
 }
 
+/**
+ * 【主角当前状态】分节：姓名/境界/灵根等基底信息，供 AI 据此判断境界下限
+ * （物品品阶、灵石数量、突破判断等都要以主角境界为依据）。
+ */
+function sceneProtagonistState(protagonist?: ProtagonistPlayInfo): string {
+  if (!protagonist) return "";
+  const p = protagonist;
+  const lines = [
+    `姓名：${p.displayName}`,
+    `境界：${p.realm.major}${p.realm.minor}`,
+    `灵根：${p.linggen.join("") || "无"}（${p.linggen.length}灵根）`,
+  ];
+  return block("【主角当前状态】", lines.join("\n"));
+}
+
 /** 【当前所在地点】分节：让 AI 复用规范字符串，避免重复分支。 */
 function sceneWorldLocation(loc?: WorldLocation | null): string {
   if (!loc) return "";
@@ -621,29 +636,33 @@ function sceneNpcSnapshot(npcSnapshot?: string): string {
  * 组装发送给 AI 的 user 消息。
  *
  * 构成（按顺序）：
- * 1. 当前世界时间       —— sceneWorldTime()
- * 2. 当前所在地点       —— sceneWorldLocation()
- * 3. 已注册地点         —— sceneRegisteredLocations()
- * 4. 变量规划           —— sceneVariablePlan()
- * 5. 本轮剧情正文       —— sceneStoryBody()
- * 6. 当前在场 NPC 现状  —— sceneNpcSnapshot()
+ * 1. 主角当前状态       —— sceneProtagonistState()
+ * 2. 当前世界时间       —— sceneWorldTime()
+ * 3. 当前所在地点       —— sceneWorldLocation()
+ * 4. 已注册地点         —— sceneRegisteredLocations()
+ * 5. 变量规划           —— sceneVariablePlan()
+ * 6. 本轮剧情正文       —— sceneStoryBody()
+ * 7. 当前在场 NPC 现状  —— sceneNpcSnapshot()
  */
 function buildStateUserContent(input: StateGenerateInput): string {
   let msg = "";
 
-  // ── 1. 当前世界时间：为 timeAdvance 提供起点 ──
+  // ── 1. 主角当前状态：境界/灵根，物品品阶与数值判定的依据 ──
+  msg += sceneProtagonistState(input.protagonist);
+
+  // ── 2. 当前世界时间：为 timeAdvance 提供起点 ──
   msg += sceneWorldTime(input.currentWorldTime);
 
-  // ── 2. 当前所在地点：四级地点字符串 ──
+  // ── 3. 当前所在地点：四级地点字符串 ──
   msg += sceneWorldLocation(input.currentWorldLocation);
 
-  // ── 3. 已注册地点：返回时须逐字沿用 ──
+  // ── 4. 已注册地点：返回时须逐字沿用 ──
   msg += sceneRegisteredLocations(input.registeredLocations);
 
-  // ── 4. 变量规划：故事调用给出的状态变化说明稿 ──
+  // ── 5. 变量规划：故事调用给出的状态变化说明稿 ──
   msg += sceneVariablePlan(input.variablePlan);
 
-  // ── 5. 本轮剧情正文：状态变化的直接依据 ──
+  // ── 6. 本轮剧情正文：状态变化的直接依据 ──
   msg += sceneStoryBody(input.storyBody);
 
   // ── 6. 当前在场 NPC 现状 ──

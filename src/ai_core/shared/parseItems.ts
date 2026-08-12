@@ -3,7 +3,8 @@
  *
  * parseEquipObject / parseGongfaObject / parseStorageObject 把 AI 输出的原始物品
  * 对象转换为结构化 ItemDefinition。物品效果由 AI 从统一效果词汇表选一个 kind 决定，
- * 程序按品阶填充数值。品阶尊重 AI 输出（不得低于境界下限），缺失时随机。
+ * 程序按品阶填充数值。品阶信任 AI 输出（合法即保留），缺失/非法时确定性兜底为
+ * 境界参照下限（realmFloorGrade），不再随机生成。
  */
 
 import {
@@ -18,7 +19,7 @@ import type {
   MiscItemDefinition,
   CategorizedItemDefinition,
 } from "../../role_core/types/items";
-import { GRADE_DROP_TABLE, validateGrade, rollGrade, resolveGongfaEffect, resolveTreasureEffect, resolveElixirEffect, type EffectParams, type EffectEntry } from "../../role_core/types/items";
+import { validateGrade, realmFloorGrade, resolveGongfaEffect, resolveTreasureEffect, resolveElixirEffect, type EffectParams, type EffectEntry } from "../../role_core/types/items";
 import { createSpiritStoneInventoryStack } from "../../role_core/types/spiritStone";
 import { safeStr, safeCount } from "./parseJson";
 
@@ -30,8 +31,6 @@ export function parseBonusField(raw: unknown, grade: string): Record<string, num
   if (!VALID_BONUS_NAMES.has(name)) return {};
   return { [name]: rollGradeAttriValue(name, grade, GONGFA_GRADE_ATTRI_TABLE) };
 }
-
-export { rollGrade };
 
 export const TYPE_TO_ITEM_TYPE: Record<string, CategorizedItemDefinition["itemType"]> = {
   "法宝": "法宝",
@@ -93,9 +92,9 @@ function readEffectEntries(obj: Record<string, unknown>): EffectEntry[] {
   return entries;
 }
 
-export function parseEquipObject(e: unknown, realmMajor: string, realmMinor: string): TreasureItemDefinition {
+export function parseEquipObject(e: unknown, realmMajor: string, _realmMinor: string): TreasureItemDefinition {
   const obj = e as Record<string, unknown>;
-  const grade = validateGrade(obj.grade) ?? rollGrade(realmMajor, realmMinor);
+  const grade = validateGrade(obj.grade) ?? realmFloorGrade(realmMajor);
   return {
     itemType: "法宝",
     name: safeStr(obj.name, "未命名法宝"),
@@ -109,11 +108,11 @@ export function parseEquipObject(e: unknown, realmMajor: string, realmMinor: str
 export function parseGongfaObject(
   e: unknown,
   realmMajor: string,
-  realmMinor: string,
+  _realmMinor: string,
   _playerLinggen?: readonly string[] | null,
 ): GongfaItemDefinition {
   const obj = e as Record<string, unknown>;
-  const grade = validateGrade(obj.grade) ?? rollGrade(realmMajor, realmMinor);
+  const grade = validateGrade(obj.grade) ?? realmFloorGrade(realmMajor);
   return {
     itemType: "功法",
     name: safeStr(obj.name, "未命名功法"),
@@ -128,7 +127,7 @@ export function parseGongfaObject(
 export function parseStorageObject(
   e: unknown,
   realmMajor: string,
-  realmMinor: string,
+  _realmMinor: string,
   _playerLinggen?: readonly string[] | null,
 ): InventoryStackItem | null {
   const obj = e as Record<string, unknown>;
@@ -142,7 +141,7 @@ export function parseStorageObject(
 
   const name = safeStr(obj.name, "未命名物品");
   const desc = safeStr(obj.intro, "");
-  const grade = validateGrade(obj.grade) ?? rollGrade(realmMajor, realmMinor);
+  const grade = validateGrade(obj.grade) ?? realmFloorGrade(realmMajor);
   const count = safeCount(obj.count);
   const itemType = TYPE_TO_ITEM_TYPE[typeStr] ?? "杂物";
   const entries = readEffectEntries(obj);

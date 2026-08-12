@@ -25,7 +25,6 @@ import {
   EFFECT_NUMBERS,
   type TreasureModifierType,
 } from "./effects";
-import { GRADE_DROP_TABLE } from "./gameConstants";
 import { getLinggenElementBonus } from "./gameConstants";
 
 // ---------------------------------------------------------------------------
@@ -35,9 +34,6 @@ import { getLinggenElementBonus } from "./gameConstants";
 export type { ItemGrade, Effect, EffectBundle, EffectParams, EffectEntry } from "./effects";
 
 export type ItemBonusMap = ZhStatBonusMap | Record<string, number>;
-
-export interface GradeDropRate { 下品: number; 中品: number; 上品: number; 极品: number; 仙品: number; 神品: number; }
-export { GRADE_DROP_TABLE } from "./gameConstants";
 
 // ---------------------------------------------------------------------------
 // 物品定义
@@ -127,17 +123,12 @@ export function validateGrade(raw: unknown, _realmMajor?: string): ItemGrade | n
   return trimmed as ItemGrade;
 }
 
-export function rollGrade(realmMajor: string, realmMinor: string): ItemGrade {
-  const stage = GRADE_DROP_TABLE[realmMajor]?.[realmMinor];
-  if (!stage) return "下品";
-  const total = stage.下品 + stage.中品 + stage.上品 + stage.极品 + stage.仙品 + stage.神品;
-  if (total <= 0) return "下品";
-  let roll = Math.random() * total;
-  for (const key of ["下品", "中品", "上品", "极品", "仙品", "神品"] as const) {
-    roll -= stage[key];
-    if (roll <= 0) return key;
-  }
-  return "下品";
+/**
+ * 品阶确定性兜底：取该大境界的参照下限（练气=下品 … 化神=仙品）。
+ * 未知境界回退下品。用于 AI 缺失/输出非法品阶时替代旧的随机 rollGrade。
+ */
+export function realmFloorGrade(realmMajor: string): ItemGrade {
+  return REALM_GRADE_FLOOR[realmMajor] ?? "下品";
 }
 
 // ---------------------------------------------------------------------------

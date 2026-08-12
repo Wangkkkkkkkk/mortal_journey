@@ -410,17 +410,19 @@ export interface BattleResult {
   allyNames: string[];
   enemyNames: string[];
   triggerKind: "active" | "passive";
-  /** 战斗胜利时从每个被击杀敌人身上随机缴获的一件法宝/功法（纯游戏性，不经 AI）。 */
+  /** 战斗胜利时从每个被击杀敌人身上缴获的全部法宝/功法/储物袋物品（纯游戏性，不经 AI）。 */
   loot: LootEntry[];
   /** 主角在战斗中身亡（仅正常/困难难度下战败时为 true；简单模式主角不会死亡）。 */
   protagonistDied?: boolean;
 }
 
-/** 单件战利品记录：来自哪个敌人、是法宝还是功法、物品名。 */
+/** 单件战利品记录：来自哪个敌人、物品类型（法宝/功法/丹药/灵石等）、物品名、可选数量。 */
 export interface LootEntry {
   enemyName: string;
-  itemKind: "法宝" | "功法";
+  itemKind: string;
   itemName: string;
+  /** 堆叠物品数量（灵石/丹药等）；单件物品缺省为 1。 */
+  count?: number;
 }
 
 // ─── 引擎接口（内部模块间引用） ───

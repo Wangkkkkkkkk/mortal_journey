@@ -2,34 +2,36 @@ import type { BattleState, BattleResult, BattleCombatant, BattleOutcome, LootEnt
 import { protagonist } from "../role_core/Protagonist";
 import { npcStore } from "../role_core/npcStore";
 import type { Npc } from "../role_core/Npc";
-import type { InventoryStackItem, TreasureItemDefinition, GongfaItemDefinition } from "../role_core/types/items";
+import type { InventoryStackItem, GongfaItemDefinition } from "../role_core/types/items";
 import type { BattleTriggerEntry } from "../ai_core";
 import { gameLog } from "../log/gameLog";
 
 /**
- * 从 NPC 的 equippedSlots（法宝）+ gongfaSlots（功法）中随机抽取一件作为战利品。
+ * 收集 NPC 的全部战利品：法宝（equippedSlots）+ 功法（gongfaSlots）+ 储物袋（inventorySlots）。
  *
- * 纯游戏性掉落，不经过 AI。候选池为空（敌人既无法宝也无功法）返回 null。
- * 采用浅拷贝 + 重置 count/mastery，避免共享引用污染 NPC 数据（NPC 槽位不移除）。
+ * 纯游戏性掉落，不经过 AI。返回全部非空物品的浅拷贝，避免共享引用污染 NPC 数据
+ * （NPC 槽位不移除）。功法重置 mastery=1/masteryExp=0，储物袋物品保留原 count。
  */
-function rollLootFromNpc(npc: Npc): { item: InventoryStackItem; kind: "法宝" | "功法" } | null {
-  const candidates: Array<{ item: InventoryStackItem; kind: "法宝" | "功法" }> = [];
+function collectNpcLoot(npc: Npc): Array<{ item: InventoryStackItem; kind: string }> {
+  const loot: Array<{ item: InventoryStackItem; kind: string }> = [];
+
   for (const tr of npc.equippedSlots) {
-    if (tr) candidates.push({ item: tr as TreasureItemDefinition, kind: "法宝" });
+    if (tr) loot.push({ item: { ...tr, count: 1 }, kind: "法宝" });
   }
   for (const gf of npc.gongfaSlots) {
-    if (gf) candidates.push({ item: gf as GongfaItemDefinition, kind: "功法" });
+    if (gf) {
+      const g = { ...gf, count: 1, mastery: 1, masteryExp: 0 } as GongfaItemDefinition;
+      loot.push({ item: g, kind: "功法" });
+    }
   }
-  if (candidates.length === 0) return null;
+  for (const cell of npc.inventorySlots) {
+    if (cell) {
+      const kind = "itemType" in cell && cell.itemType ? cell.itemType : ("type" in cell ? cell.type : "物品");
+      loot.push({ item: { ...cell }, kind });
+    }
+  }
 
-  const pick = candidates[Math.floor(Math.random() * candidates.length)];
-  const loot = { ...pick.item, count: 1 } as InventoryStackItem;
-  if (pick.kind === "功法") {
-    const g = loot as GongfaItemDefinition;
-    g.mastery = 1;
-    g.masteryExp = 0;
-  }
-  return { item: loot, kind: pick.kind };
+  return loot;
 }
 
 export interface SettleBattleOptions {
@@ -107,16 +109,18 @@ export function settleBattle(state: BattleState, opts?: SettleBattleOptions): Ba
         npc.isDead = true;
         npc.currentHp = 0;
 
-        // 战利品掉落：每个被击杀敌人随机掉落一件法宝/功法（纯游戏性，不经 AI）。
+        // 战利品掉落：缴获该阵亡敌人的全部法宝/功法/储物袋物品（纯游戏性，不经 AI；只给副本，不清尸体）。
         if (state.phase === "victory" && lootRecipient) {
-          const rolled = rollLootFromNpc(npc);
-          if (rolled) {
+          const dropped = collectNpcLoot(npc);
+          for (const rolled of dropped) {
             const idx = lootRecipient.addToInventory(rolled.item);
             if (idx >= 0) {
+              const count = rolled.item.count ?? 1;
               loot.push({
                 enemyName: enemy.sourceNpcName,
                 itemKind: rolled.kind,
                 itemName: rolled.item.name,
+                ...(count > 1 ? { count } : {}),
               });
             } else {
               gameLog.warn(`[settleBattle] 储物袋已满，无法收取战利品「${rolled.item.name}」（来自 ${enemy.sourceNpcName}）`);
