@@ -43,7 +43,7 @@ import type {
   BattleTriggerEntry,
   BattleCombatant,
 } from "../types/npcEvents";
-import { parseWorldLocationFromDash, formatWorldLocationDash } from "../../role_core/types/worldLocation";
+import { parseWorldLocationFromDash, formatWorldLocationDash, isEmptyWorldLocation } from "../../role_core/types/worldLocation";
 import { formatWorldTimeZhDisplay } from "../../role_core/worldTime";
 import { runPipeline, type RunPipelineOptions } from "../shared/runPipeline";
 import { callChatCompletions } from "../bridge/openAiBridge";
@@ -67,6 +67,7 @@ import {
   TAG_ACTION_OPTIONS_OPEN, TAG_ACTION_OPTIONS_CLOSE,
   TAG_NPC_NEARBY_OPEN, TAG_NPC_NEARBY_CLOSE,
   TAG_NPC_CORE_CHANGE_OPEN, TAG_NPC_CORE_CHANGE_CLOSE,
+  TAG_NPC_DEPART_OPEN, TAG_NPC_DEPART_CLOSE,
   TAG_BATTLE_TRIGGER_OPEN, TAG_BATTLE_TRIGGER_CLOSE,
   TAG_NPC_SNAPSHOTS_OPEN, TAG_NPC_SNAPSHOTS_CLOSE,
   TAG_NPC_MEMORIES_OPEN, TAG_NPC_MEMORIES_CLOSE,
@@ -99,13 +100,16 @@ export interface StateGenerateInput extends AiRequestConfig {
  * - npc_equipment_lost → npcCoreChanges
  * - npc_damaged → npcCoreChanges
  * - npc_died → npcCoreChanges
+ * - npc_left → npcLeftEvents（离场声明）
  */
 export function npcEventsToLegacyFormat(events: NpcEvent[]): {
   nearbyNpcs: NpcNearbyEntry[];
   npcCoreChanges: NpcCoreChangeEvent[];
+  npcLeftEvents: NpcLeftEvent[];
 } {
   const nearbyNpcs: NpcNearbyEntry[] = [];
   const npcCoreChanges: NpcCoreChangeEvent[] = [];
+  const npcLeftEvents: NpcLeftEvent[] = [];
 
   for (const event of events) {
     switch (event.kind) {
@@ -134,22 +138,14 @@ export function npcEventsToLegacyFormat(events: NpcEvent[]): {
         break;
       }
       case "npc_present": {
-        // 把 dynamic 字段包装为 nearbyNpcs 条目（npcStore 按 npcId 匹配后 mergeFromAi）
-        // 注意：已存在 NPC 的 favorability 不在此处传递——好感度变化只走 npcFavorChanges 增量通道。
+        // 把 dynamic 字段包装为 nearbyNpcs 条目（npcStore 按 npcId 匹配后 mergeFromAi）。
+        // 注意：不携带 realm/race 等核心字段（避免误触发核心字段变更告警），位置由系统维护。
         nearbyNpcs.push({
           npcId: event.npcId,
-          displayName: "", // npcStore 会按 npcId 查找，displayName 可为空
-          identity: event.dynamic.identity ?? "",
-          isDead: false,
-          race: "修仙者",
-          appearance: "",
-          clothing: "",
-          gender: "男",
-          age: 0,
-          linggen: [],
-          realm: { major: "练气", minor: "初期" },
-          hpPercent: event.dynamic.hpPercent ?? 100,
-          mpPercent: event.dynamic.mpPercent ?? 100,
+          displayName: "", // 按 npcId 匹配
+          identity: event.dynamic.identity,
+          hpPercent: event.dynamic.hpPercent,
+          mpPercent: event.dynamic.mpPercent,
         });
         break;
       }
@@ -169,12 +165,12 @@ export function npcEventsToLegacyFormat(events: NpcEvent[]): {
         npcCoreChanges.push({ kind: "death", npcId: event.npcId });
         break;
       case "npc_left":
-        // npc_left 暂无对应旧格式，跳过
+        npcLeftEvents.push({ kind: "npc_left", npcId: event.npcId, ...(event.toLocation ? { toLocation: event.toLocation } : {}) });
         break;
     }
   }
 
-  return { nearbyNpcs, npcCoreChanges };
+  return { nearbyNpcs, npcCoreChanges, npcLeftEvents };
 }
 
 // ── 主角相关标签解析 ──
@@ -451,6 +447,38 @@ function parseNpcCoreChangesToEvents(raw: string): NpcEvent[] {
   return events;
 }
 
+/** 解析 <MJ_NPC_DEPART_TAG>（[{npcId, toLocation?}]）→ NpcLeftEvent[]。 */
+function parseNpcDepartToEvents(raw: string): NpcLeftEvent[] {
+  const text = extractTagContent(raw, TAG_NPC_DEPART_OPEN, TAG_NPC_DEPART_CLOSE);
+  const arr = tryParseJsonArray(text) ?? [];
+  const events: NpcLeftEvent[] = [];
+
+  for (const e of arr) {
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    const npcId = typeof o.npcId === "string" ? o.npcId.trim() : "";
+    if (!npcId) continue;
+    const toLocation = resolveEventLocation(o.toLocation);
+    events.push({ kind: "npc_left", npcId, ...(toLocation ? { toLocation } : {}) });
+  }
+
+  return events;
+}
+
+/** 事件目的地解析：支持 dash 字符串 / WorldLocation 对象；空或非法返回 undefined。 */
+function resolveEventLocation(v: unknown): WorldLocation | null | undefined {
+  if (v == null) return undefined;
+  if (typeof v === "string") {
+    const loc = parseWorldLocationFromDash(v);
+    return loc && !isEmptyWorldLocation(loc) ? loc : undefined;
+  }
+  if (typeof v === "object") {
+    const loc = sanitizeNpcCurrentLocation(v);
+    return loc && !isEmptyWorldLocation(loc) ? loc : undefined;
+  }
+  return undefined;
+}
+
 function parseCombatantList(arr: unknown[]): BattleCombatant[] {
   return arr
     .map((e: unknown): BattleCombatant | null => {
@@ -548,9 +576,13 @@ function parseStateFromXml(raw: string): StateParsed {
   const storySnapshot = extractTagContent(raw, TAG_STORY_SNAPSHOT_OPEN, TAG_STORY_SNAPSHOT_CLOSE);
   const actionOptions = parseActionOptions(raw);
 
-  const npcEvents = [...parseNearbyNpcsToEvents(raw), ...parseNpcCoreChangesToEvents(raw)];
+  const npcEvents = [
+    ...parseNearbyNpcsToEvents(raw),
+    ...parseNpcCoreChangesToEvents(raw),
+    ...parseNpcDepartToEvents(raw),
+  ];
   const battleTrigger = parseBattleTrigger(raw);
-  const { nearbyNpcs, npcCoreChanges } = npcEventsToLegacyFormat(npcEvents);
+  const { nearbyNpcs, npcCoreChanges, npcLeftEvents } = npcEventsToLegacyFormat(npcEvents);
   const npcSnapshots = parseNpcSnapshots(raw);
   const npcMemories = parseNpcMemories(raw);
   const npcFavorChanges = parseNpcFavorChanges(raw);
@@ -566,6 +598,7 @@ function parseStateFromXml(raw: string): StateParsed {
     itemRemoves,
     nearbyNpcs,
     npcCoreChanges,
+    npcLeftEvents,
     battleTrigger,
     storySnapshot,
     actionOptions,
@@ -608,10 +641,10 @@ function sceneWorldLocation(loc?: WorldLocation | null): string {
   return block("【当前所在地点】", formatWorldLocationDash(loc));
 }
 
-/** 【已注册地点】分节：返回时须逐字沿用既有字符串。 */
+/** 【既往到访地点】分节：返回时沿用既有字符串；抵达全新地点请生成新名。 */
 function sceneRegisteredLocations(registeredLocations?: string[]): string {
   const registered = (registeredLocations ?? []).filter((s) => s && s.trim());
-  return block("【已注册地点·返回时须逐字沿用既有字符串】", registered.join("\n"));
+  return block("【既往到访地点·返回时沿用；抵达全新地点请生成新名】", registered.join("\n"));
 }
 
 /** 【变量规划】分节：统一剧情调用产出的自然语言变量说明稿，据此对齐状态变化。 */

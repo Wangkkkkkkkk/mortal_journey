@@ -197,7 +197,7 @@ export class Npc extends Character {
       clothing: entry.clothing ?? "",
       traits: [],
       xiuwei: 0,
-      currentLocation: entry.currentLocation ? { ...entry.currentLocation } : (currentLocation ? { ...currentLocation } : null),
+      currentLocation: currentLocation ? { ...currentLocation } : null,
       presence: "active",
       lastSeenWorldTime: currentWorldTime ? cloneWorldTime(currentWorldTime) : createDefaultWorldTime(),
       encounterCount: 1,
@@ -243,8 +243,7 @@ export class Npc extends Character {
       this.currentHp = 0;
       return;
     }
-    // 位置字段：每次合并更新（信任 AI 的 currentLocation 输出；未给则保留旧值）。
-    if (entry.currentLocation) this.currentLocation = { ...entry.currentLocation };
+    // 位置由系统维护（在场者 = 主角地点；离场/迁移走事件），不信任 AI 逐条输出。
     if (typeof entry.hpPercent === "number") {
       this.currentHp = Math.max(0, Math.min(this.maxHp, Math.round(this.maxHp * entry.hpPercent / 100)));
     }
@@ -257,7 +256,7 @@ export class Npc extends Character {
       && (entry.realm.major !== this.realm.major || entry.realm.minor !== this.realm.minor);
     if (realmChanged) {
       gameLog.warn(
-        `[Npc.mergeFromAi] 忽略 ${this.displayName} 的境界变更（${this.realm.major}${this.realm.minor}→${entry.realm?.major}${entry.realm.minor}）。突破须走 <MJ_NPC_CORE_CHANGE_TAG> 事件。`,
+        `[Npc.mergeFromAi] 忽略 ${this.displayName} 的境界变更（${this.realm.major}${this.realm.minor}→${entry.realm?.major ?? ""}${entry.realm?.minor ?? ""}）。突破须走 <MJ_NPC_CORE_CHANGE_TAG> 事件。`,
       );
     }
     if (entry.race && entry.race !== this.race) {

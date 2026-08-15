@@ -6,7 +6,7 @@
 
 import type { WorldLocation } from "../../role_core/types/worldLocation";
 import type { TimeDelta, WorldTime } from "../../role_core/worldTime";
-import type { NpcNearbyEntry, BattleTriggerEntry } from "./npcEvents";
+import type { NpcNearbyEntry, BattleTriggerEntry, NpcLeftEvent } from "./npcEvents";
 import type { NpcCoreChangeEvent } from "../../role_core/npcCoreChange";
 
 export interface HpMpState {
@@ -107,6 +107,8 @@ export interface StateParsed {
   itemRemoves: ItemRemoveEntry[];
   nearbyNpcs: NpcNearbyEntry[];
   npcCoreChanges: NpcCoreChangeEvent[];
+  /** 本轮显式离场声明（<MJ_NPC_DEPART_TAG>）。无则空数组。 */
+  npcLeftEvents: NpcLeftEvent[];
   battleTrigger: BattleTriggerEntry | null;
   storySnapshot: string;
   actionOptions: ActionSuggestions | null;

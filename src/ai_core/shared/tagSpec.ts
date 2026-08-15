@@ -20,6 +20,12 @@ export const TAG_NPC_NEARBY_OPEN = "<NPC_NEARBY_TAG>";
 export const TAG_NPC_NEARBY_CLOSE = "</NPC_NEARBY_TAG>";
 export const TAG_NPC_CORE_CHANGE_OPEN = "<MJ_NPC_CORE_CHANGE_TAG>";
 export const TAG_NPC_CORE_CHANGE_CLOSE = "</MJ_NPC_CORE_CHANGE_TAG>";
+/** NPC 离场声明（npcId + 可选目的地）。 */
+export const TAG_NPC_DEPART_OPEN = "<MJ_NPC_DEPART_TAG>";
+export const TAG_NPC_DEPART_CLOSE = "</MJ_NPC_DEPART_TAG>";
+/** 镜头外 NPC 迁移（世界演变输出）。 */
+export const TAG_NPC_MIGRATE_OPEN = "<MJ_NPC_MIGRATE_TAG>";
+export const TAG_NPC_MIGRATE_CLOSE = "</MJ_NPC_MIGRATE_TAG>";
 export const TAG_BATTLE_TRIGGER_OPEN = "<BATTLE_TRIGGER_TAG>";
 export const TAG_BATTLE_TRIGGER_CLOSE = "</BATTLE_TRIGGER_TAG>";
 export const TAG_NPC_SNAPSHOTS_OPEN = "<mj_npc_snapshots>";

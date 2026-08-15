@@ -16,6 +16,7 @@ export type {
   NpcEquipmentLostEvent,
   NpcDamagedEvent,
   NpcDiedEvent,
+  NpcMigrateEvent,
   NpcFullCard,
   NpcNearbyEntry,
   BattleCombatant,
@@ -54,6 +55,8 @@ export {
   TAG_ITEM_REMOVE_OPEN, TAG_ITEM_REMOVE_CLOSE,
   TAG_NPC_NEARBY_OPEN, TAG_NPC_NEARBY_CLOSE,
   TAG_NPC_CORE_CHANGE_OPEN, TAG_NPC_CORE_CHANGE_CLOSE,
+  TAG_NPC_DEPART_OPEN, TAG_NPC_DEPART_CLOSE,
+  TAG_NPC_MIGRATE_OPEN, TAG_NPC_MIGRATE_CLOSE,
   TAG_BATTLE_TRIGGER_OPEN, TAG_BATTLE_TRIGGER_CLOSE,
   TAG_STORY_SNAPSHOT_OPEN, TAG_STORY_SNAPSHOT_CLOSE,
   TAG_ACTION_OPTIONS_OPEN, TAG_ACTION_OPTIONS_CLOSE,
@@ -95,6 +98,7 @@ export { generateGrandSummary, type GrandSummaryInput, type GrandSummaryParsed }
 export { generateRecallStory, type RecallStoryInput, type RecallStoryParsed } from "./pipelines/recallStory";
 export { generateMemoryCompress, type MemoryCompressInput, type MemoryCompressParsed } from "./pipelines/memoryCompress";
 export { generateState, npcEventsToLegacyFormat, type StateGenerateInput as StateGenInput } from "./pipelines/state";
+export { generateWorldEvolution, type WorldEvolutionInput, type WorldEvolutionParsed, type WorldEvolutionNpcBrief } from "./pipelines/worldEvolution";
 
 // ── Presets ──
 export { STORY_SYSTEM_PRESET } from "./presets/storyPreset";
@@ -106,6 +110,7 @@ export { FINALE_STORY_SYSTEM_PRESET } from "./presets/finaleStoryPreset";
 export { GRAND_SUMMARY_SYSTEM_PRESET } from "./presets/grandSummaryPreset";
 export { RECALL_STORY_SYSTEM_PRESET } from "./presets/recallStoryPreset";
 export { buildMemoryCompressSystemPreset, MEMORY_COMPRESS_SHORT2MID_SYSTEM_PRESET, MEMORY_COMPRESS_MID2LONG_SYSTEM_PRESET, type MemoryCompressPresetOptions } from "./presets/memoryCompressPreset";
+export { WORLD_EVOLUTION_SYSTEM_PRESET } from "./presets/worldEvolutionPreset";
 
 // ── Composables ──
 export { useOpeningStoryFromFateChoice, type OpeningStoryPhase, type OpeningStoryApiSlice } from "./composables/useOpeningStory";

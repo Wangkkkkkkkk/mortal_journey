@@ -61,22 +61,12 @@ export function flattenLocationTree(
 
 /**
  * 在同级候选集合里找一个与 input 匹配的既有项。
- * 匹配优先级：精确 > 包含（互为子/超串）。返回既有项或 undefined。
+ * 仅精确匹配（输入与候选都已归一化）。不做子串包含归并——避免把更具体的地点
+ * 折叠进更短的既有项（如 "外门住处" vs "外门" 是两个不同地点）。
  */
 function matchTier(input: string, candidates: string[]): string | undefined {
   if (!input) return undefined;
-  // 1. 精确（归一化后输入已在调用方完成；候选项假定也已归一化）
-  if (candidates.includes(input)) return input;
-  // 2. 包含匹配：input 包含候选，或候选包含 input。
-  //    取最长匹配项以减少误并（如同时命中"外门"和"外门别院"时优先更具体的）。
-  let best: string | undefined;
-  for (const c of candidates) {
-    if (!c) continue;
-    if (input.includes(c) || c.includes(input)) {
-      if (!best || c.length > best.length) best = c;
-    }
-  }
-  return best;
+  return candidates.includes(input) ? input : undefined;
 }
 
 /**

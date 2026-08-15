@@ -3,6 +3,7 @@ import { ref, watch, computed, nextTick } from "vue";
 import type { OpeningStoryPhase } from "../ai_core";
 import { useApiConfig } from "../ai_core";
 import { generateStory, generateRecallStory, generateMemoryCompress, type StoryChatEntry } from "../ai_core";
+import { generateWorldEvolution } from "../ai_core";
 import { generateState, type StateParsed, type BattleTriggerEntry, npcEventsToLegacyFormat } from "../ai_core";
 import { CULTIVATION_WORLD_BOOK } from "../ai_core/world_books/cultivationWorldBook";
 import type { WorldBookEntry } from "../ai_core/world_books/types";
@@ -22,6 +23,7 @@ import {
   advanceWorldTime,
   formatWorldTimeZhDisplay,
   calendarYearsElapsed,
+  cloneWorldTime,
   type WorldTime,
 } from "../role_core/worldTime";
 import type { BattleResult } from "../battle_engine/types";
@@ -168,6 +170,11 @@ function buildChatHistory(): StoryChatEntry[] {
 const GRAND_SUMMARY_THRESHOLD = 30;
 const GRAND_SUMMARY_KEEP_RECENT = 30;
 
+/** 世界演变：距上次触发至少间隔的回合数。 */
+const WORLD_EVOLVE_ROUND_INTERVAL = 5;
+/** 世界演变：距上次触发至少经过的年数（时间门控）。 */
+const WORLD_EVOLVE_YEAR_THRESHOLD = 2;
+
 /** 多层记忆压缩阈值：回忆档案未压缩区达此数 → 压一条中期记忆。 */
 const MID_TERM_COMPRESS_THRESHOLD = 30;
 /** 中期记忆条数达此数 → 取最旧一批压一条长期记忆。 */
@@ -311,6 +318,73 @@ async function maybeCompressMemory(
   }
 }
 
+/** 上次世界演变触发的回合序号与时间（门控用）。 */
+let lastWorldEvolveRound = 0;
+let lastWorldEvolveTime: WorldTime | null = null;
+
+/**
+ * 世界演变（镜头外 NPC 迁移）：按时间/回合门控触发独立次级调用，
+ * 把镜头外 NPC 的位置更新应用到 npcStore。失败静默降级，不影响主回合。
+ */
+async function maybeRunWorldEvolution(
+  url: string,
+  model: string,
+  apiKey: string | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  if (!url || !model) return;
+  const round = memoryArchiveStore.memoryArchive.value.length;
+  const curTime = storyStore.worldTime.value ?? null;
+  const yearsSince = lastWorldEvolveTime && curTime
+    ? calendarYearsElapsed(lastWorldEvolveTime, curTime)
+    : 0;
+  const roundsSince = round - lastWorldEvolveRound;
+  if (!(yearsSince >= WORLD_EVOLVE_YEAR_THRESHOLD || roundsSince >= WORLD_EVOLVE_ROUND_INTERVAL)) return;
+
+  lastWorldEvolveRound = round;
+  if (curTime) lastWorldEvolveTime = cloneWorldTime(curTime);
+
+  const loc = storyStore.worldLocation.value ?? null;
+  const offscreen = npcStore.allNpcs().filter(
+    (n) => n.presence !== "active" && n.presence !== "dead",
+  );
+  if (offscreen.length === 0) return;
+
+  const registeredLocations = flattenLocationTree(worldMapStore.locationTree.value, {});
+  const protagonistName = protagonist.value?.displayName ?? "";
+  const protagonistRealm = protagonist.value
+    ? `${protagonist.value.realm.major}${protagonist.value.realm.minor}`
+    : "";
+  try {
+    const result = await generateWorldEvolution({
+      apiUrl: url,
+      apiKey,
+      model,
+      protagonistName,
+      protagonistRealm,
+      currentWorldLocation: loc,
+      currentWorldTime: curTime ?? undefined,
+      elapsedNote: yearsSince > 0 ? `约 ${yearsSince} 年` : `约 ${roundsSince} 回合`,
+      offscreenNpcs: offscreen.map((n) => ({
+        npcId: n.id,
+        displayName: n.displayName,
+        identity: n.identity,
+        realm: n.realm,
+        currentLocation: n.currentLocation,
+        storySnapshot: n.storySnapshot,
+        presence: n.presence,
+      })),
+      registeredLocations,
+      signal,
+    });
+    if (signal.aborted) return;
+    npcStore.applyNpcMigrations(result.migrations);
+  } catch (err) {
+    if (signal.aborted) return;
+    gameLog.warn("[StoryChat] 世界演变失败：" + (err instanceof Error ? err.message : String(err)));
+  }
+}
+
 type RoundKind = "chat" | "battle";
 
 interface RoundContext {
@@ -405,12 +479,7 @@ async function applyStateResult(stateResult: StateParsed, linggen: string[], sto
     : oldLocation;
   const locationChanged = !isWorldLocationEqual(oldLocation, newLocation);
 
-  // ① 快照旧地点 active 集合（在 markDormant 之前），用于后续判定跨地点跟随的合法性。
-  const oldActiveSet = locationChanged && oldLocation
-    ? new Set(npcStore.getActiveNpcsAt(oldLocation))
-    : new Set<Npc>();
-
-  // ② 地点切换：旧地点 active NPC 转入休眠。
+  // ① 地点切换：旧地点 active NPC 转入休眠。
   try {
     if (locationChanged && oldLocation) {
       npcStore.markDormantAtLocation(oldLocation);
@@ -473,59 +542,37 @@ async function applyStateResult(stateResult: StateParsed, linggen: string[], sto
     gameLog.error("[StoryChat] 地点进入处理失败：" + (e instanceof Error ? e.message : String(e)));
   }
 
-  // ⑤ nearbyNpcs 一致性校正 + 跨地点迁移合法性过滤 + NPC 更新。
+  // ⑤ 在场 NPC 应用：位置由系统同步为主角 reconcile 后地点；离场声明单独应用。
   try {
-    let nearbyNpcsToApply = stateResult.nearbyNpcs;
-    if (nearbyNpcsToApply.length > 0) {
-      nearbyNpcsToApply = nearbyNpcsToApply.map(entry => {
-        if (newLocation && (!entry.currentLocation || !isWorldLocationEqual(entry.currentLocation, newLocation))) {
-          if (entry.currentLocation) {
-            gameLog.warn(`[StoryChat] NPC「${entry.displayName}」的 currentLocation 与主角地点不符，已强制校正`);
-          }
-          return { ...entry, currentLocation: { ...newLocation } };
-        }
-        return entry;
-      });
-
-      if (locationChanged && oldLocation) {
-        nearbyNpcsToApply = nearbyNpcsToApply.filter(entry => {
-          const existing = entry.npcId
-            ? npcStore.getNpcById(entry.npcId)
-            : (entry.displayName ? npcStore.getNpc(entry.displayName) : undefined);
-          // 新 NPC 或无位置信息：保留
-          if (!existing || !existing.currentLocation) return true;
-          // 上一回合在旧地点 active：合法跟随主角迁移
-          if (oldActiveSet.has(existing)) return true;
-          // 上一回合就在新地点（被唤醒的 dormant 或本就在场）：保留
-          if (isWorldLocationEqual(existing.currentLocation, newLocation)) return true;
-          // 上一回合在第三地 dormant：不可能瞬间跨地点，剔除并告警
-          gameLog.warn(`[StoryChat] 地点切换兜底：剔除 NPC「${existing.displayName}」误入新地点 nearbyNpcs（上一回合在 ${formatWorldLocationDash(existing.currentLocation)}，不可能瞬间跨地点）`);
-          return false;
-        });
-      }
-    }
-
-    if (nearbyNpcsToApply.length > 0 || stateResult.npcCoreChanges.length > 0 || stateResult.npcSnapshots.length > 0 || stateResult.npcMemories.length > 0 || stateResult.npcFavorChanges.length > 0) {
-      const createdNpcs = npcStore.applyNpcUpdates(nearbyNpcsToApply, linggen, {
+    if (stateResult.nearbyNpcs.length > 0
+      || stateResult.npcCoreChanges.length > 0
+      || stateResult.npcSnapshots.length > 0
+      || stateResult.npcMemories.length > 0
+      || stateResult.npcFavorChanges.length > 0
+      || stateResult.npcLeftEvents.length > 0) {
+      const createdNpcs = npcStore.applyNpcUpdates(stateResult.nearbyNpcs, linggen, {
         coreChangeEvents: stateResult.npcCoreChanges,
         snapshots: stateResult.npcSnapshots,
         memoryEntries: stateResult.npcMemories,
         favorChanges: stateResult.npcFavorChanges,
         currentLocation: newLocation,
         currentWorldTime: newWorldTime ?? null,
+        npcLeftEvents: stateResult.npcLeftEvents,
       });
       autoGeneratePortraits(createdNpcs);
     }
+    // 系统权威：在场 NPC 位置 = 主角 reconcile 后地点（修复位置漂移）。
+    npcStore.syncActiveLocations(newLocation);
   } catch (e) {
     gameLog.error("[StoryChat] NPC 更新失败：" + (e instanceof Error ? e.message : String(e)));
   }
 
-  // ⑥ 登记新地点到世界地图。
+  // ⑥ 登记新地点到世界地图（使用 reconcile 后的规范地点，避免树/背景 key 错位）。
   try {
-    if (stateResult.worldLocation && !isEmptyWorldLocation(stateResult.worldLocation)) {
-      worldMapStore.addLocation(stateResult.worldLocation);
+    if (rawLocation && newLocation && !isEmptyWorldLocation(newLocation)) {
+      worldMapStore.addLocation(newLocation);
       autoGenerateLocationBackgrounds(
-        [stateResult.worldLocation],
+        [newLocation],
         protagonist.value?.realm?.major,
       );
     }
@@ -726,10 +773,7 @@ async function runStoryGenerationRound(ctx: RoundContext): Promise<void> {
         protagonist: p,
         currentWorldLocation: props.currentWorldLocation ?? undefined,
         currentWorldTime: props.worldTime,
-        registeredLocations: flattenLocationTree(worldMapStore.locationTree.value, {
-          onlyRegion: props.currentWorldLocation?.region,
-          onlyCountry: props.currentWorldLocation?.country,
-        }),
+        registeredLocations: flattenLocationTree(worldMapStore.locationTree.value, {}),
         npcSnapshot: buildStateNpcSnapshot() || undefined,
         variablePlan: storyResult.variablePlan.trim() || undefined,
         signal: ac.signal,
@@ -759,6 +803,9 @@ async function runStoryGenerationRound(ctx: RoundContext): Promise<void> {
 
       // 多层记忆压缩：在回忆档案维度做分层压缩，产出中/长期记忆供统一剧情调用作长期背景（失败不影响本轮）。
       await maybeCompressMemory(url, model, String(apiKey.value || "").trim() || undefined, ac.signal);
+
+      // 世界演变：按时间/回合门控推进镜头外 NPC 的位置（失败静默降级）。
+      await maybeRunWorldEvolution(url, model, String(apiKey.value || "").trim() || undefined, ac.signal);
 
       if (gameOverReason) {
         // 寿元耗尽：生成走马灯结局叙事（不走状态 AI），然后触发 game over。
@@ -871,6 +918,17 @@ function truncateText(s: string, max: number): string {
   return t.length > max ? t.slice(0, max) + "…" : t;
 }
 
+/** 在场状态标签（供 AI 判断谁在场景/留守/已离场，以正确触发离场/迁移）。 */
+function npcPresenceLabel(npc: Npc): string {
+  switch (npc.presence) {
+    case "active": return "在场";
+    case "dormant": return "留守";
+    case "departed": return "已离场";
+    case "dead": return "已故";
+    default: return npc.presence;
+  }
+}
+
 function npcBaseLine(npc: Npc): string {
   const favor = npc.favorability;
   const hp = `${npc.currentHp}/${npc.maxHp}`;
@@ -878,7 +936,7 @@ function npcBaseLine(npc: Npc): string {
   const dead = npc.isDead ? " [已故]" : "";
   const cur = npc.currentLocation ? formatWorldLocationDash(npc.currentLocation) : "未知";
   const race = npc.race && npc.race !== "修仙者" ? `，${npc.race}` : "";
-  return `${npc.displayName}（npcId:${npc.id}，${npc.identity}${race}，${Character.formatRealm(npc.realm)}，当前:${cur}，好感${favor}，HP ${hp}，MP ${mp}）${dead}`;
+  return `${npc.displayName}（npcId:${npc.id}，${npc.identity}${race}，${Character.formatRealm(npc.realm)}，当前:${cur}，状态:${npcPresenceLabel(npc)}，好感${favor}，HP ${hp}，MP ${mp}）${dead}`;
 }
 
 function formatNpcFullLine(npc: Npc): string {

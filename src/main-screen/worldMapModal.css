@@ -89,9 +89,20 @@
   height: min(580px, calc(90vh - 52px));
 }
 
+/* 左侧列：地点选择（上）+ 场景立绘（下） */
+.map-panel__left {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-width: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--mj-border, rgba(140, 120, 83, 0.3));
+}
+
 .map-cascader {
   display: flex;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .map-cascader__column {
@@ -163,19 +174,22 @@
   padding: 10px 0 8px;
 }
 
-/* 地点背景预览区域 */
+/* 地点背景预览区域（位于左侧选择器下方）——预览宽度受 max-width 约束（居中） */
 .map-location-bg {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 6px;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(140, 120, 83, 0.25);
+  flex-shrink: 0;
+  margin-top: 12px;
+  padding: 12px;
+  border-top: 1px solid rgba(140, 120, 83, 0.25);
 }
 
 .map-location-bg-preview {
   position: relative;
   width: 100%;
+  max-width: 400px;
   aspect-ratio: 4 / 3;
   border-radius: 6px;
   overflow: hidden;
@@ -344,6 +358,77 @@
   color: var(--mj-gold-dim, #b89a4a);
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* 好感度等级徽标（第一行最右侧，分段着色） */
+.map-npc-favor {
+  margin-left: auto;
+  flex-shrink: 0;
+  align-self: center;
+  padding: 1px 7px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.map-npc-favor--positive {
+  background: rgba(80, 200, 120, 0.14);
+  border: 1px solid rgba(80, 200, 120, 0.45);
+  color: #7fd9a0;
+}
+
+.map-npc-favor--neutral {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--mj-muted, #8a9088);
+}
+
+.map-npc-favor--distant {
+  background: rgba(120, 150, 200, 0.12);
+  border: 1px solid rgba(120, 150, 200, 0.45);
+  color: #9db4d9;
+}
+
+.map-npc-favor--hostile {
+  background: rgba(200, 80, 80, 0.15);
+  border: 1px solid rgba(200, 80, 80, 0.5);
+  color: #e08a8a;
+}
+
+/* 在场状态徽标 */
+.map-npc-presence {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 1px 6px;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  border-radius: 7px;
+  white-space: nowrap;
+}
+
+.map-npc-presence--active {
+  background: rgba(80, 200, 120, 0.12);
+  border: 1px solid rgba(80, 200, 120, 0.4);
+  color: #7fd9a0;
+}
+
+.map-npc-presence--dormant {
+  background: rgba(120, 150, 200, 0.1);
+  border: 1px solid rgba(120, 150, 200, 0.35);
+  color: #9db4d9;
+}
+
+.map-npc-presence--departed {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--mj-muted, #8a9088);
+}
+
+.map-npc-presence--dead {
+  background: rgba(200, 80, 80, 0.12);
+  border: 1px solid rgba(200, 80, 80, 0.4);
+  color: #e08a8a;
 }
 
 .map-npc-identity {

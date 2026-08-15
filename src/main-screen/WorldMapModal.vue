@@ -4,7 +4,7 @@ import { worldMapStore } from "../role_core/worldMapStore";
 import { npcStore } from "../role_core/npcStore";
 import { locationImageStore } from "../role_core/locationImageStore";
 import type { WorldLocation } from "../role_core/types/worldLocation";
-import { isWorldLocationEqual, formatWorldLocation } from "../role_core/types/worldLocation";
+import { isWorldLocationEqual, isWorldLocationEqualNormalized, formatWorldLocation } from "../role_core/types/worldLocation";
 import type { Npc } from "../role_core/Npc";
 import { npcColorTheme } from "../role_core/npcTheme";
 import { useScrollLock } from "../composables/useScrollLock";
@@ -12,6 +12,7 @@ import NpcDetailModal from "./NpcDetailModal.vue";
 import PortraitHistoryModal from "./PortraitHistoryModal.vue";
 import { generateLocationBackground, isImageApiConfigured } from "../image_generate";
 import { writeActiveSave } from "../save/gameSave";
+import { favorabilityLabel, favorLevelClass } from "./npcDetailPayload";
 
 const props = defineProps<{
   open: boolean;
@@ -113,9 +114,20 @@ const npcEntries = computed(() => {
   const loc = selectedFullLocation.value;
   if (!loc) return [];
   return npcStore.allNpcs()
-    .filter(n => n.currentLocation && isWorldLocationEqual(n.currentLocation, loc))
+    .filter(n => n.currentLocation && isWorldLocationEqualNormalized(n.currentLocation, loc))
     .map(npc => ({ npc, name: npc.displayName }));
 });
+
+/** NPC 在场状态中文标签。 */
+function npcPresenceZh(presence?: Npc["presence"]): string {
+  switch (presence) {
+    case "active": return "在场";
+    case "dormant": return "留守";
+    case "departed": return "已离场";
+    case "dead": return "已故";
+    default: return "";
+  }
+}
 
 function selectRegion(r: string) {
   selectedRegion.value = r;
@@ -252,6 +264,7 @@ onUnmounted(() => {
               </button>
             </div>
             <div class="side-modal__body map-panel">
+              <div class="map-panel__left">
               <div class="map-cascader">
                 <div class="map-cascader__column">
                   <div class="map-cascader__label">大区域</div>
@@ -310,10 +323,8 @@ onUnmounted(() => {
                   </div>
                 </div>
               </div>
-              <div class="map-panel__npcs">
-                <div class="map-cascader__label">场景NPC</div>
-                <div v-if="selectedFullLocation" class="map-location-bg">
-                  <div class="map-location-bg-preview">
+              <div v-if="selectedFullLocation" class="map-location-bg">
+                <div class="map-location-bg-preview">
                     <img
                       v-if="locationImageData?.avatarUrl"
                       :src="locationImageData.avatarUrl"
@@ -339,7 +350,10 @@ onUnmounted(() => {
                   </div>
                   <p v-if="!imageApiReady" class="map-location-bg-hint">未配置文生图</p>
                   <p v-if="bgGenError" class="map-location-bg-error">{{ bgGenError }}</p>
-                </div>
+              </div>
+              </div>
+              <div class="map-panel__npcs">
+                <div class="map-cascader__label">场景NPC</div>
                 <template v-if="!selectedFullLocation">
                   <div class="map-panel__empty">请选择完整地点查看NPC</div>
                 </template>
@@ -371,6 +385,20 @@ onUnmounted(() => {
                         </span>
                         <span v-if="entry.npc" class="map-npc-realm">
                           {{ entry.npc.realm.major }}{{ entry.npc.realm.minor }}
+                        </span>
+                        <span
+                          v-if="entry.npc"
+                          class="map-npc-presence"
+                          :class="`map-npc-presence--${entry.npc.presence}`"
+                        >
+                          {{ npcPresenceZh(entry.npc.presence) }}
+                        </span>
+                        <span
+                          v-if="entry.npc"
+                          class="map-npc-favor"
+                          :class="favorLevelClass(entry.npc.favorability)"
+                        >
+                          {{ favorabilityLabel(entry.npc.favorability) }}
                         </span>
                       </div>
                       <div class="map-npc-identity">

@@ -42,7 +42,9 @@ export const STATE_SYSTEM_PRESET = `
 2. 标签内格式为四级地点，用"-"分隔：大区域-国家-区域-具体地点。例如：天南-越国-黄枫谷-外门。须非空。
 3. 需要根据剧情判断是否发生了地点变化来判断是否需要重新生成地点，如果没有发生地点变化，就保持上一次的地点（完整四级格式不变）。
 4. 四级含义：第一级为大区域（如天南、乱星海、大晋），第二级为国家或势力范围（如越国、九国盟），第三级为区域或宗门（如黄枫谷、七玄门），第四级为具体地点（如外门、坊市、洞府）。
-5. 【逐字复用·重要】输入会给出【当前所在地点】与【已注册地点】列表。当主角返回或停留在已注册地点时，<mj_world_body> 的四级字符串必须与既有条目**逐字一致**，不得改写为近义表达（已注册"外门"不得写成"外门区域"/"外门弟子居"；已注册"黄枫谷"不得写成"黄枫谷谷"）。只有真正抵达全新地点时才生成新字符串。
+5. 【地点一致性·双向】输入会给出【当前所在地点】与【既往到访地点】列表：
+   - 返回/停留在既往到访地点时，<mj_world_body> 的四级字符串必须与既有条目**逐字一致**，不得改写为近义表达（已注册"外门"不得写成"外门区域"/"外门弟子居"；已注册"黄枫谷"不得写成"黄枫谷谷"）。
+   - **抵达全新地点时，必须生成新的四级字符串并登记（禁止复用既有地点名称，即使看起来相近）**。新独立地点（城镇/坊市/山门/宗门/秘境入口/建筑群/渡口等）应作为独立地点输出，不得并成上级地点的附注。
 
 [血量法力规则]
 1. 根据剧情描述和主角的当前状态，用百分比表示主角的血量和法力。hpPercent 为血量百分比（0-100），mpPercent 为法力百分比（0-100）。100 表示满血/满蓝，80 表示轻微受伤/消耗少量法力，50 表示半血/半蓝，0 表示死亡。
@@ -265,19 +267,28 @@ export const STATE_SYSTEM_PRESET = `
   11.3 【核心字段冻结·重要】已存在 NPC 的核心字段（realm 境界、equippedSlots 法宝、gongfaSlots 功法、inventorySlots 储物袋、race 种族、appearance 外貌、clothing 服装）默认冻结，禁止在 nearbyNpcs 里直接修改或重写——文生图要求角色长相稳定。只有以下 dynamic 字段可自由更新：identity、isDead、hpPercent、mpPercent。核心字段变化必须通过 <MJ_NPC_CORE_CHANGE_TAG> 显式声明（见「NPC核心变更规则」）。
   11.3a 【好感度·重要】favorability 不再作为 dynamic 字段在 nearbyNpcs 里对已存在 NPC 重发。已存在 NPC 的好感度变化只通过 <mj_npc_favor_changes> 增量通道输出（见「好感度变更规则」）。nearbyNpcs 里的 favorability 仅用于新 NPC 首次建档时的初始值（-19~19 中性区）；已存在 NPC 在 nearbyNpcs 里不要带 favorability 字段。
   11.4 新首次出现的 NPC 必须输出完整角色卡（含核心字段），并附带 npcId（首次出现时生成一个稳定的 UUID 字符串，后续所有回合对该 NPC 必须沿用同一 npcId）。
-  11.4b 【currentLocation 必填·重要】每个 nearbyNpcs 条目必须携带 currentLocation 字段，表示该 NPC 当前所在地点。格式为四级地点对象 {"region":"...","country":"...","area":"...","detail":"..."}。
-    - 在场者（与主角同行/同场）的 currentLocation 必须等于本回合 <mj_world_body> 的四级地点。
-    - 若剧情明确描写某 NPC 跟随主角从旧地点移动到新地点，其 currentLocation 设为新地点（= 主角当前 worldLocation）。
-    - 严禁让不在场的 NPC 出现在 nearbyNpcs——nearbyNpcs 只列在场者，他们的 currentLocation 一律 = 主角当前地点。
+  11.4b 【currentLocation 由系统维护·重要】nearbyNpcs 条目【不要】携带 currentLocation 字段。NPC 的当前位置由系统管理：
+    - 出现在 nearbyNpcs 中的 NPC = 在场，其位置自动 = 主角当前地点，无需也不应填写。
+    - 不在场 NPC 严禁塞入 nearbyNpcs（他们是"留守/已离场"），否则会被判为在场并错误迁移。
+    - 已存在 NPC 的离场：输出 <MJ_NPC_DEPART_TAG> 声明（见「NPC 离场规则」）。
+    - 镜头外 NPC 的位置迁移由「世界演变」引擎维护，你不负责。
   11.5 isDead:true 的 NPC 禁止改写复活。
   11.6 每个 NPC 必须满足：equippedSlots 至少有 1 个攻击性法宝（如剑、刀、枪等），gongfaSlots 至少有 1 门攻击类功法。
   11.7 妖兽与人形妖兽也使用同一 NPC 角色卡结构，通过 race 字段区分："妖兽"为兽形，"人形妖兽"为整体人形但保留兽类头部/特征。两者的 appearance/clothing 须按 9.2 要素清单填写（兽形"妖兽"的 clothing 留空）。
-  11.8 【地点变更·NPC更替·重要】当本轮 worldLocation 相比"主角当前所在地点（出发点）"发生变化（主角移动到新地点）时，nearbyNpcs 必须只反映新地点的在场者：
-    - 快照中"当前"为新地点的 NPC（dormant 被唤醒），或本回合新出现的 NPC，可出现在 nearbyNpcs，其 currentLocation 设为新地点。
-    - 快照中"当前"为旧地点（出发点）的 NPC，若剧情正文明确描写其跟随主角一同抵达新地点，可出现在 nearbyNpcs，其 currentLocation 设为新地点（视为随主角迁移）。
-    - 快照中"当前"为旧地点但剧情未描写跟随的 NPC，禁止出现在 nearbyNpcs——他们留在旧地点，currentLocation 保持旧地点不变。
-    - 快照中"当前"为第三地（既非旧地点也非新地点）的 NPC，禁止出现在 nearbyNpcs——他们不可能瞬间跨地点出现在新地点。
-    - 每个 NPC 的"当前"地点见快照里的标注；判断时严格比对当前地点与新地点的关系。
+  11.8 【地点变更·NPC更替·重要】当本轮 worldLocation 相比"主角当前所在地点（出发点）"发生变化（主角移动到新地点）时：
+    - nearbyNpcs 只列【新地点】的在场者：本回合新出现者、快照标注"当前=新地点"者、剧情明确描写跟随主角一同抵达者。
+    - 快照标注"当前=旧地点"但剧情未描写跟随的 NPC：不出现在 nearbyNpcs（系统自动转为留守 dormant）。
+    - 快照标注"当前=第三地"的 NPC：严禁出现在 nearbyNpcs（不可能瞬间跨地点）。
+    - 已存在 NPC 若在剧情中【自行离场】（前往别处/独行/被带走），输出 <MJ_NPC_DEPART_TAG> 声明，不要留在 nearbyNpcs。
+
+[NPC 离场规则]
+1. 当剧情明确描写某已存在 NPC 离开当前场景（前往别处/独行/被带走/远行）时，输出 <MJ_NPC_DEPART_TAG>：
+   JSON 数组，每条 { "npcId": "...", "toLocation": {"region":"...","country":"...","area":"...","detail":"..."} }。
+   - toLocation 为可选的去向地点：有明确去向时给出并【逐字复用】已注册地点字符串；无明确去向可省略该字段。
+2. 离场 NPC 不要再出现在 nearbyNpcs；系统会将其置为"已离场"（主角回归时不自动唤醒）。
+3. 主角移动导致 NPC 留守旧地点【不需要】离场声明（系统自动处理）。
+4. 无离场时输出空数组：<MJ_NPC_DEPART_TAG>[]</MJ_NPC_DEPART_TAG>。
+
 12. NPC示例：
 <NPC_NEARBY_TAG>[
   {
@@ -292,7 +303,6 @@ export const STATE_SYSTEM_PRESET = `
     "age": 16,
     "linggen": ["水"],
     "realm": { "major": "练气", "minor": "初期" },
-    "currentLocation": { "region": "天南", "country": "越国", "area": "七玄门", "detail": "外门" },
     "equippedSlots": [
       {"type": "法宝", "name": "青锋剑", "intro": "外门制式灵剑，刃口隐隐泛着灵光", "grade": "下品", "effects": [{"kind": "applyModifier", "modifierType": "damageDealt"}]},
       {"type": "法宝", "name": "灵丝道袍", "intro": "以灵蚕丝织就的道袍，轻便坚韧", "grade": "下品", "effects": [{"kind": "applyModifier", "modifierType": "damageTaken"}]}
@@ -405,7 +415,7 @@ export const STATE_SYSTEM_PRESET = `
    <MJ_ACTION_OPTIONS_TAG>{"aggressive":"我前往坊市黑市，寻机低价购入或夺取筑基丹材料","moderate":"我主动去找林师姐，打听秘境开启的消息与门径","cautious":"我先在洞府闭关数日精进功法，静观宗门风向","veryCautious":"我藏拙低调，暂避纷争，先摸清各方虚实再行动"}</MJ_ACTION_OPTIONS_TAG>
 
 [输出契约·必须遵守]
-你将收到一段剧情正文、主角当前状态，以及在场 NPC 的现状（含其储物/装备/功法物品名与近况、互动记忆、好感突破条件）。你需要根据剧情内容，按以下固定顺序输出十六段标签：
+你将收到一段剧情正文、主角当前状态，以及在场 NPC 的现状（含其储物/装备/功法物品名与近况、互动记忆、好感突破条件）。你需要根据剧情内容，按以下固定顺序输出十七段标签：
 1. <mj_world_body>根据剧情判断是否发生地点变化</mj_world_body>
 2. <MJ_HP_MP_TAG>主角血量法力百分比</MJ_HP_MP_TAG>
 3. <USER_STATE_TAG>修为增加与功法熟练度变化</USER_STATE_TAG>
@@ -414,13 +424,14 @@ export const STATE_SYSTEM_PRESET = `
 6. <SPIRIT_STONE_TAG>灵石变动</SPIRIT_STONE_TAG>
 7. <ITEM_ADD_TAG>物品添加（每件物品必须含 grade，判定依据见「储物袋物品添加规则」第6条）</ITEM_ADD_TAG>
 8. <ITEM_REMOVE_TAG>物品减少</ITEM_REMOVE_TAG>
-9. <NPC_NEARBY_TAG>周围人物列表（已存在 NPC 仅含 dynamic 字段且不含 favorability，核心字段须冻结）</NPC_NEARBY_TAG>
-10. <MJ_NPC_CORE_CHANGE_TAG>NPC 核心字段变更事件（含物品得失，按「NPC核心变更规则」主动输出）</MJ_NPC_CORE_CHANGE_TAG>
-11. <BATTLE_TRIGGER_TAG>战斗触发（未满足触发条件时不输出此标签）</BATTLE_TRIGGER_TAG>
-12. <mj_story_snapshot>剧情快照（本轮剧情的2~3句简述）</mj_story_snapshot>
-13. <MJ_ACTION_OPTIONS_TAG>四个倾向的行动建议（激进/中庸/谨慎/最谨慎）</MJ_ACTION_OPTIONS_TAG>
-14. <mj_npc_snapshots>本轮有显著行为 NPC 的近况（无则 []）</mj_npc_snapshots>
-15. <mj_npc_memories>本轮与主角有关键互动 NPC 的互动记忆（无则 []）</mj_npc_memories>
-16. <mj_npc_favor_changes>本轮好感度变化的增量（无则 []）</mj_npc_favor_changes>
-禁止缺少第1~10段和第12~16段标签；第11段仅在满足战斗触发条件时输出。无数据的标签输出空对象 {}（数组型标签输出 []）。禁止改写标签名的大小写或字符；禁止用 Markdown 代码围栏包裹标签。
+9. <NPC_NEARBY_TAG>周围人物列表（只列在场者，不含 currentLocation；已存在 NPC 仅含 dynamic 字段且不含 favorability，核心字段须冻结）</NPC_NEARBY_TAG>
+10. <MJ_NPC_DEPART_TAG>本回合离场 NPC 的离场声明（无则 []）</MJ_NPC_DEPART_TAG>
+11. <MJ_NPC_CORE_CHANGE_TAG>NPC 核心字段变更事件（含物品得失，按「NPC核心变更规则」主动输出）</MJ_NPC_CORE_CHANGE_TAG>
+12. <BATTLE_TRIGGER_TAG>战斗触发（未满足触发条件时不输出此标签）</BATTLE_TRIGGER_TAG>
+13. <mj_story_snapshot>剧情快照（本轮剧情的2~3句简述）</mj_story_snapshot>
+14. <MJ_ACTION_OPTIONS_TAG>四个倾向的行动建议（激进/中庸/谨慎/最谨慎）</MJ_ACTION_OPTIONS_TAG>
+15. <mj_npc_snapshots>本轮有显著行为 NPC 的近况（无则 []）</mj_npc_snapshots>
+16. <mj_npc_memories>本轮与主角有关键互动 NPC 的互动记忆（无则 []）</mj_npc_memories>
+17. <mj_npc_favor_changes>本轮好感度变化的增量（无则 []）</mj_npc_favor_changes>
+禁止缺少第1~11段和第13~17段标签；第12段仅在满足战斗触发条件时输出。无数据的标签输出空对象 {}（数组型标签输出 []）。禁止改写标签名的大小写或字符；禁止用 Markdown 代码围栏包裹标签。
 `;

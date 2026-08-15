@@ -19,7 +19,8 @@ export type NpcEvent =
   | NpcEquipmentAcquiredEvent
   | NpcEquipmentLostEvent
   | NpcDamagedEvent
-  | NpcDiedEvent;
+  | NpcDiedEvent
+  | NpcMigrateEvent;
 
 export interface NpcFullCard {
   npcId: string;
@@ -62,6 +63,16 @@ export interface NpcLeftEvent {
   kind: "npc_left";
   npcId: string;
   toLocation?: WorldLocation;
+}
+
+/**
+ * 镜头外 NPC 迁移（世界演变 / 显式事件）：不进入场景，仅更新其当前位置。
+ * 由独立的「世界演变」调用（或状态 AI 的 <MJ_NPC_DEPART_TAG> 目的地）产出。
+ */
+export interface NpcMigrateEvent {
+  kind: "npc_migrate";
+  npcId: string;
+  toLocation: WorldLocation;
 }
 
 export interface NpcBreakthroughEvent {
@@ -120,19 +131,19 @@ export interface BattleTriggerEntry {
 export interface NpcNearbyEntry {
   npcId?: string;
   displayName: string;
-  identity: string;
-  isDead: boolean;
   /** 仅新 NPC 首次建档时填初始值；已存在 NPC 的好感度变化走 npcFavorChanges 增量通道。 */
   favorability?: number;
-  race: import("../../role_core/types/playInfo").NpcRace;
-  appearance: string;
-  clothing: string;
-  gender: string;
-  age: number;
-  linggen: string[];
-  realm: { major: string; minor: string };
-  hpPercent: number;
-  mpPercent: number;
+  identity?: string;
+  isDead?: boolean;
+  race?: import("../../role_core/types/playInfo").NpcRace;
+  appearance?: string;
+  clothing?: string;
+  gender?: string;
+  age?: number;
+  linggen?: string[];
+  realm?: { major: string; minor: string };
+  hpPercent?: number;
+  mpPercent?: number;
   currentLocation?: import("../../role_core/types/worldLocation").WorldLocation;
   equippedSlots?: unknown[];
   gongfaSlots?: unknown[];

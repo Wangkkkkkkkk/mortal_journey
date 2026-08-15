@@ -1,13 +1,15 @@
 import { ref, triggerRef, type Ref } from "vue";
 import { Npc } from "./Npc";
 import type { NpcPlayInfo, PowerTier } from "./types/playInfo";
-import type { NpcNearbyEntry, NpcSnapshotEntry, NpcMemoryEntry, NpcFavorChangeEntry } from "../ai_core";
+import type { NpcNearbyEntry, NpcSnapshotEntry, NpcMemoryEntry, NpcFavorChangeEntry, NpcLeftEvent, NpcMigrateEvent } from "../ai_core";
 import type { NpcCoreChangeEvent } from "./npcCoreChange";
 import { applyCoreChange } from "./npcCoreChange";
 import type { WorldLocation } from "./types/worldLocation";
-import { isWorldLocationEqual } from "./types/worldLocation";
+import { isWorldLocationEqualNormalized } from "./types/worldLocation";
 import type { WorldTime } from "./worldTime";
 import { cloneWorldTime, createDefaultWorldTime } from "./worldTime";
+import { worldMapStore } from "./worldMapStore";
+import { reconcileLocation } from "./worldLocationReconcile";
 
 const npcMap: Ref<Map<string, Npc>> = ref(new Map());
 
@@ -25,6 +27,8 @@ export interface ApplyNpcUpdatesOptions {
   currentLocation?: WorldLocation | null;
   /** 当前世界时间，用于写入 NPC.lastSeenWorldTime。 */
   currentWorldTime?: WorldTime | null;
+  /** 本轮显式离场声明（来自 <MJ_NPC_DEPART_TAG>）。 */
+  npcLeftEvents?: NpcLeftEvent[];
 }
 
 /** 触发「重要羁绊」简表的门槛（绝对值）。 */
@@ -58,10 +62,10 @@ export function useNpcStore() {
   // 地点 / 状态机 查询
   // ─────────────────────────────────────────────────────────────────
 
-  /** 当前所在地点匹配 loc 的所有 NPC。 */
+  /** 当前所在地点匹配 loc 的所有 NPC（归一化宽容比较）。 */
   function getNpcsAtLocation(loc: WorldLocation | null | undefined): Npc[] {
     if (!loc) return [];
-    return allNpcs().filter(n => n.currentLocation && isWorldLocationEqual(n.currentLocation, loc));
+    return allNpcs().filter(n => n.currentLocation && isWorldLocationEqualNormalized(n.currentLocation, loc));
   }
 
   /** 当前在主角所在地点且 presence=active 的 NPC。 */
@@ -85,11 +89,16 @@ export function useNpcStore() {
   // 状态机维护
   // ─────────────────────────────────────────────────────────────────
 
-  /** 把指定 NPC 标记为在场：presence=active，刷新 lastSeen，encounterCount++。 */
-  function markActive(npc: Npc, worldTime: WorldTime | null | undefined): void {
+  /** 把指定 NPC 标记为在场：presence=active，刷新 lastSeen，encounterCount++，同步当前位置。 */
+  function markActive(
+    npc: Npc,
+    worldTime: WorldTime | null | undefined,
+    currentLocation?: WorldLocation | null,
+  ): void {
     npc.presence = npc.isDead ? "dead" : "active";
     npc.lastSeenWorldTime = worldTime ? cloneWorldTime(worldTime) : npc.lastSeenWorldTime;
     npc.encounterCount += 1;
+    if (currentLocation) npc.currentLocation = { ...currentLocation };
   }
 
   /**
@@ -131,9 +140,9 @@ export function useNpcStore() {
    *
    * 匹配顺序：① entry.npcId 命中已有 NPC 的稳定 id；② 回退到按 displayName 匹配。
    * 已存在 NPC 调 {@link Npc.mergeFromAi}（白名单策略，核心层默认冻结）。
-    * 新 NPC 调 {@link Npc.fromAiData} 构造，currentLocation 取 entry.currentLocation 或回退到 options.currentLocation。
-    * 全部 nearbyNpcs 处理完后，统一标记为 active 并刷新 lastSeen。
-    * 最后应用 coreChangeEvents。
+    * 新 NPC 调 {@link Npc.fromAiData} 构造，currentLocation 一律取 options.currentLocation（主角 reconcile 后地点）。
+    * 全部 nearbyNpcs 处理完后，统一标记为 active、同步当前位置并刷新 lastSeen。
+    * 最后应用 coreChangeEvents，并处理显式离场声明（npcLeftEvents）。
     * @return 本次新建的 NPC 列表（供调用方按需触发立绘自动生成等副作用）。
     */
   function applyNpcUpdates(
@@ -148,18 +157,16 @@ export function useNpcStore() {
 
     for (const entry of entries) {
       const name = entry.displayName?.trim();
-      if (!name) continue;
+      const npcId = (entry.npcId || "").trim();
+      // 匹配优先 npcId（present 事件可带空 displayName）；两者皆空才跳过。
+      if (!name && !npcId) continue;
 
-      const existingByNpcId = entry.npcId ? findByNpcId(entry.npcId) : undefined;
-      const existing = existingByNpcId ?? npcMap.value.get(name);
+      const existingByNpcId = npcId ? findByNpcId(npcId) : undefined;
+      const existing = existingByNpcId ?? (name ? npcMap.value.get(name) : undefined);
       if (existing) {
         existing.mergeFromAi(entry, protagonistLinggen);
-        // 若 AI 这次给了 npcId 而旧 NPC 没有稳定 id，补记一下（便于后续按 id 查）。
-        if (entry.npcId && existing.id !== entry.npcId && !existing.id.startsWith("npc_")) {
-          // id 已稳定存储，保留不动，避免身份漂移
-        }
         touchedThisRound.add(existing);
-      } else {
+      } else if (name) {
         const npc = Npc.fromAiData(entry, protagonistLinggen, currentLocation, currentWorldTime);
         npcMap.value.set(name, npc);
         touchedThisRound.add(npc);
@@ -167,9 +174,9 @@ export function useNpcStore() {
       }
     }
 
-    // 统一标记本回合出场者为 active。
+    // 统一标记本回合出场者为 active，并同步当前位置 = 主角 reconcile 后地点。
     for (const npc of touchedThisRound) {
-      markActive(npc, currentWorldTime);
+      markActive(npc, currentWorldTime, currentLocation);
     }
 
     if (options?.coreChangeEvents && options.coreChangeEvents.length > 0) {
@@ -207,7 +214,56 @@ export function useNpcStore() {
       }
     }
 
+    // 应用本轮显式离场声明（在出场标记之后，离场优先）。
+    applyNpcDepartures(options?.npcLeftEvents);
+
     return createdThisRound;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // 位置 / 离场 / 迁移（路线 B：位置由系统与显式事件维护）
+  // ─────────────────────────────────────────────────────────────────
+
+  /** 把事件目的地对齐到已注册地点树（未命中则归一化保留为新地点）。 */
+  function reconcileNpcLocation(loc: WorldLocation): WorldLocation {
+    return reconcileLocation(loc, worldMapStore.locationTree.value);
+  }
+
+  /**
+   * NPC 自行离场（npc_left）：置为 departed（主角回归不自动唤醒），
+   * 附目的地则 reconcile 后更新当前位置，否则冻结在当前地点。
+   */
+  function applyNpcDepartures(events?: NpcLeftEvent[]): void {
+    for (const e of events ?? []) {
+      const npc = findByNpcId(e.npcId);
+      if (!npc || npc.isDead) continue;
+      npc.presence = "departed";
+      if (e.toLocation) npc.currentLocation = { ...reconcileNpcLocation(e.toLocation) };
+    }
+  }
+
+  /**
+   * 镜头外 NPC 迁移（世界演变输出）：仅更新当前位置，不改变 presence。
+   */
+  function applyNpcMigrations(events?: NpcMigrateEvent[]): void {
+    for (const e of events ?? []) {
+      const npc = findByNpcId(e.npcId);
+      if (!npc || npc.isDead) continue;
+      npc.currentLocation = { ...reconcileNpcLocation(e.toLocation) };
+    }
+  }
+
+  /**
+   * 系统权威：把所有在场（active）NPC 的位置同步为主角 reconcile 后地点。
+   * 修复「NPC 位置与主角地点漂移」问题。
+   */
+  function syncActiveLocations(loc: WorldLocation | null | undefined): void {
+    if (!loc) return;
+    for (const npc of allNpcs()) {
+      if (npc.presence === "active" && !npc.isDead) {
+        npc.currentLocation = { ...loc };
+      }
+    }
   }
 
   function serializeNpcs(): NpcPlayInfo[] {
@@ -256,6 +312,9 @@ export function useNpcStore() {
     markActive,
     markDormantAtLocation,
     wakeDormantAtLocation,
+    applyNpcDepartures,
+    applyNpcMigrations,
+    syncActiveLocations,
     serializeNpcs,
     restoreNpcs,
     clearNpcs,
