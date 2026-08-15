@@ -12,6 +12,7 @@ import {
   importSave as importSaveFromGameSave,
   removeSave as removeSaveFromGameSave,
   clearAllSaves as clearAllSavesFromGameSave,
+  embedPayloadImages,
   type MjSavePayload,
   type SaveIndexEntry,
 } from "../save/gameSave";
@@ -59,7 +60,7 @@ export interface UseSplashReturn {
   closeHelp: () => void;
   refreshSaveList: () => void;
   loadSave: (it: SaveIndexEntry) => { id: string; payload: MjSavePayload } | null;
-  exportSave: (it: SaveIndexEntry) => void;
+  exportSave: (it: SaveIndexEntry) => Promise<void>;
   importSaveFromFile: (file: File) => Promise<void>;
   deleteSave: (it: SaveIndexEntry) => void;
   deleteAllSaves: () => void;
@@ -217,16 +218,17 @@ export function useSplash(): UseSplashReturn {
     }
   }
 
-  /** 导出存档为本地 JSON 文件（玩家可分享给开发者复现问题）。 */
-  function exportSave(it: SaveIndexEntry): void {
+  /** 导出存档为本地 JSON 文件（玩家可分享给开发者复现问题）。内嵌图片数据，文件自包含。 */
+  async function exportSave(it: SaveIndexEntry): Promise<void> {
     try {
       const payload = readSave(it.id);
       if (!payload || !payload.fateChoice) {
         setSaveStatus("导出失败：存档内容不存在或已损坏。", false);
         return;
       }
+      const embedded = await embedPayloadImages(payload);
       const name = (payload.fateChoice.basics?.playerName || it.id).trim() || it.id;
-      downloadJson(`${name}-${it.id}.json`, payload);
+      downloadJson(`${name}-${it.id}.json`, embedded);
       setSaveStatus("已导出存档文件。", true);
     } catch (e) {
       const err = e instanceof Error ? e.message : "未知错误";
@@ -242,7 +244,7 @@ export function useSplash(): UseSplashReturn {
         setSaveStatus("导入失败：不是合法的存档文件。", false);
         return;
       }
-      const id = importSaveFromGameSave(data as MjSavePayload);
+      const id = await importSaveFromGameSave(data as MjSavePayload);
       if (!id) {
         setSaveStatus("导入失败：存档内容不合法（缺少命运抉择数据）。", false);
         return;

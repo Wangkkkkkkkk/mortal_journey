@@ -8,6 +8,7 @@ import type {
   PrimaryStatKey,
   CharacterPlayInfoCommon,
 } from "./types/playInfo";
+import { registerImage } from "../save/imageBlobStore";
 import {
   PRIMARY_STAT_KEYS,
   PRIMARY_STAT_KEY_TO_ZH,
@@ -272,7 +273,13 @@ export class Character {
   }
 
   setAvatarUrl(url: string): void {
-    this.avatarUrl = url != null ? String(url) : "";
+    const u = url != null ? String(url) : "";
+    if (!u) {
+      this.avatarUrl = "";
+      return;
+    }
+    registerImage(u);
+    this.avatarUrl = u;
   }
 
   patchPrimaryStats(partial: Partial<Record<PrimaryStatKey, number>>): void {

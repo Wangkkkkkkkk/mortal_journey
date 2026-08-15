@@ -480,6 +480,129 @@
   max-width: 80%;
 }
 
+/* ── 头像+对话式剧情渲染（【旁白】/【角色名】解析）── */
+
+.main-panel__dialog {
+  margin-bottom: 4px;
+}
+
+/* 旁白：居中叙述块 */
+.main-panel__dialog-narration {
+  margin: 4px auto;
+  max-width: 94%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(12, 20, 14, 0.55);
+  border: 1px solid var(--mj-border-subtle);
+  border-left: 3px solid var(--mj-gold-dim);
+}
+
+.main-panel__dialog-narration .main-panel__story-prose {
+  font-size: 0.95rem;
+  line-height: 1.85;
+}
+
+/* 台词行：头像列 + 气泡。主角右对齐，NPC 左对齐。气泡与头像垂直居中。 */
+.main-panel__dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 24px;
+}
+
+.main-panel__dialog-row--left {
+  justify-content: flex-start;
+}
+
+.main-panel__dialog-row--right {
+  justify-content: flex-end;
+}
+
+/* 主角右对齐：头像列放到最右侧（气泡之后）。 */
+.main-panel__dialog-row--right .main-panel__dialog-avatar-col {
+  order: 2;
+}
+
+.main-panel__dialog-row--right .main-panel__dialog-bubble {
+  order: 1;
+}
+
+.main-panel__dialog-avatar-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 auto;
+  width: 72px;
+}
+
+.main-panel__dialog-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.main-panel__dialog-avatar--img {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.main-panel__dialog-avatar-initial {
+  user-select: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.main-panel__dialog-name {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-width: 72px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: var(--mj-gold-dim);
+  text-align: center;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main-panel__dialog-bubble {
+  max-width: 72%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(12, 20, 14, 0.72);
+  border: 1px solid var(--mj-border-subtle);
+  color: var(--mj-fg);
+}
+
+.main-panel__dialog-row--left .main-panel__dialog-bubble {
+  border-top-left-radius: 2px;
+}
+
+.main-panel__dialog-row--right .main-panel__dialog-bubble {
+  border-top-right-radius: 2px;
+  background: rgba(60, 50, 30, 0.28);
+  border-color: var(--mj-gold-dim);
+}
+
+.main-panel__dialog-bubble .main-panel__story-prose {
+  font-size: 0.925rem;
+  line-height: 1.75;
+}
+
 /* 滚动大总结裁剪历史后，作为聊天栏顶部的「早期经历总纲」占位消息样式。 */
 .main-panel__chat-item--summary {
   display: flex;

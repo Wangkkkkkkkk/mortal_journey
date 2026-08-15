@@ -24,6 +24,8 @@ import {
   readSave,
   getPersistedActiveId,
   clearActiveId,
+  hydrateRuntimeImages,
+  payloadHasInlineImages,
   type MjSavePayload,
 } from "./save/gameSave";
 
@@ -55,24 +57,28 @@ function onMainScreenBack() {
 }
 
 /** 恢复一个完整存档并进入主界面。`resetFirst=true` 时先清空上一局状态（手动读档）。 */
-function enterSaveSession(id: string, payload: MjSavePayload, resetFirst: boolean): void {
+async function enterSaveSession(id: string, payload: MjSavePayload, resetFirst: boolean): Promise<void> {
   if (resetFirst) resetAllGameState();
   setActiveSave(id, payload.fateChoice, payload.createdAt || Date.now());
   restoreSave(payload);
+  // 把图片引用 id 从 IndexedDB 异步水合回运行时（挂载主界面前完成）。
+  await hydrateRuntimeImages();
+  // 旧格式（内嵌 dataURL）存档水合后立即重写为 id 形态；已迁移存档跳过，避免时间戳扰动。
+  if (payloadHasInlineImages(payload)) writeActiveSave();
   lastFateChoice.value = null;
   fateChoiceVisible.value = false;
   mainScreenVisible.value = true;
 }
 
 /** 从标题读取人生：恢复存档（完整则直接读档，占位/未完成则按 fateChoice 重跑开局）。 */
-function onSaveLoaded(value: { id: string; payload: MjSavePayload }): void {
+async function onSaveLoaded(value: { id: string; payload: MjSavePayload }): Promise<void> {
   const { id, payload } = value;
   if (isEndedSave(payload)) {
     // 已终结存档：恢复数据（供结局页展示姓名）后直接进入纪念碑。
-    enterSaveSession(id, payload, true);
+    await enterSaveSession(id, payload, true);
     showGameOverMemorial(payload.ended!.reason);
   } else if (isCompleteSave(payload)) {
-    enterSaveSession(id, payload, true);
+    await enterSaveSession(id, payload, true);
   } else {
     resetAllGameState();
     setActiveSave(id, payload.fateChoice, payload.createdAt || Date.now());
@@ -84,7 +90,7 @@ function onSaveLoaded(value: { id: string; payload: MjSavePayload }): void {
 
 // 刷新续玩：若本地持久化了活动存档，启动时自动恢复（完整存档直接进主界面，
 // 已终结存档进结局纪念碑；占位/未完成则忽略并清指针）。
-(function resumeOnStartup(): void {
+(async function resumeOnStartup(): Promise<void> {
   const id = getPersistedActiveId();
   if (!id) return;
   const payload = readSave(id);
@@ -93,10 +99,10 @@ function onSaveLoaded(value: { id: string; payload: MjSavePayload }): void {
     return;
   }
   if (isEndedSave(payload)) {
-    enterSaveSession(id, payload, false);
+    await enterSaveSession(id, payload, false);
     showGameOverMemorial(payload.ended!.reason);
   } else if (isCompleteSave(payload)) {
-    enterSaveSession(id, payload, false);
+    await enterSaveSession(id, payload, false);
   } else {
     clearActiveId();
   }

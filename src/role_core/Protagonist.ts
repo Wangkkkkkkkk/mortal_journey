@@ -55,6 +55,7 @@ import {
   buildInventoryFromParsed,
 } from "../ai_core";
 import { Character, normalizeElixirBonuses } from "./Character";
+import { registerImage } from "../save/imageBlobStore";
 import {
   DEFAULT_INVENTORY_SLOT_COUNT,
   INVENTORY_SLOT_EXPAND_STEP,
@@ -150,6 +151,7 @@ export class Protagonist extends Character {
   addPortraitCandidate(url: string): void {
     const u = url != null ? String(url) : "";
     if (!u) return;
+    registerImage(u);
     if (this.avatarCandidates.includes(u)) {
       this.avatarUrl = u;
       return;

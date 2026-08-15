@@ -6,9 +6,10 @@
  * 存档序列化通过 gameSave 模块统一处理。
  */
 
-import { ref } from "vue";
+import { ref, triggerRef } from "vue";
 import type { WorldLocation } from "./types/worldLocation";
 import { formatWorldLocationDash } from "./types/worldLocation";
+import { registerImage } from "../save/imageBlobStore";
 
 /** 单个地点的图像数据。 */
 export interface LocationImageData {
@@ -43,6 +44,7 @@ function useLocationImageStore() {
   function addCandidate(loc: WorldLocation, url: string): void {
     const u = url != null ? String(url) : "";
     if (!u) return;
+    registerImage(u);
     const key = locKey(loc);
     let data = images.value.get(key);
     if (!data) {
@@ -85,6 +87,11 @@ function useLocationImageStore() {
     return !!data && data.avatarCandidates.length > 0;
   }
 
+  /** 强制触发所有读取 images 的渲染更新（异步背景生成后调用，见 autoPortrait）。 */
+  function refresh(): void {
+    triggerRef(images);
+  }
+
   // ── 序列化 ─────────────────────────────────────────────────────────────────
 
   function serialize(): LocationImagesSerialData {
@@ -123,6 +130,7 @@ function useLocationImageStore() {
     selectCandidate,
     removeCandidate,
     hasAnyCandidate,
+    refresh,
     serialize,
     restore,
     clearAll,

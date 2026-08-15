@@ -1,4 +1,4 @@
-import { ref, type Ref } from "vue";
+import { ref, triggerRef, type Ref } from "vue";
 import { Npc } from "./Npc";
 import type { NpcPlayInfo, PowerTier } from "./types/playInfo";
 import type { NpcNearbyEntry, NpcSnapshotEntry, NpcMemoryEntry, NpcFavorChangeEntry } from "../ai_core";
@@ -238,6 +238,11 @@ export function useNpcStore() {
     npcMap.value.delete(displayName);
   }
 
+  /** 强制触发所有读取 npcMap 的渲染更新（异步立绘/背景生成后调用，见 autoPortrait）。 */
+  function refresh(): void {
+    triggerRef(npcMap);
+  }
+
   return {
     npcs: npcMap,
     applyNpcUpdates,
@@ -256,6 +261,7 @@ export function useNpcStore() {
     clearNpcs,
     setNpc,
     removeNpc,
+    refresh,
   };
 }
 

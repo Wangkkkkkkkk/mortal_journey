@@ -25,6 +25,14 @@ import { locationImageStore, type LocationImagesSerialData } from "../role_core/
 import { storyStore, type StorySerialData } from "../role_core/storyStore";
 import { memoryArchiveStore, type MemoryArchiveSerialData } from "../role_core/memoryArchive";
 import { gameLog } from "../log/gameLog";
+import {
+  imageRefOf,
+  isInlineImageUrl,
+  registerImageAwait,
+  resolveImageField,
+  pruneBlobs,
+  clearAllBlobs,
+} from "./imageBlobStore";
 
 export const SAVE_VERSION = 1;
 export const SAVE_INDEX_KEY = "MJ_SAVES_INDEX_V1";
@@ -228,7 +236,7 @@ function locationPreview(loc: WorldLocation | null | undefined): string {
 export function serializeAll(now = Date.now()): MjSavePayload | null {
   const p = protagonist.value;
   if (!p || !activeFateChoice) return null;
-  return {
+  return refPayloadImages({
     version: SAVE_VERSION,
     fateChoice: activeFateChoice,
     createdAt: activeCreatedAt || now,
@@ -239,6 +247,189 @@ export function serializeAll(now = Date.now()): MjSavePayload | null {
     locationImages: locationImageStore.serialize(),
     story: storyStore.serializeStory(),
     memoryArchive: memoryArchiveStore.serializeArchive(),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 图片引用：运行态 dataURL ⇄ 持久化 id（图片 Blob 存 IndexedDB，见 imageBlobStore）
+// ---------------------------------------------------------------------------
+
+function refImageField(u: string | undefined): string | undefined {
+  return typeof u === "string" ? imageRefOf(u) : u;
+}
+
+function refImageList(list: string[] | undefined): string[] | undefined {
+  return Array.isArray(list) ? list.map(imageRefOf) : list;
+}
+
+function refLocationImages(d: LocationImagesSerialData | undefined): LocationImagesSerialData | undefined {
+  if (!d || typeof d !== "object") return d;
+  const out: LocationImagesSerialData = {};
+  for (const k of Object.keys(d)) {
+    const e = d[k];
+    out[k] = {
+      avatarUrl: imageRefOf(e?.avatarUrl || ""),
+      avatarCandidates: Array.isArray(e?.avatarCandidates) ? e.avatarCandidates.map(imageRefOf) : [],
+    };
+  }
+  return out;
+}
+
+/** 把载荷中的内联图片字段统一转为引用 id（写档 / 导入用）。 */
+function refPayloadImages(payload: MjSavePayload): MjSavePayload {
+  return {
+    ...payload,
+    protagonist: payload.protagonist
+      ? {
+          ...payload.protagonist,
+          avatarUrl: refImageField(payload.protagonist.avatarUrl) as string,
+          avatarCandidates: refImageList(payload.protagonist.avatarCandidates),
+        }
+      : payload.protagonist,
+    npcs: payload.npcs?.map((n) => ({
+      ...n,
+      avatarUrl: refImageField(n.avatarUrl) as string,
+      avatarCandidates: refImageList(n.avatarCandidates),
+    })),
+    locationImages: refLocationImages(payload.locationImages),
+  };
+}
+
+/** 收集载荷引用的全部图片 id（供清理孤儿 Blob 用）。 */
+function collectPayloadImageIds(payload: MjSavePayload): Set<string> {
+  const ids = new Set<string>();
+  const feed = (u: string | undefined): void => {
+    if (typeof u === "string" && u && !isInlineImageUrl(u)) ids.add(u);
+  };
+  const feedList = (list: string[] | undefined): void => {
+    if (Array.isArray(list)) list.forEach(feed);
+  };
+  feed(payload.protagonist?.avatarUrl);
+  feedList(payload.protagonist?.avatarCandidates);
+  for (const n of payload.npcs ?? []) {
+    feed(n.avatarUrl);
+    feedList(n.avatarCandidates);
+  }
+  for (const k of Object.keys(payload.locationImages ?? {})) {
+    const e = payload.locationImages![k];
+    feed(e?.avatarUrl);
+    feedList(e?.avatarCandidates);
+  }
+  return ids;
+}
+
+/** 载荷中是否仍含内联 dataURL 图片（旧格式存档判断，用于决定是否重写迁移）。 */
+export function payloadHasInlineImages(payload: MjSavePayload): boolean {
+  const has = (u: string | undefined): boolean => typeof u === "string" && u.startsWith("data:");
+  const hasList = (l: string[] | undefined): boolean => !!l && l.some((u) => has(u));
+  if (has(payload.protagonist?.avatarUrl) || hasList(payload.protagonist?.avatarCandidates)) return true;
+  for (const n of payload.npcs ?? []) {
+    if (has(n.avatarUrl) || hasList(n.avatarCandidates)) return true;
+  }
+  for (const k of Object.keys(payload.locationImages ?? {})) {
+    const e = payload.locationImages![k];
+    if (has(e?.avatarUrl) || hasList(e?.avatarCandidates)) return true;
+  }
+  return false;
+}
+
+/** 把载荷中内联 dataURL 全部注册进 IndexedDB（导入 / 旧档迁移用）。 */
+async function registerPayloadImages(payload: MjSavePayload): Promise<void> {
+  const jobs: Promise<unknown>[] = [];
+  const feed = (u: string | undefined): void => {
+    if (typeof u === "string" && isInlineImageUrl(u)) jobs.push(registerImageAwait(u));
+  };
+  const feedList = (list: string[] | undefined): void => {
+    if (Array.isArray(list)) list.forEach(feed);
+  };
+  feed(payload.protagonist?.avatarUrl);
+  feedList(payload.protagonist?.avatarCandidates);
+  for (const n of payload.npcs ?? []) {
+    feed(n.avatarUrl);
+    feedList(n.avatarCandidates);
+  }
+  for (const k of Object.keys(payload.locationImages ?? {})) {
+    const e = payload.locationImages![k];
+    feed(e?.avatarUrl);
+    feedList(e?.avatarCandidates);
+  }
+  await Promise.all(jobs);
+}
+
+/**
+ * 异步水合：把运行时对象中的图片引用 id 解析回 dataURL。
+ * 在 `restoreSave` 之后、挂载主界面之前调用（App.vue）。
+ * 兼容旧档：发现内联 dataURL 时注册进 IDB（幂等）。
+ */
+export async function hydrateRuntimeImages(): Promise<void> {
+  const p = protagonist.value;
+  if (p) {
+    p.avatarUrl = await resolveImageField(p.avatarUrl);
+    const cands: string[] = [];
+    for (const c of p.avatarCandidates) cands.push(await resolveImageField(c));
+    p.avatarCandidates = cands;
+    Protagonist.notifyChanged();
+  }
+  for (const npc of npcStore.allNpcs()) {
+    npc.avatarUrl = await resolveImageField(npc.avatarUrl);
+    const cands: string[] = [];
+    for (const c of npc.avatarCandidates) cands.push(await resolveImageField(c));
+    npc.avatarCandidates = cands;
+  }
+  const images = locationImageStore.images.value;
+  for (const [key, data] of [...images.entries()]) {
+    const avatarUrl = await resolveImageField(data.avatarUrl);
+    const cands: string[] = [];
+    for (const c of data.avatarCandidates) cands.push(await resolveImageField(c));
+    images.set(key, { avatarUrl, avatarCandidates: cands });
+  }
+}
+
+/** 导出用：把载荷中的引用 id 解析回内联 dataURL，使导出文件自包含。 */
+export async function embedPayloadImages(payload: MjSavePayload): Promise<MjSavePayload> {
+  const field = async (u: string | undefined): Promise<string | undefined> =>
+    typeof u === "string" ? resolveImageField(u) : u;
+  const list = async (arr: string[] | undefined): Promise<string[] | undefined> =>
+    Array.isArray(arr) ? Promise.all(arr.map((u) => resolveImageField(u))) : arr;
+
+  const protagonistInfo = payload.protagonist
+    ? {
+        ...payload.protagonist,
+        avatarUrl: (await field(payload.protagonist.avatarUrl)) as string,
+        avatarCandidates: await list(payload.protagonist.avatarCandidates),
+      }
+    : payload.protagonist;
+
+  const npcs = payload.npcs
+    ? await Promise.all(
+        payload.npcs.map(async (n) => ({
+          ...n,
+          avatarUrl: (await field(n.avatarUrl)) as string,
+          avatarCandidates: await list(n.avatarCandidates),
+        })),
+      )
+    : undefined;
+
+  const locationImages: LocationImagesSerialData | undefined =
+    payload.locationImages && typeof payload.locationImages === "object"
+      ? Object.fromEntries(
+          await Promise.all(
+            Object.entries(payload.locationImages).map(async ([k, e]) => [
+              k,
+              {
+                avatarUrl: (await field(e?.avatarUrl)) as string,
+                avatarCandidates: (await list(e?.avatarCandidates)) ?? [],
+              },
+            ]),
+          ),
+        )
+      : payload.locationImages;
+
+  return {
+    ...payload,
+    protagonist: protagonistInfo,
+    npcs,
+    locationImages,
   };
 }
 
@@ -326,16 +517,19 @@ export function createSave(fc: FateChoiceResult): string {
 }
 
 /**
- * 从外部 JSON 载荷导入存档：校验后生成新 id（不覆盖现有存档），写入 blob 并登记索引。
+ * 从外部 JSON 载荷导入存档：校验后生成新 id（不覆盖现有存档），注册内嵌图片到
+ * IndexedDB，把载荷规范为 id 形态后写入 blob 并登记索引。
  * 不会设为活动存档——导入后需在列表点「读取」才进入。
  * @returns 新存档 id；载荷非法（缺少 fateChoice）返回 null。
  */
-export function importSave(payload: MjSavePayload): string | null {
+export async function importSave(payload: MjSavePayload): Promise<string | null> {
   if (!payload || typeof payload !== "object" || !payload.fateChoice) return null;
-  const name = (payload.fateChoice.basics?.playerName || "").trim() || "未命名";
+  await registerPayloadImages(payload);
+  const normalized = refPayloadImages(payload);
+  const name = (normalized.fateChoice.basics?.playerName || "").trim() || "未命名";
   const id = uniqueSaveId(name);
   const now = Date.now();
-  backend.write(id, JSON.stringify(payload));
+  backend.write(id, JSON.stringify(normalized));
   upsertIndex({
     id,
     name,
@@ -428,6 +622,13 @@ export function removeSave(id: string): void {
   activeEnded = false;
   clearActiveId();
 }
+  // 异步清理孤儿图片 Blob：保留其余存档仍引用的 id。
+  const keep = new Set<string>();
+  for (const e of idx) {
+    const p = readSave(e.id);
+    if (p) for (const i of collectPayloadImageIds(p)) keep.add(i);
+  }
+  void pruneBlobs(keep);
 }
 
 /** 清空全部存档（不动运行时游戏状态）。 */
@@ -441,6 +642,8 @@ export function clearAllSaves(): void {
   activeCreatedAt = 0;
   activeFateChoice = null;
   clearActiveId();
+  // 全部存档已清空，图片 Blob 一并清空。
+  void clearAllBlobs();
 }
 
 // ---------------------------------------------------------------------------

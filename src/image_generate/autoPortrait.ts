@@ -46,6 +46,7 @@ async function runPortraitBatch(list: Npc[]): Promise<void> {
       const dataUrl = await generateNpcPortrait(npc);
       npc.addPortraitCandidate(dataUrl);
       npcStore.setNpc(npc);
+      npcStore.refresh();
       writeActiveSave();
       gameLog.info(`[图 自动] 已为「${npc.displayName}」生成立绘`);
     } catch (err) {
@@ -94,6 +95,7 @@ async function runLocationBatch(
     try {
       const dataUrl = await generateLocationBackground(loc, realmMajor);
       locationImageStore.addCandidate(loc, dataUrl);
+      locationImageStore.refresh();
       writeActiveSave();
       gameLog.info(`[图 自动] 已为地点「${formatWorldLocation(loc)}」生成背景`);
     } catch (err) {

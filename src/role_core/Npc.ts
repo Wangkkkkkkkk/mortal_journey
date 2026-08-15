@@ -23,6 +23,7 @@ import type { WorldTime } from "./worldTime";
 import { createDefaultWorldTime, cloneWorldTime, ensureWorldTime } from "./worldTime";
 import { gameLog } from "../log/gameLog";
 import { appendNpcMemory, normalizeNpcMemories, type NpcMemory } from "./npcMemory";
+import { registerImage } from "../save/imageBlobStore";
 
 const VALID_POWER_TIERS = new Set<string>(["小怪", "精英怪", "小boss", "大boss", "普通NPC"]);
 
@@ -283,6 +284,7 @@ export class Npc extends Character {
   addPortraitCandidate(url: string): void {
     const u = url != null ? String(url) : "";
     if (!u) return;
+    registerImage(u);
     // 立绘去重：若候选池已有相同立绘，仅切换为当前立绘，不重复追加。
     if (this.avatarCandidates.includes(u)) {
       this.avatarUrl = u;

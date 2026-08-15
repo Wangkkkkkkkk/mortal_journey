@@ -33,6 +33,12 @@ import type { Npc } from "../role_core/Npc";
 import { formatNpcMemories } from "../role_core/npcMemory";
 import { autoGeneratePortraits, autoGenerateLocationBackgrounds } from "../image_generate";
 import { locationImageStore } from "../role_core/locationImageStore";
+import {
+  getStorySegments,
+  resolveDialogAvatar,
+  type DialogAvatarInfo,
+  type StorySegment,
+} from "./storyDialog";
 
 const props = withDefaults(
   defineProps<{
@@ -72,6 +78,10 @@ const chatBgUrl = computed(() => {
   if (!loc) return null;
   return locationImageStore.get(loc)?.avatarUrl ?? null;
 });
+/** 剧情对话段 → 头像展示信息（主角/NPC 头像，无图时首字彩色圆底兜底）。 */
+function segAvatar(seg: StorySegment): DialogAvatarInfo {
+  return resolveDialogAvatar(seg.sender, protagonist.value, (name) => npcStore.getNpc(name));
+}
 const inputText = ref("");
 const generating = ref(false);
 const generatingPhase = ref<"story" | "state" | "summary">("story");
@@ -1091,8 +1101,46 @@ watch(
               </div>
             </template>
             <template v-else-if="msg.type === 'story'">
-              <div class="main-panel__chat-bubble main-panel__chat-bubble--story">
-                <div class="main-panel__story-prose">{{ msg.content }}</div>
+              <div
+                v-for="(seg, segIdx) in getStorySegments(msg)"
+                :key="`story-${idx}-${segIdx}`"
+                class="main-panel__dialog"
+              >
+                <div v-if="seg.kind === 'narration'" class="main-panel__dialog-narration">
+                  <div class="main-panel__story-prose">{{ seg.text }}</div>
+                </div>
+                <div
+                  v-else
+                  :class="[
+                    'main-panel__dialog-row',
+                    segAvatar(seg).isProtagonist
+                      ? 'main-panel__dialog-row--right'
+                      : 'main-panel__dialog-row--left',
+                  ]"
+                >
+                  <div class="main-panel__dialog-avatar-col">
+                    <div
+                      class="main-panel__dialog-avatar"
+                      :class="{ 'main-panel__dialog-avatar--img': segAvatar(seg).avatarUrl }"
+                      :style="
+                        segAvatar(seg).avatarUrl
+                          ? { backgroundImage: `url(${segAvatar(seg).avatarUrl})` }
+                          : { backgroundColor: segAvatar(seg).color }
+                      "
+                    >
+                      <span
+                        v-if="!segAvatar(seg).avatarUrl"
+                        class="main-panel__dialog-avatar-initial"
+                      >
+                        {{ segAvatar(seg).name.slice(0, 1) }}
+                      </span>
+                    </div>
+                    <div class="main-panel__dialog-name">{{ segAvatar(seg).name }}</div>
+                  </div>
+                  <div class="main-panel__dialog-bubble">
+                    <div class="main-panel__story-prose">{{ seg.text }}</div>
+                  </div>
+                </div>
               </div>
             </template>
             <template v-else>
