@@ -74,7 +74,7 @@ function buildInitStateUserContent(input: InitStateInput): string {
     `性别：${p.gender || "—"}`,
     `境界：${p.realm.major}${p.realm.minor}`,
     `灵根：${p.linggen.join("") || "无"}`,
-    `出身地点：${p.birthPlace ? formatWorldLocationDash(p.birthPlace) : "—"}`,
+    `出生地（仅背景参考，当前场景地点一律以【开局剧情正文】为准）：${p.birthPlace ? formatWorldLocationDash(p.birthPlace) : "—"}`,
   ];
   msg += block("【主角初始状态】", initLines.join("\n"));
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed, nextTick } from "vue";
+import { ref, watch, computed, nextTick, onMounted } from "vue";
 import type { OpeningStoryPhase } from "../ai_core";
 import { useApiConfig } from "../ai_core";
 import { generateStory, generateRecallStory, generateMemoryCompress, type StoryChatEntry } from "../ai_core";
@@ -80,6 +80,171 @@ const chatBgUrl = computed(() => {
   if (!loc) return null;
   return locationImageStore.get(loc)?.avatarUrl ?? null;
 });
+
+/** 单个对话轮次：一组按「user → story」配对的消息（或独立的 summary/开局 story）。 */
+interface StoryRound {
+  /** 本回合首条消息在 chatMessages 中的原始索引（作为稳定标识）。 */
+  firstIdx: number;
+  label: string;
+  msgs: ChatMessage[];
+  /** 每条消息在 chatMessages 中的原始索引（重试按钮匹配用）。 */
+  origIndexes: number[];
+  /** 当前回合只有 user 消息、AI 剧情尚未返回（生成中）。 */
+  isPending: boolean;
+  isSummary: boolean;
+}
+
+/**
+ * 把扁平消息流按「对话轮次」分组，供顶部分页条切片渲染：
+ * - summary 消息独立成「总纲」页（滚动大总结裁剪后置顶的早期经历总纲）；
+ * - user 消息开启/归入一个待闭合的回合，紧随其后的 story 消息闭合该回合；
+ * - 无前驱 user 的 story（开局）自成第 1 个回合。
+ * 非 summary 回合按出现顺序编号 1, 2, 3, …（最新即最大数字）。
+ */
+const storyRounds = computed<StoryRound[]>(() => {
+  const msgs = chatMessages.value;
+  const rounds: StoryRound[] = [];
+
+  let current: StoryRound | null = null;
+  const openRound = (firstIdx: number): StoryRound => {
+    const r: StoryRound = {
+      firstIdx,
+      label: "",
+      msgs: [],
+      origIndexes: [],
+      isPending: true,
+      isSummary: false,
+    };
+    rounds.push(r);
+    return r;
+  };
+
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (m.type === "summary") {
+      current = openRound(i);
+      current.isSummary = true;
+      current.isPending = false;
+      current.msgs.push(m);
+      current.origIndexes.push(i);
+      continue;
+    }
+    if (m.type === "user") {
+      if (!current || current.isSummary || current.msgs.some((x) => x.type === "story")) {
+        current = openRound(i);
+      }
+      current.msgs.push(m);
+      current.origIndexes.push(i);
+      current.isPending = true;
+      continue;
+    }
+    if (!current || current.isSummary || current.msgs.some((x) => x.type === "story")) {
+      current = openRound(i);
+    }
+    current.msgs.push(m);
+    current.origIndexes.push(i);
+    current.isPending = false;
+  }
+
+  let turn = 0;
+  for (const r of rounds) {
+    if (r.isSummary) {
+      r.label = "总纲";
+      continue;
+    }
+    turn++;
+    r.label = String(turn);
+  }
+
+  return rounds;
+});
+
+/** 当前展示的轮次："latest" 表示跟随最新回合（默认，最新即最大数字）。 */
+const selectedRoundId = ref<number | "latest">("latest");
+
+/** 最新回合的 firstIdx（最后一个非 summary 回合）；无回合时 null。 */
+const latestRoundFirstIdx = computed<number | null>(() => {
+  const rounds = storyRounds.value;
+  for (let i = rounds.length - 1; i >= 0; i--) {
+    if (!rounds[i].isSummary) return rounds[i].firstIdx;
+  }
+  return rounds.length ? rounds[rounds.length - 1].firstIdx : null;
+});
+
+function selectRound(id: number): void {
+  // 点击最大数字（当前最新回合）＝ 跟随模式；点击旧数字 ＝ 固定查看该回合。
+  if (latestRoundFirstIdx.value !== null && id === latestRoundFirstIdx.value) {
+    selectedRoundId.value = "latest";
+  } else {
+    selectedRoundId.value = id;
+  }
+}
+
+/** 分页条高亮判断：跟随模式下高亮最大数字，固定模式下高亮选中数字，总纲页各自判断。 */
+function isRoundActive(r: StoryRound): boolean {
+  if (selectedRoundId.value === "latest") {
+    return !r.isSummary && r.firstIdx === latestRoundFirstIdx.value;
+  }
+  return selectedRoundId.value === r.firstIdx;
+}
+
+/** 选中回合被大总结裁剪 / 重试回退删除时，自动钳回「最新」。 */
+watch(storyRounds, () => {
+  if (selectedRoundId.value === "latest") return;
+  if (!storyRounds.value.some((r) => r.firstIdx === selectedRoundId.value)) {
+    selectedRoundId.value = "latest";
+  }
+});
+
+/** 当前页面实际渲染的消息（含其在 chatMessages 中的原始索引）。 */
+const displayRound = computed<StoryRound>(() => {
+  const rounds = storyRounds.value;
+  if (rounds.length === 0) {
+    return { firstIdx: -1, label: "", msgs: [], origIndexes: [], isPending: false, isSummary: false };
+  }
+  if (selectedRoundId.value === "latest") {
+    // 最新 = 最后一个非 summary 回合（最大数字）。
+    for (let i = rounds.length - 1; i >= 0; i--) {
+      if (!rounds[i].isSummary) return rounds[i];
+    }
+    return rounds[rounds.length - 1];
+  }
+  return rounds.find((r) => r.firstIdx === selectedRoundId.value) ?? rounds[rounds.length - 1];
+});
+
+const messagesScrollEl = ref<HTMLDivElement | null>(null);
+
+function scrollMessagesToBottom(): void {
+  const el = messagesScrollEl.value;
+  if (!el) return;
+  el.scrollTop = el.scrollHeight;
+}
+
+function scrollMessagesToTop(): void {
+  const el = messagesScrollEl.value;
+  if (!el) return;
+  el.scrollTop = 0;
+}
+
+/** 手动切换轮次（点击分页条）→ 滚动到该回合顶部。 */
+watch(selectedRoundId, () => {
+  nextTick(scrollMessagesToTop);
+});
+
+/** 「最新」跟随模式下，新消息到来自动滚底；查看历史回合时保持当前滚动位置。 */
+watch(
+  () => chatMessages.value.length,
+  () => {
+    if (selectedRoundId.value === "latest") nextTick(scrollMessagesToBottom);
+  },
+  { flush: "post", immediate: true },
+);
+
+/** 挂载时若处于「最新」模式，滚到该回合底部（读档后直接看到最近剧情）。 */
+onMounted(() => {
+  if (selectedRoundId.value === "latest") nextTick(scrollMessagesToBottom);
+});
+
 /** 剧情对话段 → 头像展示信息（主角/NPC 头像，无图时首字彩色圆底兜底）。 */
 function segAvatar(seg: StorySegment): DialogAvatarInfo {
   return resolveDialogAvatar(seg.sender, protagonist.value, (name) => npcStore.getNpc(name));
@@ -1124,32 +1289,46 @@ watch(
       </div>
     </header>
     <div class="main-panel__body">
+      <nav v-if="chatMessages.length > 0" class="main-panel__round-nav" aria-label="对话轮次">
+        <button
+          v-for="r in storyRounds"
+          :key="r.firstIdx"
+          type="button"
+          class="main-panel__round-chip"
+          :class="{ 'main-panel__round-chip--active': isRoundActive(r) }"
+          :title="r.isPending ? '当前回合生成中' : r.label"
+          @click="selectRound(r.firstIdx)"
+        >
+          {{ r.label }}
+        </button>
+      </nav>
       <div
+        ref="messagesScrollEl"
         class="main-panel__chat-messages"
         :class="{ 'main-panel__chat-messages--has-bg': chatBgUrl }"
         :style="chatBgUrl ? { backgroundImage: `linear-gradient(rgba(10, 16, 12, 0.82), rgba(10, 16, 12, 0.82)), url(${chatBgUrl})` } : {}"
         aria-label="剧情正文区域"
         aria-live="polite"
       >
-         <p v-if="phase === 'loading' && chatMessages.length === 0" class="main-panel__placeholder">
+         <p v-if="phase === 'loading' && displayRound.msgs.length === 0" class="main-panel__placeholder">
            完成命运抉择并进入主界面后，开局剧情将显示于此。
          </p>
         <p
-          v-else-if="phase === 'error' && chatMessages.length === 0"
+          v-else-if="phase === 'error' && displayRound.msgs.length === 0"
           class="main-panel__story-status main-panel__story-status--error"
         >
           {{ errorMessage || "开局剧情生成失败。" }}
         </p>
         <p
-          v-else-if="phase === 'idle' && chatMessages.length === 0"
+          v-else-if="phase === 'idle' && displayRound.msgs.length === 0"
           class="main-panel__placeholder"
         >
           完成命运抉择并进入主界面后，开局剧情将显示于此。
         </p>
         <template v-else>
           <div
-            v-for="(msg, idx) in chatMessages"
-            :key="idx"
+            v-for="(msg, j) in displayRound.msgs"
+            :key="displayRound.origIndexes[j]"
             :class="['main-panel__chat-item', `main-panel__chat-item--${msg.type}`]"
           >
             <template v-if="msg.type === 'summary'">
@@ -1161,7 +1340,7 @@ watch(
             <template v-else-if="msg.type === 'story'">
               <div
                 v-for="(seg, segIdx) in getStorySegments(msg)"
-                :key="`story-${idx}-${segIdx}`"
+                :key="`story-${displayRound.origIndexes[j]}-${segIdx}`"
                 class="main-panel__dialog"
               >
                 <div v-if="seg.kind === 'narration'" class="main-panel__dialog-narration">
@@ -1203,7 +1382,7 @@ watch(
             </template>
             <template v-else>
               <button
-                v-if="idx === retryableUserIdx"
+                v-if="displayRound.origIndexes[j] === retryableUserIdx"
                 type="button"
                 class="main-panel__retry-btn"
                 title="重新生成本轮剧情与状态"
