@@ -67,6 +67,16 @@ export const MJ_PLOT_PLAN_CLOSE = "</剧情规划>";
 export const MJ_STORY_ACTION_OPTIONS_OPEN = "<行动选项>";
 export const MJ_STORY_ACTION_OPTIONS_CLOSE = "</行动选项>";
 
+// ── 规划分析链路（planningAnalysis）输出 ──
+
+export const MJ_PLAN_ANALYSIS_OPEN = "<mj_plan_analysis>";
+export const MJ_PLAN_ANALYSIS_CLOSE = "</mj_plan_analysis>";
+
+// ── 世界演变引擎（worldEvolution）输出 ──
+
+export const MJ_WORLD_EVOLVE_UPDATE_OPEN = "<mj_world_evolve_update>";
+export const MJ_WORLD_EVOLVE_UPDATE_CLOSE = "</mj_world_evolve_update>";
+
 // ── Init state 标签 ──
 
 export const MJ_EQUIP_BODY_OPEN = "<mj_equip_body>";

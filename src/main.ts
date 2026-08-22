@@ -16,5 +16,6 @@ import "./main-screen/protagonistDetailModal.css";
 import "./main-screen/gongfaCultivateModal.css";
 import "./main-screen/alchemyModal.css";
 import "./battle_view/battle.css";
+import "./main-screen/planningPanels.css";
 
 createApp(App).mount("#app");

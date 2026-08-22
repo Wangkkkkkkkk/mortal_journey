@@ -58,6 +58,12 @@ export interface StoryInput extends AiRequestConfig {
   recallTag?: string;
   /** 上回合 <剧情规划> 摘要（软性承接）。 */
   plotPlan?: string;
+  /** 当前章节状态摘要（当前章节/下一章预告/历史卷宗）。 */
+  章节状态摘要?: string;
+  /** 当前剧情规划树摘要（当前章目标/任务/待触发事件/镜头）。 */
+  剧情规划摘要?: string;
+  /** 后台世界动态摘要（活跃NPC行动/事件池/镜头）。 */
+  世界动态摘要?: string;
   /** 近期若干轮交互（已由调用方截断，通常 1-2 轮）。 */
   recentHistory: StoryChatEntry[];
   currentWorldLocation?: WorldLocation | null;
@@ -128,6 +134,21 @@ function sceneRecall(recallTag?: string): string {
   return block("【剧情回忆·据此承接前情】", recallTag);
 }
 
+/** 【当前章节状态】分节：当前章节/下一章预告/历史卷宗摘要，剧情承接的章节锚点。 */
+function sceneChapterState(章节状态摘要?: string): string {
+  return block("【当前章节状态】", 章节状态摘要);
+}
+
+/** 【当前剧情规划】分节：当前章目标/任务/待触发事件/镜头规划摘要，推进的硬承接依据。 */
+function scenePlotPlanTree(剧情规划摘要?: string): string {
+  return block("【当前剧情规划·本回合推进应优先承接】", 剧情规划摘要);
+}
+
+/** 【后台世界动态】分节：镜头外 NPC 行动与后台事件，可作氛围/旁线素材，不作为主线强制项。 */
+function sceneWorldDynamic(世界动态摘要?: string): string {
+  return block("【后台世界动态】", 世界动态摘要);
+}
+
 /** 【上回合剧情规划】分节：上一回合 <剧情规划> 软性交接摘要，本回合必须优先接住。 */
 function scenePlotPlan(plotPlan?: string): string {
   return block("【上回合剧情规划·据此承接】", plotPlan);
@@ -173,12 +194,15 @@ function buildStorySystemPrompt(): string {
  * 2. 主角摘要         —— sceneProtagonist()
  * 3. 当前所在地点     —— sceneLocation()
  * 4. 剧情总纲·截至早期 —— sceneGrandSummary()
- * 5. 长期记忆         —— sceneLongTermMemory()
- * 6. 中期记忆         —— sceneMidTermMemory()
- * 7. 剧情回忆         —— sceneRecall()
- * 8. 上回合剧情规划   —— scenePlotPlan()
- * 9. 上一幕剧情       —— sceneRecentStory()
- * 10. 玩家本轮行动    —— scenePlayerAction()
+ * 5. 当前章节状态     —— sceneChapterState()
+ * 6. 当前剧情规划     —— scenePlotPlanTree()
+ * 7. 后台世界动态     —— sceneWorldDynamic()
+ * 8. 长期记忆         —— sceneLongTermMemory()
+ * 9. 中期记忆         —— sceneMidTermMemory()
+ * 10. 剧情回忆        —— sceneRecall()
+ * 11. 上回合剧情规划  —— scenePlotPlan()
+ * 12. 上一幕剧情      —— sceneRecentStory()
+ * 13. 玩家本轮行动    —— scenePlayerAction()
  */
 function buildStoryUserContent(input: StoryInput): string {
   const { lastUserContent, recentStory } = extractHistory(input.recentHistory);
@@ -197,22 +221,31 @@ function buildStoryUserContent(input: StoryInput): string {
   // ── 4. 剧情总纲·截至早期：早期剧情滚动总结（长期背景）──
   msg += sceneGrandSummary(input.grandSummary);
 
-  // ── 5. 长期记忆：中期记忆再压缩结果 ──
+  // ── 5. 当前章节状态：章节锚点 ──
+  msg += sceneChapterState(input.章节状态摘要);
+
+  // ── 6. 当前剧情规划：硬承接依据 ──
+  msg += scenePlotPlanTree(input.剧情规划摘要);
+
+  // ── 7. 后台世界动态：旁线素材 ──
+  msg += sceneWorldDynamic(input.世界动态摘要);
+
+  // ── 8. 长期记忆：中期记忆再压缩结果 ──
   msg += sceneLongTermMemory(input.longTermMemory);
 
-  // ── 6. 中期记忆：回忆档案批次压缩结果 ──
+  // ── 9. 中期记忆：回忆档案批次压缩结果 ──
   msg += sceneMidTermMemory(input.midTermMemory);
 
-  // ── 7. 剧情回忆：RAG 按需召回的前情（强回忆优先）──
+  // ── 10. 剧情回忆：RAG 按需召回的前情（强回忆优先）──
   msg += sceneRecall(input.recallTag);
 
-  // ── 8. 上回合剧情规划：软性承接摘要，本回合必须优先接住 ──
+  // ── 11. 上回合剧情规划：软性承接摘要，本回合必须优先接住 ──
   msg += scenePlotPlan(input.plotPlan);
 
-  // ── 9. 上一幕剧情：最近 1-2 段正文，保证衔接 ──
+  // ── 12. 上一幕剧情：最近 1-2 段正文，保证衔接 ──
   msg += sceneRecentStory(recentStory);
 
-  // ── 10. 玩家本轮行动：本次输入 ──
+  // ── 13. 玩家本轮行动：本次输入 ──
   msg += scenePlayerAction(lastUserContent);
 
   return msg;

@@ -4,6 +4,7 @@ import type { OpeningStoryPhase } from "../ai_core";
 import { useApiConfig } from "../ai_core";
 import { generateStory, generateRecallStory, generateMemoryCompress, type StoryChatEntry } from "../ai_core";
 import { generateWorldEvolution } from "../ai_core";
+import { generatePlanningAnalysis } from "../ai_core";
 import { generateState, type StateParsed, type BattleTriggerEntry, npcEventsToLegacyFormat } from "../ai_core";
 import { CULTIVATION_WORLD_BOOK } from "../ai_core/world_books/cultivationWorldBook";
 import type { WorldBookEntry } from "../ai_core/world_books/types";
@@ -13,7 +14,11 @@ import { protagonist, Protagonist } from "../role_core/Protagonist";
 import { npcStore } from "../role_core/npcStore";
 import { worldMapStore, type WorldMapSerialData } from "../role_core/worldMapStore";
 import { storyStore, type StorySerialData, type ChatMessage } from "../role_core/storyStore";
+import { plotPlanStore, type PlotPlanSerialData } from "../role_core/plotPlanStore";
+import { worldEvolutionStore, type WorldEvolutionSerialData } from "../role_core/worldEvolutionStore";
+import { 应用规划分析输出, buildChapterSummary, buildPlotPlanSummary, buildWorldDynamicSummary } from "../role_core/planningApply";
 import { memoryArchiveStore } from "../role_core/memoryArchive";
+import type { 剧情规划树 } from "../role_core/types/storyPlan";
 import { writeActiveSave, getActiveDifficulty } from "../save/gameSave";
 import type { NpcPlayInfo } from "../role_core/types/playInfo";
 import type { InventoryStackItem } from "../role_core/types/items";
@@ -488,14 +493,17 @@ let lastWorldEvolveRound = 0;
 let lastWorldEvolveTime: WorldTime | null = null;
 
 /**
- * 世界演变（镜头外 NPC 迁移）：按时间/回合门控触发独立次级调用，
- * 把镜头外 NPC 的位置更新应用到 npcStore。失败静默降级，不影响主回合。
+ * 世界演变（完整引擎）：按时间/回合门控触发独立次级调用，
+ * 维护后台世界（活跃NPC行动 / 事件生命周期 / 镜头 / 史册 / NPC 位置迁移）。
+ * 失败静默降级，不影响主回合。
  */
 async function maybeRunWorldEvolution(
   url: string,
   model: string,
   apiKey: string | undefined,
   signal: AbortSignal,
+  本回合事实: string,
+  本回合剧情规划: string,
 ): Promise<void> {
   if (!url || !model) return;
   const round = memoryArchiveStore.memoryArchive.value.length;
@@ -513,13 +521,29 @@ async function maybeRunWorldEvolution(
   const offscreen = npcStore.allNpcs().filter(
     (n) => n.presence !== "active" && n.presence !== "dead",
   );
-  if (offscreen.length === 0) return;
 
   const registeredLocations = flattenLocationTree(worldMapStore.locationTree.value, {});
   const protagonistName = protagonist.value?.displayName ?? "";
   const protagonistRealm = protagonist.value
     ? `${protagonist.value.realm.major}${protagonist.value.realm.minor}`
     : "";
+  const ws = worldEvolutionStore.状态.value;
+  const currentWorldState = [
+    ws.活跃NPC列表.length
+      ? `活跃NPC：${ws.活跃NPC列表.map((n) => `${n.姓名}（${n.当前行动}${n.当前状态 ? `，${n.当前状态}` : ""}）`).join("；")}`
+      : "",
+    ws.待执行事件.length
+      ? `待执行事件：${ws.待执行事件.map((e) => `${e.事件名}（最早${e.最早触发时间 || "?"}，最晚${e.最晚触发时间 || "?"}）`).join("；")}`
+      : "",
+    ws.进行中事件.length
+      ? `进行中事件：${ws.进行中事件.map((e) => `${e.事件名}（${e.当前进展 || "..."}）`).join("；")}`
+      : "",
+    ws.已结算事件.length ? `已结算事件：${ws.已结算事件.map((e) => e.事件名).join("、")}` : "",
+    ws.世界镜头规划.length ? `世界镜头：${ws.世界镜头规划.map((c) => c.镜头标题).join("、")}` : "",
+    ws.江湖史册.length ? `江湖史册：${ws.江湖史册.map((g) => g.标题).join("、")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
   try {
     const result = await generateWorldEvolution({
       apiUrl: url,
@@ -540,13 +564,56 @@ async function maybeRunWorldEvolution(
         presence: n.presence,
       })),
       registeredLocations,
+      currentWorldState,
+      本回合事实,
+      本回合剧情规划,
       signal,
     });
     if (signal.aborted) return;
-    npcStore.applyNpcMigrations(result.migrations);
+    worldEvolutionStore.应用演变输出(result, { 当前时间: curTime ? formatWorldTimeZhDisplay(curTime) : "" });
+    if (result.migrations.length > 0) {
+      npcStore.applyNpcMigrations(result.migrations.map((m) => ({ kind: "npc_migrate" as const, ...m })));
+    }
   } catch (err) {
     if (signal.aborted) return;
     gameLog.warn("[StoryChat] 世界演变失败：" + (err instanceof Error ? err.message : String(err)));
+  }
+}
+
+/**
+ * 规划分析（统一规划审计）：每回合在主剧情 + 状态 + 世界演变之后调用，
+ * 修订章节状态与规划树，并在门禁通过时执行切章。失败静默降级，不影响主回合。
+ */
+async function maybeRunPlanningAnalysis(
+  url: string,
+  model: string,
+  apiKey: string | undefined,
+  signal: AbortSignal,
+  本回合正文: string,
+  本回合剧情规划: string,
+  玩家输入: string,
+): Promise<void> {
+  if (!url || !model) return;
+  const curTime = storyStore.worldTime.value;
+  try {
+    const result = await generatePlanningAnalysis({
+      apiUrl: url,
+      apiKey,
+      model,
+      章节状态: storyStore.章节状态.value,
+      规划树: plotPlanStore.规划树.value,
+      世界动态摘要: buildWorldDynamicSummary() || "（无）",
+      本回合正文,
+      本回合剧情规划,
+      玩家输入,
+      当前时间: curTime ? formatWorldTimeZhDisplay(curTime) : "未知时间",
+      signal,
+    });
+    if (signal.aborted) return;
+    应用规划分析输出(result);
+  } catch (err) {
+    if (signal.aborted) return;
+    gameLog.warn("[StoryChat] 规划分析失败：" + (err instanceof Error ? err.message : String(err)));
   }
 }
 
@@ -571,6 +638,8 @@ interface PreGenSnapshot {
   npcs: NpcPlayInfo[];
   worldMap: WorldMapSerialData;
   story: StorySerialData;
+  plotPlan: PlotPlanSerialData;
+  worldEvolution: WorldEvolutionSerialData;
   pendingBattleTrigger: BattleTriggerEntry | null;
   userContent: string;
 }
@@ -589,6 +658,8 @@ function capturePreGenSnapshot(ctx: RoundContext): PreGenSnapshot | null {
     npcs: npcStore.serializeNpcs(),
     worldMap: worldMapStore.serializeWorldMap(),
     story: storyStore.serializeStory(),
+    plotPlan: plotPlanStore.serialize(),
+    worldEvolution: worldEvolutionStore.serialize(),
     pendingBattleTrigger: pendingBattleTrigger.value,
     userContent: ctx.userContent,
   };
@@ -612,6 +683,8 @@ function restorePreGenSnapshot(): void {
   npcStore.restoreNpcs(snap.npcs);
   worldMapStore.restoreWorldMap(snap.worldMap);
   storyStore.applyStorySnapshot(snap.story);
+  plotPlanStore.restore(snap.plotPlan);
+  worldEvolutionStore.restore(snap.worldEvolution);
   pendingBattleTrigger.value = snap.pendingBattleTrigger;
 }
 
@@ -897,6 +970,9 @@ async function runStoryGenerationRound(ctx: RoundContext): Promise<void> {
       longTermMemory: storyStore.longTermMemory.value,
       recallTag: recallTag || undefined,
       plotPlan: storyStore.plotPlan.value || undefined,
+      章节状态摘要: buildChapterSummary() || undefined,
+      剧情规划摘要: buildPlotPlanSummary() || undefined,
+      世界动态摘要: buildWorldDynamicSummary() || undefined,
       recentHistory: chatHistory.slice(-5),
       sceneNpcSnapshot: buildSceneNpcSnapshot() || undefined,
       currentWorldLocation: props.currentWorldLocation ?? null,
@@ -969,8 +1045,26 @@ async function runStoryGenerationRound(ctx: RoundContext): Promise<void> {
       // 多层记忆压缩：在回忆档案维度做分层压缩，产出中/长期记忆供统一剧情调用作长期背景（失败不影响本轮）。
       await maybeCompressMemory(url, model, String(apiKey.value || "").trim() || undefined, ac.signal);
 
-      // 世界演变：按时间/回合门控推进镜头外 NPC 的位置（失败静默降级）。
-      await maybeRunWorldEvolution(url, model, String(apiKey.value || "").trim() || undefined, ac.signal);
+      // 世界演变：按时间/回合门控维护后台世界（事件池/镜头/史册/NPC 迁移，失败静默降级）。
+      await maybeRunWorldEvolution(
+        url,
+        model,
+        String(apiKey.value || "").trim() || undefined,
+        ac.signal,
+        shortTermMemory || stateResult.storySnapshot,
+        storyStore.plotPlan.value,
+      );
+
+      // 规划分析：统一审计章节状态与规划树，门禁通过时执行切章（失败静默降级）。
+      await maybeRunPlanningAnalysis(
+        url,
+        model,
+        String(apiKey.value || "").trim() || undefined,
+        ac.signal,
+        storyBody,
+        storyStore.plotPlan.value,
+        ctx.userContent,
+      );
 
       if (gameOverReason) {
         // 寿元耗尽：生成走马灯结局叙事（不走状态 AI），然后触发 game over。

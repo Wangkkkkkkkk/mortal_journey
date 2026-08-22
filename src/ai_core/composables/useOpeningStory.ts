@@ -10,11 +10,14 @@
 import { ref, watch, type Ref, type ComputedRef } from "vue";
 import { generateInitStory, type InitStoryInput } from "../pipelines/initStory";
 import { generateInitState, type InitStateInput, type InitStateParsed } from "../pipelines/initState";
+import { generateWorldEvolution } from "../pipelines/worldEvolution";
+import { generatePlanningAnalysis } from "../pipelines/planningAnalysis";
 import type { ActionSuggestions } from "../types/stateDiff";
 import type { WorldTime } from "../../role_core/worldTime";
 import {
   cloneWorldTime,
   createDefaultWorldTime,
+  formatWorldTimeZhDisplay,
 } from "../../role_core/worldTime";
 import type { WorldLocation } from "../../role_core/types/worldLocation";
 import { isEmptyWorldLocation } from "../../role_core/types/worldLocation";
@@ -22,6 +25,10 @@ import { Protagonist, protagonist } from "../../role_core/Protagonist";
 import { npcStore } from "../../role_core/npcStore";
 import { worldMapStore } from "../../role_core/worldMapStore";
 import { storyStore } from "../../role_core/storyStore";
+import { plotPlanStore } from "../../role_core/plotPlanStore";
+import { worldEvolutionStore } from "../../role_core/worldEvolutionStore";
+import { 应用规划分析输出, buildWorldDynamicSummary } from "../../role_core/planningApply";
+import { flattenLocationTree } from "../../role_core/worldLocationReconcile";
 import { writeActiveSave } from "../../save/gameSave";
 import { autoGeneratePortraits } from "../../image_generate";
 import type { FateChoiceResult } from "../../fate_choice/types";
@@ -231,6 +238,61 @@ export function useOpeningStoryFromFateChoice(
           // ── 5. 注册地点到世界地图 ──
           if (stateResult.worldLocation && !isEmptyWorldLocation(stateResult.worldLocation)) {
             worldMapStore.addLocation(stateResult.worldLocation);
+          }
+
+          // ── 5.5 开局世界初始化：建立第1回合即可持续运转的后台世界结构 ──
+          try {
+            const worldInit = await generateWorldEvolution({
+              apiUrl: url,
+              apiKey: String(apiKey || "").trim() || undefined,
+              model,
+              signal: ac.signal,
+              protagonistName: p.displayName,
+              protagonistRealm: `${p.realm.major}${p.realm.minor}`,
+              currentWorldLocation: storyStore.worldLocation.value ?? null,
+              currentWorldTime: storyStore.worldTime.value,
+              elapsedNote: "开局",
+              offscreenNpcs: [],
+              registeredLocations: flattenLocationTree(worldMapStore.locationTree.value, {}),
+              currentWorldState: "",
+              本回合事实: storyResult.storyBody,
+              本回合剧情规划: "",
+              initMode: true,
+            });
+            if (abortCtl !== ac) return;
+            worldEvolutionStore.应用演变输出(worldInit, {
+              当前时间: formatWorldTimeZhDisplay(storyStore.worldTime.value),
+            });
+          } catch (worldInitErr) {
+            gameLog.warn(
+              "[OpeningStory] 开局世界初始化失败（不影响开局）：" +
+                (worldInitErr instanceof Error ? worldInitErr.message : String(worldInitErr)),
+            );
+          }
+
+          // ── 5.6 开局规划初始化：初始化当前章节定位与规划树 ──
+          try {
+            const planningInit = await generatePlanningAnalysis({
+              apiUrl: url,
+              apiKey: String(apiKey || "").trim() || undefined,
+              model,
+              signal: ac.signal,
+              章节状态: storyStore.章节状态.value,
+              规划树: plotPlanStore.规划树.value,
+              世界动态摘要: buildWorldDynamicSummary() || "（无）",
+              本回合正文: storyResult.storyBody,
+              本回合剧情规划: "",
+              玩家输入: "开局",
+              当前时间: formatWorldTimeZhDisplay(storyStore.worldTime.value),
+              initMode: true,
+            });
+            if (abortCtl !== ac) return;
+            应用规划分析输出(planningInit);
+          } catch (planningInitErr) {
+            gameLog.warn(
+              "[OpeningStory] 开局规划初始化失败（不影响开局）：" +
+                (planningInitErr instanceof Error ? planningInitErr.message : String(planningInitErr)),
+            );
           }
 
           gameLog.info("[OpeningStory] 开局状态生成完成");

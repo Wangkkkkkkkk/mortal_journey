@@ -16,6 +16,13 @@ import type { ActionSuggestions } from "../ai_core";
 import type { WorldLocation } from "./types/worldLocation";
 import type { WorldTime } from "./worldTime";
 import { cloneWorldTime, createDefaultWorldTime } from "./worldTime";
+import {
+  创建空章节系统状态,
+  type 章节系统状态,
+  type 当前章节结构,
+  type 下一章预告结构,
+  type 历史章节结构,
+} from "./types/storyPlan";
 
 /** 单条聊天消息。story 消息可携带 AI 生成的快照（compact summary），用于后续上下文。
  *  summary 类型用于滚动大总结裁剪历史后，作为聊天栏顶部的「早期经历总纲」占位消息，
@@ -55,6 +62,8 @@ export interface StorySerialData {
   longTermMemory?: string[];
   /** 回忆档案中已被压入中期记忆的回合数（不含）；未压缩区 = archive[compressedUpTo:]。 */
   archiveCompressedUpTo?: number;
+  /** 章节系统状态（当前章节 / 下一章预告 / 历史卷宗）。老存档缺省视为空章节。 */
+  章节状态?: 章节系统状态;
 }
 
 const storyBody = ref("");
@@ -83,6 +92,8 @@ const midTermMemory = ref<string[]>([]);
 const longTermMemory = ref<string[]>([]);
 /** 回忆档案中已被压入中期记忆的回合数（不含）。 */
 const archiveCompressedUpTo = ref(0);
+/** 章节系统状态：当前章节 / 下一章预告 / 历史卷宗（剧情推进硬结构）。 */
+const 章节状态 = ref<章节系统状态>(创建空章节系统状态());
 /** 游戏结束原因（战败/寿尽），仅在 phase==="ended" 时展示用；不持久化，进入 ended 状态时实时写入。 */
 const gameOverReason = ref("");
 
@@ -113,9 +124,10 @@ function clearStory(): void {
     midTermMemory.value = [];
     longTermMemory.value = [];
     archiveCompressedUpTo.value = 0;
+    章节状态.value = 创建空章节系统状态();
     gameOverReason.value = "";
     restored.value = false;
-}
+  }
 
 /** 序列化当前剧情状态为纯 JSON（深拷贝，断开与响应式引用的联系）。 */
 function serializeStory(): StorySerialData {
@@ -137,6 +149,7 @@ function serializeStory(): StorySerialData {
     midTermMemory: [...midTermMemory.value],
     longTermMemory: [...longTermMemory.value],
     archiveCompressedUpTo: archiveCompressedUpTo.value,
+    章节状态: JSON.parse(JSON.stringify(章节状态.value)),
   };
 }
 
@@ -166,6 +179,9 @@ function restoreStory(data: StorySerialData | null | undefined): void {
     ? [...d.longTermMemory]
     : (d.grandSummary && d.grandSummary.trim() ? [d.grandSummary.trim()] : []);
   archiveCompressedUpTo.value = d.archiveCompressedUpTo ?? 0;
+  章节状态.value = d.章节状态
+    ? JSON.parse(JSON.stringify(d.章节状态))
+    : 创建空章节系统状态();
   restored.value = true;
 }
 
@@ -199,6 +215,53 @@ function applyStorySnapshot(data: StorySerialData | null | undefined): void {
     ? [...d.longTermMemory]
     : (d.grandSummary && d.grandSummary.trim() ? [d.grandSummary.trim()] : []);
   archiveCompressedUpTo.value = d.archiveCompressedUpTo ?? 0;
+  章节状态.value = d.章节状态
+    ? JSON.parse(JSON.stringify(d.章节状态))
+    : 创建空章节系统状态();
+}
+
+/** 设置章节推进状态（当前章节 / 下一章预告 / 历史卷宗）整体替换或局部更新。 */
+function 设置章节状态(章节: 章节系统状态 | undefined | null): void {
+  if (!章节 || typeof 章节 !== "object") return;
+  const cur = 章节状态.value;
+  if (章节.当前章节 && typeof 章节.当前章节 === "object") {
+    cur.当前章节 = JSON.parse(JSON.stringify(章节.当前章节));
+  }
+  if (章节.下一章预告 && typeof 章节.下一章预告 === "object") {
+    cur.下一章预告 = JSON.parse(JSON.stringify(章节.下一章预告));
+  }
+  if (Array.isArray(章节.历史卷宗)) {
+    cur.历史卷宗 = JSON.parse(JSON.stringify(章节.历史卷宗));
+  }
+}
+
+/** 整体替换当前章节结构。 */
+function 设置当前章节(章节: 当前章节结构 | undefined | null): void {
+  if (!章节 || typeof 章节 !== "object") return;
+  章节状态.value.当前章节 = JSON.parse(JSON.stringify(章节));
+}
+
+/** 整体替换下一章预告。 */
+function 设置下一章预告(预告: 下一章预告结构 | undefined | null): void {
+  if (!预告 || typeof 预告 !== "object") return;
+  章节状态.value.下一章预告 = JSON.parse(JSON.stringify(预告));
+}
+
+/** 追加一条历史卷宗（仅真正切章时调用）。 */
+function 追加历史卷宗(条目: 历史章节结构 | undefined | null): void {
+  if (!条目 || typeof 条目 !== "object") return;
+  const title = String(条目.标题 || "").trim();
+  if (!title) return;
+  章节状态.value.历史卷宗.push(JSON.parse(JSON.stringify(条目)));
+}
+
+/**
+ * 真正切章：归档旧章 → 写入新章节定位 → 写入新预告。
+ * 规划池的清空/重建由调用方（规划分析应用方）负责。
+ */
+function 切换章节(新章节: 当前章节结构 | undefined | null, 新预告: 下一章预告结构 | undefined | null): void {
+  if (新章节 && typeof 新章节 === "object") 设置当前章节(新章节);
+  if (新预告 && typeof 新预告 === "object") 设置下一章预告(新预告);
 }
 
 export const storyStore = {
@@ -219,10 +282,16 @@ export const storyStore = {
   midTermMemory,
   longTermMemory,
   archiveCompressedUpTo,
+  章节状态,
   gameOverReason,
   restored,
   clearStory,
   serializeStory,
   restoreStory,
   applyStorySnapshot,
+  设置章节状态,
+  设置当前章节,
+  设置下一章预告,
+  追加历史卷宗,
+  切换章节,
 };

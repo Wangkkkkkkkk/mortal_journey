@@ -24,6 +24,8 @@ import { worldMapStore } from "../role_core/worldMapStore";
 import { locationImageStore, type LocationImagesSerialData } from "../role_core/locationImageStore";
 import { storyStore, type StorySerialData } from "../role_core/storyStore";
 import { memoryArchiveStore, type MemoryArchiveSerialData } from "../role_core/memoryArchive";
+import { plotPlanStore, type PlotPlanSerialData } from "../role_core/plotPlanStore";
+import { worldEvolutionStore, type WorldEvolutionSerialData } from "../role_core/worldEvolutionStore";
 import { gameLog } from "../log/gameLog";
 import {
   imageRefOf,
@@ -135,6 +137,10 @@ export interface MjSavePayload {
   story?: StorySerialData;
   /** 回忆档案（全量回合索引）；懒回填：老存档缺省视为空。 */
   memoryArchive?: MemoryArchiveSerialData;
+  /** 剧情规划树（当前章任务/事件/镜头/延续）；懒回填：老存档缺省视为空。 */
+  plotPlan?: PlotPlanSerialData;
+  /** 世界演变状态（后台世界事件池）；懒回填：老存档缺省视为空。 */
+  worldEvolution?: WorldEvolutionSerialData;
 }
 
 export interface SaveIndexEntry {
@@ -247,6 +253,8 @@ export function serializeAll(now = Date.now()): MjSavePayload | null {
     locationImages: locationImageStore.serialize(),
     story: storyStore.serializeStory(),
     memoryArchive: memoryArchiveStore.serializeArchive(),
+    plotPlan: plotPlanStore.serialize(),
+    worldEvolution: worldEvolutionStore.serialize(),
   });
 }
 
@@ -590,6 +598,8 @@ export function restoreSave(payload: MjSavePayload): void {
   locationImageStore.restore(payload.locationImages ?? null);
   storyStore.restoreStory(payload.story ?? null);
   memoryArchiveStore.restoreArchive(payload.memoryArchive ?? null);
+  plotPlanStore.restore(payload.plotPlan ?? null);
+  worldEvolutionStore.restore(payload.worldEvolution ?? null);
   activeFateChoice = payload.fateChoice;
 }
 
@@ -604,6 +614,8 @@ export function resetAllGameState(): void {
   locationImageStore.clearAll();
   storyStore.clearStory();
   memoryArchiveStore.clearArchive();
+  plotPlanStore.clear();
+  worldEvolutionStore.clear();
   activeSaveId = null;
   activeCreatedAt = 0;
   activeFateChoice = null;

@@ -24,6 +24,22 @@ export type {
 } from "./types/npcEvents";
 
 export type {
+  规划分析输出,
+  规划更新操作,
+  规划目标类型,
+  切章建议,
+} from "./types/planningAnalysis";
+
+export type {
+  世界演变输出,
+  后台NPC动作,
+  事件启动操作,
+  事件推进操作,
+  事件结算操作,
+  镜头更新,
+} from "./types/worldEvolutionOps";
+
+export type {
   HpMpState,
   BreakthroughState,
   UserStateChange,
@@ -72,6 +88,8 @@ export {
   MJ_VAR_PLAN_OPEN, MJ_VAR_PLAN_CLOSE,
   MJ_PLOT_PLAN_OPEN, MJ_PLOT_PLAN_CLOSE,
   MJ_STORY_ACTION_OPTIONS_OPEN, MJ_STORY_ACTION_OPTIONS_CLOSE,
+  MJ_PLAN_ANALYSIS_OPEN, MJ_PLAN_ANALYSIS_CLOSE,
+  MJ_WORLD_EVOLVE_UPDATE_OPEN, MJ_WORLD_EVOLVE_UPDATE_CLOSE,
 } from "./shared/tagSpec";
 export { safeJsonParse, tryParseJsonArray, sanitizeJsonLike, safeStr, safeCount } from "./shared/parseJson";
 export {
@@ -98,7 +116,8 @@ export { generateGrandSummary, type GrandSummaryInput, type GrandSummaryParsed }
 export { generateRecallStory, type RecallStoryInput, type RecallStoryParsed } from "./pipelines/recallStory";
 export { generateMemoryCompress, type MemoryCompressInput, type MemoryCompressParsed } from "./pipelines/memoryCompress";
 export { generateState, npcEventsToLegacyFormat, type StateGenerateInput as StateGenInput } from "./pipelines/state";
-export { generateWorldEvolution, type WorldEvolutionInput, type WorldEvolutionParsed, type WorldEvolutionNpcBrief } from "./pipelines/worldEvolution";
+export { generateWorldEvolution, type WorldEvolutionInput, type WorldEvolutionNpcBrief, type WorldEvolutionParsed } from "./pipelines/worldEvolution";
+export { generatePlanningAnalysis, parsePlanningAnalysis, type PlanningAnalysisInput } from "./pipelines/planningAnalysis";
 
 // ── Presets ──
 export { STORY_SYSTEM_PRESET } from "./presets/storyPreset";
