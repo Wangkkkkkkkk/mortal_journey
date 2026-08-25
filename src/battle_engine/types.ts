@@ -131,6 +131,10 @@ export interface BattleCombatant {
   skills: BattleSkill[];
   cooldowns: number[];
   elixirs: BattleElixir[];
+  /** 战斗中可用的毒药（由制毒产出，仅主角持有）。 */
+  poisons: BattlePoison[];
+  /** 已装备法宝的淬毒涂层：命中造成伤害后对目标叠加 DoT。 */
+  coatings: BattleCoating[];
 
   effects: BattleEffect[];
 
@@ -210,7 +214,12 @@ export type SummonEffectPayload =
 // 效果系统
 // ═══════════════════════════════════════════════════════════════
 
-export type EffectCategory = "modifier" | "dot" | "hot" | "cc" | "summon" | "special";
+/**
+ * 效果类别。
+ * - delayed：延迟伤害。持续期间不结算，`remainingDuration` 归零被移除的那一刻
+ *   一次性打出 `tickValue` 点伤害（见 `EffectManager.tickEffects`）。
+ */
+export type EffectCategory = "modifier" | "dot" | "hot" | "cc" | "summon" | "special" | "delayed";
 
 export interface BattleEffect {
   id: string;
@@ -248,6 +257,7 @@ export type BattleAction =
   | { type: "normalAttack"; targetId: string }
   | { type: "skill"; skillIndex: number; targetId: string }
   | { type: "elixir"; elixirIndex: number }
+  | { type: "poison"; poisonIndex: number; targetId: string }
   | { type: "flee" };
 
 export interface ActionContext {
@@ -347,6 +357,35 @@ export interface SkillActionItem {
   disabledReason?: string;
 }
 
+/** 法宝淬毒涂层在战斗中的形态。 */
+export interface BattleCoating {
+  name: string;
+  tickPercent: number;
+  duration: number;
+}
+
+/** 战斗中可对敌方使用的毒药。 */
+export interface BattlePoison {
+  name: string;
+  desc: string;
+  /** 效果类别：DoT / 延迟爆发 / 属性削弱。 */
+  kind: "dot" | "delayed" | "modifier";
+  /** DoT 与延迟伤害：占目标最大血量的百分比。属性削弱：修正百分点。 */
+  value: number;
+  /** 属性削弱时的修正类型。 */
+  modifierType?: ModifierType;
+  /** 持续回合数；延迟伤害为引爆前的回合数。 */
+  duration: number;
+  count: number;
+}
+
+export interface PoisonActionItem {
+  poisonIndex: number;
+  name: string;
+  count: number;
+  description: string;
+}
+
 export interface ElixirActionItem {
   elixirIndex: number;
   name: string;
@@ -366,6 +405,7 @@ export interface ActionOptions {
   canFlee: boolean;
   skills: SkillActionItem[];
   elixirs: ElixirActionItem[];
+  poisons: PoisonActionItem[];
 }
 
 // ═══════════════════════════════════════════════════════════════

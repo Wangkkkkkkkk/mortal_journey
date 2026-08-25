@@ -13,12 +13,14 @@
 
 import type {
   ItemGrade,
+  ItemCategory,
   InventoryStackItem,
   TreasureItemDefinition,
   GongfaItemDefinition,
   ElixirItemDefinition,
   MaterialItemDefinition,
 } from "../role_core/types/itemInfo";
+import type { MaterialCategory } from "../role_core/craft";
 import type { PrimaryStatKey } from "../role_core/types/playInfo";
 import { PRIMARY_STAT_KEY_TO_ZH } from "../role_core/types/playInfo";
 import type { ElixirEffectType } from "../role_core/types/elixir";
@@ -35,7 +37,7 @@ import { ELIXIR_NAME_TABLE } from "../role_core/alchemy";
 
 export type TraitEffect =
   | { kind: "spiritStones"; count: number }
-  | { kind: "materials"; grade: ItemGrade; count: number }
+  | { kind: "materials"; category: ItemCategory; grade: ItemGrade; count: number }
   | { kind: "elixir"; grade: ItemGrade; count: number; effectType: ElixirEffectType }
   | { kind: "statBonus"; stats: Partial<Record<PrimaryStatKey, number>> }
   | { kind: "treasure"; grade: ItemGrade }
@@ -59,38 +61,146 @@ function pickRandom<T>(pool: readonly T[]): T {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-/** 材料命名池（按品阶；目前材料只由 AI 命名，此表为天赋授予专用）。 */
-const MATERIAL_NAME_TABLE: Readonly<Record<ItemGrade, readonly { name: string; desc: string }[]>> = {
-  下品: [
-    { name: "百年灵芝", desc: "生于深山的低阶灵草，蕴含稀薄灵气，炼丹常用辅料。" },
-    { name: "铁木枝", desc: "铁木所生枝条，坚韧如铁，是炼制低阶丹药的常用材料。" },
-    { name: "赤炎草", desc: "生于向阳坡地的灵草，性温，入药可温养经脉。" },
-  ],
-  中品: [
-    { name: "千年灵芝", desc: "吸纳百年灵气的中阶灵药，药性醇厚，炼丹价值颇高。" },
-    { name: "寒铁精", desc: "万载寒铁凝炼的精华，寒气逼人，是上佳的炼丹辅材。" },
-    { name: "紫叶兰", desc: "叶脉泛紫的珍稀灵兰，入药可助凝练真元。" },
-  ],
-  上品: [
-    { name: "万年灵芝", desc: "历经万载岁月的珍稀灵芝，灵气氤氲，炼丹名材。" },
-    { name: "玄铁精", desc: "上古玄铁凝炼的精华，坚逾金玉，炼丹炼器皆宜。" },
-    { name: "九叶兰", desc: "一株九叶的稀世灵兰，叶含灵光，入药功效非凡。" },
-  ],
-  极品: [
-    { name: "天地灵果", desc: "吸纳天地灵气而结的灵果，服之可通灵窍，炼丹极品。" },
-    { name: "太乙精金", desc: "蕴含太乙之气的精金，光彩夺目，万金难求。" },
-    { name: "九转灵芝", desc: "经九转而成的极品灵芝，灵气凝实，炼丹圣物。" },
-  ],
-  仙品: [
-    { name: "仙界灵根", desc: "自仙界坠落的灵根碎片，仙气流转，非凡间之物。" },
-    { name: "混元金精", desc: "混元之气凝炼的金精，光辉灿烂，仙家炼丹至宝。" },
-    { name: "造化灵芝", desc: "夺天地造化而生的仙品灵芝，一株可抵凡间百草。" },
-  ],
-  神品: [
-    { name: "神界天材", desc: "源自神界的稀世天材，神韵流转，近乎不朽。" },
-    { name: "混沌神金", desc: "混沌初开时凝炼的神金，万劫不坏，举世罕见。" },
-    { name: "造化神根", desc: "造化之神遗留的灵根，神光内蕴，炼丹可夺天工。" },
-  ],
+/** 材料命名池的一行。 */
+type MaterialNameEntry = { name: string; desc: string };
+
+/**
+ * 材料命名池（先按分类、再按品阶；目前材料只由 AI 命名，此表为天赋授予专用）。
+ *
+ * 「药材」一列为原有词条。毒物 / 器材 / 食材三列为占位，每个品阶各先给一条通用名，
+ * 补词条时照着药材列的写法往对应品阶的数组里加即可（同一格可以放多条，随机取一条）。
+ */
+const MATERIAL_NAME_TABLE: Readonly<
+  Record<MaterialCategory, Readonly<Record<ItemGrade, readonly MaterialNameEntry[]>>>
+> = {
+  药材: {
+    下品: [
+      { name: "百年灵芝", desc: "生于深山的低阶灵草，蕴含稀薄灵气，炼丹常用辅料。" },
+      { name: "铁木枝", desc: "铁木所生枝条，坚韧如铁，是炼制低阶丹药的常用材料。" },
+      { name: "赤炎草", desc: "生于向阳坡地的灵草，性温，入药可温养经脉。" },
+    ],
+    中品: [
+      { name: "千年灵芝", desc: "吸纳百年灵气的中阶灵药，药性醇厚，炼丹价值颇高。" },
+      { name: "寒铁精", desc: "万载寒铁凝炼的精华，寒气逼人，是上佳的炼丹辅材。" },
+      { name: "紫叶兰", desc: "叶脉泛紫的珍稀灵兰，入药可助凝练真元。" },
+    ],
+    上品: [
+      { name: "万年灵芝", desc: "历经万载岁月的珍稀灵芝，灵气氤氲，炼丹名材。" },
+      { name: "玄铁精", desc: "上古玄铁凝炼的精华，坚逾金玉，炼丹炼器皆宜。" },
+      { name: "九叶兰", desc: "一株九叶的稀世灵兰，叶含灵光，入药功效非凡。" },
+    ],
+    极品: [
+      { name: "天地灵果", desc: "吸纳天地灵气而结的灵果，服之可通灵窍，炼丹极品。" },
+      { name: "太乙精金", desc: "蕴含太乙之气的精金，光彩夺目，万金难求。" },
+      { name: "九转灵芝", desc: "经九转而成的极品灵芝，灵气凝实，炼丹圣物。" },
+    ],
+    仙品: [
+      { name: "仙界灵根", desc: "自仙界坠落的灵根碎片，仙气流转，非凡间之物。" },
+      { name: "混元金精", desc: "混元之气凝炼的金精，光辉灿烂，仙家炼丹至宝。" },
+      { name: "造化灵芝", desc: "夺天地造化而生的仙品灵芝，一株可抵凡间百草。" },
+    ],
+    神品: [
+      { name: "神界天材", desc: "源自神界的稀世天材，神韵流转，近乎不朽。" },
+      { name: "混沌神金", desc: "混沌初开时凝炼的神金，万劫不坏，举世罕见。" },
+      { name: "造化神根", desc: "造化之神遗留的灵根，神光内蕴，炼丹可夺天工。" },
+    ],
+  },
+  毒物: {
+    下品: [
+      { name: "腐骨草", desc: "生于阴湿乱坟旁的低阶毒草，汁液具微弱腐蚀性，常用于配制基础毒散。" },
+      { name: "青斑蛇胆", desc: "普通毒蛇的胆囊，腥臭刺鼻，是炼制麻痹与活血毒药的常用辅料。" },
+      { name: "黑磷砂", desc: "地表浅层采出的毒性矿砂，遇火微燃生烟，微毒且易溶于水。" }
+    ],
+    中品: [
+      { name: "七步断肠草", desc: "叶生七瓣的中阶剧毒灵植，采摘时泛幽光，汁液入血可迅速阻滞经络。" },
+      { name: "赤目蝎尾钩", desc: "百年毒蝎的尾部毒刺，淬有灼烈火毒，乃炼制破罡毒丹的上好材料。" },
+      { name: "阴风寒石", desc: "终年吹拂阴风的古洞中凝结的毒石，散发刺骨寒毒，善损修士肉身血气。" }
+    ],
+    上品: [
+      { name: "万毒幽兰", desc: "生长于极凶毒沼的珍稀灵花，花香惑人心神，叶片蕴藏强效蚀灵之毒。" },
+      { name: "九节碧灵蛇蜕", desc: "异种灵蛇蜕下的外皮，附着浓郁阴寒毒素，是炼制破法毒药的名材。" },
+      { name: "冥煞毒晶", desc: "地煞阴脉汇聚凝结的晶石，内蕴霸道死煞，触碰即能侵蚀修士护体罡气。" }
+    ],
+    极品: [
+      { name: "九幽绝命芝", desc: "汲取九幽地脉阴煞而生的极品毒灵芝，通体墨黑，服之断人泥丸神念。" },
+      { name: "天罗万毒髓", desc: "万年毒窟深处萃取的万毒精髓，一滴可化大江水体，为极品毒道圣物。" },
+      { name: "蚀骨化生果", desc: "生于凶煞古战场尸骸之上的奇果，散发诡异甜香，入药可化去一切护体免伤。" }
+    ],
+    仙品: [
+      { name: "黄泉仙陨花", desc: "黄泉彼岸汲取仙人陨落道韵而开的花朵，仙人沾染亦难逃三魂溃散、五衰降临。" },
+      { name: "大罗绝灵蛊蜕", desc: "上古奇蛊留下的金蝉遗壳，蕴含绝法仙毒，触之仙家法力尽失、归于沉寂。" },
+      { name: "幽冥玄阴毒露", desc: "仙界极阴天渊凝结的无上仙露，无色无味，能从根基瓦解不灭仙体。" }
+    ],
+    神品: [
+      { name: "混沌寂灭煞", desc: "开天辟地前混沌残存的寂灭死煞，神光寂灭，沾染分毫可令诸天神明道果崩解。" },
+      { name: "太古噬道花", desc: "太古神墟中伴随大道残骸而生的神草，专噬天地法则，服之万般神通皆化虚无。" },
+      { name: "造化灭度髓", desc: "逆转天地造化而生的因果神毒精髓，因果相连，可隔空诛杀神魂本源。" }
+    ],
+  },
+  器材: {
+    下品: [
+      { name: "百炼粗铁", desc: "凡铁经百次锻打而成的基础材料，质地坚硬，多用于炼制低阶刀剑。" },
+      { name: "风磨铜", desc: "受山风侵蚀的轻质铜矿，分量轻盈，适合打造暗器与轻便兵刃。" },
+      { name: "坚纹青木", desc: "生于灵气贫瘠处的坚韧木料，木纹密实，常作枪柄或法杖骨架。" }
+    ],
+    中品: [
+      { name: "沉金灵矿", desc: "深埋地底的中阶矿石，比寻常精铁沉重数倍，可增强兵刃与重甲的破甲沉稳之势。" },
+      { name: "赤血精铜", desc: "蕴含一丝地火灵力的红铜，导灵性佳，是炼制中阶法器与炎属性法宝的上佳胚料。" },
+      { name: "寒蚕韧丝", desc: "雪山寒蚕吐出的灵丝，水火难伤且极为柔韧，常用于编织软甲或法袍内衬。" }
+    ],
+    上品: [
+      { name: "星宿陨铁", desc: "天外流星坠落留下的陨铁，自带星辰锐气，锋利异常，铸器可引动星煞之力。" },
+      { name: "凤栖灵木", desc: "灵禽常年栖息的古木心材，灵气充沛且坚不可摧，炼制上品法宝与灵弓的神材。" },
+      { name: "深海寒魄玉", desc: "万丈海沟深处的极寒灵玉，质地通透，镶嵌于佩饰或阵盘上可极大幅提升灵力流转。" }
+    ],
+    极品: [
+      { name: "玄天精金", desc: "天脉灵矿历经万载孕育的极品矿材，金光内蕴、破万法，是铸造极品神兵的基石。" },
+      { name: "真龙逆鳞", desc: "大妖蛟龙蜕变时褪下的本命硬鳞，防御极强，乃打造传世极品护甲与重盾的核心。" },
+      { name: "空冥灵石", desc: "内含一丝空间道韵的透明晶石，极难采掘，是开辟极品储物法宝与阵旗的圣物。" }
+    ],
+    仙品: [
+      { name: "大罗仙金", desc: "仙界九重天雷反复淬炼而生的仙金，万劫不磨，自带仙道纹理，可铸造传世仙器。" },
+      { name: "九天建木心", desc: "通天古木的极尽核心碎片，蕴含磅礴生机与天道法则，仙家炼器至宝。" },
+      { name: "混元乾坤玉", desc: "天然蕴含小世界雏形的仙玉，能容纳诸天万象，炼制洞天仙宝的无上主材。" }
+    ],
+    神品: [
+      { name: "鸿蒙神铁", desc: "诞生于太初鸿蒙之中的先天神铁，自成造化，挥舞间引动开天伟力，举世无双。" },
+      { name: "混沌创世石", desc: "混沌初开时支撑乾坤的大道基石碎屑，不堕轮回，可铸就镇压诸天的大道神器。" },
+      { name: "不灭神髓晶", desc: "太古神明神躯本源凝炼而成的至高晶石，神韵恒古不灭，铸甲可抵挡天地大劫。" }
+    ],
+  },
+  食材: {
+    下品: [
+      { name: "灵泉甘露", desc: "山间灵泉清晨汇聚的露水，入口清凉甘润，可作为烹茶煮羹的清润灵水。" },
+      { name: "翠玉灵米", desc: "低阶灵田种植的晶莹灵米，蒸熟后香气扑鼻，凡人服之亦能强身健体、驱除杂秽。" },
+      { name: "刚鬃野彘肉", desc: "吸收些许山野灵气的野猪肉，肉质紧实嚼劲十足，食用可增补少许血气气力。" }
+    ],
+    中品: [
+      { name: "云雾雾茶嫩芽", desc: "终年笼罩在云雾灵气中的古茶嫩叶，烘干后冲泡灵香四溢，烹制茶点能生发身法灵动。" },
+      { name: "地灵翡翠笋", desc: "深山地脉滋养出的翡翠竹笋，鲜嫩爽脆，烹煮素菜可大幅固本培元、壮实体魄。" },
+      { name: "赤炎斑虎里脊", desc: "中阶妖兽身上最细嫩的精肉，蕴含浓厚阳气，大火炙烤食用能激发周身爆裂力道。" }
+    ],
+    上品: [
+      { name: "冰蚕灵雪粉", desc: "雪山异蚕食寒露后产出的精粹细粉，细腻如雪，制成点心食后体轻如燕、步履生风。" },
+      { name: "七彩九叶芝", desc: "吸纳天地灵气长成的七色肉芝，药香浓烈，入羹炖汤可令体魄防御强若玄金。" },
+      { name: "金鳞蛟龙髓", desc: "深潭恶蛟脊骨中抽取的精髓，鲜美无比且血气旺盛，烹饪后食之膂力通神、气血如沸。" }
+    ],
+    极品: [
+      { name: "万年灵地乳", desc: "大地深处万载方凝聚一滴的地乳琼浆，入口醇厚回甘，烹煮神馔可洗涤肉身周身经络。" },
+      { name: "通天朱果", desc: "三百年一开花、三百年一结果的极品灵果，汁液甘甜如蜜，食之神念大开、施法威能骤增。" },
+      { name: "覆海狂暴巨兽精肉", desc: "深海万载巨兽的命门精肉，蕴藏排山倒海般的气力，食后可爆发拔山扛鼎之绝世巨力。" }
+    ],
+    仙品: [
+      { name: "瑶池蟠桃果肉", desc: "仙界瑶池灵根结出的三千年仙桃，肉质如凝脂美玉，仙香扑鼻，食之一口仙气环绕、固若金汤。" },
+      { name: "九霄金羽鸾肉", desc: "九天神禽褪落的灵肉精粹，仙灵之力内聚，佐以仙酒烹调可令人法术通神、瞬息百里。" },
+      { name: "太虚九叶灵茸", desc: "生长在太虚边缘的仙品肉灵芝，蕴含不灭仙机，烹制仙膳可令仙体与天地法理彻底相合。" }
+    ],
+    神品: [
+      { name: "混沌大道神果", desc: "大道法则自然凝结而成的先天神果，蕴含混沌本源，食之明悟天地大道、身化天地至法。" },
+      { name: "太古祖龙髓", desc: "开天辟地第一条真龙留存的神髓，蕴藏开天辟地的肉身极致神力，吞服可拥碎灭诸天之霸力。" },
+      { name: "造化玄黄母气晶", desc: "天地始成时第一缕玄黄母气凝成的神物，烹调入味则身化不灭神体，与寰宇同寿、万劫不坏。" }
+    ],
+  },
 };
 
 /**
@@ -164,13 +274,15 @@ export function resolveTraitEffect(effect: TraitEffect): ResolvedTraitEffect {
 
     case "materials": {
       const count = Math.max(1, Math.floor(effect.count));
-      const entry = pickRandom(MATERIAL_NAME_TABLE[effect.grade] ?? MATERIAL_NAME_TABLE.下品);
+      const byGrade = MATERIAL_NAME_TABLE[effect.category] ?? MATERIAL_NAME_TABLE.药材;
+      const entry = pickRandom(byGrade[effect.grade] ?? byGrade.下品);
       const item: MaterialItemDefinition = {
         itemType: "材料",
         name: entry.name,
         desc: entry.desc,
         grade: effect.grade,
         count,
+        category: effect.category,
       };
       return { ...empty, items: [item] };
     }
@@ -253,7 +365,7 @@ export function describeTraitEffect(effect: TraitEffect | undefined | null): str
     case "spiritStones":
       return `开局获得 ${effect.count} 灵石`;
     case "materials":
-      return `开局获得 ${effect.grade}材料 ×${effect.count}`;
+      return `开局获得 ${effect.grade}${effect.category} ×${effect.count}`;
     case "elixir": {
       const name = ELIXIR_NAME_TABLE[effect.effectType]?.[effect.grade]?.name ?? effect.effectType;
       return `开局获得 ${effect.grade}丹药「${name}」×${effect.count}`;

@@ -1,10 +1,12 @@
 import { STORY_SYSTEM_PRESET } from "./story_preset";
 import { PRESET } from "./preset";
 import { completeChatWithMessagesJson, type JsonChatRequestPayload, type ChatMessage } from "./openAiChatBridge";
+import { matchWorldLore } from "./worldLore";
 import { Protagonist } from "../role_core/Protagonist";
 import { describeNextBreakthrough } from "../role_core/realmUtils";
 import type { ProtagonistPlayInfo, NarrationPerson, EquippedSlotsState, GongfaSlotsState, InventoryStackItem } from "../role_core/types/playInfo";
 import { formatWorldLocationDash } from "../role_core/types/worldLocation";
+import { originTagLines } from "../fate_choice/types";
 
 export interface StoryChatEntry {
   role: "user" | "assistant";
@@ -136,6 +138,7 @@ function buildStoryUserContent(p: ProtagonistPlayInfo, sceneNpcSnapshot?: string
     "",
     `姓名：${p.displayName}`,
     `性别：${p.gender || "—"}`,
+    ...originTagLines(p.race ?? "", p.faction ?? ""),
     narrationPersonLine(p.narrationPerson),
     `境界：${Protagonist.formatRealm(p.realm)}${p.realmComplete ? "·圆满" : ""}`,
     `修为状态：${p.realmComplete ? describeNextBreakthrough(p.realm.major, p.realm.minor) : "修为未圆满"}`,
@@ -180,6 +183,14 @@ export function buildStoryRequestPayload(input: StoryGenerateInput): JsonChatReq
   if (storyParts.length > 0) {
     systemParts.push("【之前的剧情】\n" + storyParts.join("\n\n---\n\n"));
   }
+  // 世界设定按关键词命中注入，置于 system 末尾（紧邻正文请求，注意力更集中）。
+  const lore = matchWorldLore({
+    chatHistory: input.chatHistory,
+    playerInput: lastUserContent,
+    worldLocation: input.currentWorldLocation,
+    npcSnapshot: input.sceneNpcSnapshot,
+  });
+  if (lore) systemParts.push(lore);
   messages.push({ role: "system", content: systemParts.join("\n\n") });
 
   messages.push({

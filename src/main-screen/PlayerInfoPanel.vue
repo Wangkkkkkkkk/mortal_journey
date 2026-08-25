@@ -8,6 +8,10 @@ import { Protagonist } from "../role_core/Protagonist";
 import { PRIMARY_STAT_KEY_TO_ZH, PRIMARY_STAT_KEYS, PRIMARY_STAT_KEY_DESC, formatLinggenBonusText, type EquipSlotKey, type PrimaryStatKey } from "../role_core/types/playInfo";
 import type { GongfaItemDefinition } from "../role_core/types/itemInfo";
 import { computeLinggenCombatBonuses } from "../role_core/types/gameConstants";
+import { computePanelCombatStats } from "../battle_engine/panelStats";
+import { CRAFT_SKILL_KEYS, CRAFT_SKILL_TO_ZH, CRAFT_SKILL_DESC, craftUpgradeChance } from "../role_core/craft";
+import { timedBuffDaysLeft } from "../role_core/timedBuff";
+import { PRIMARY_STAT_KEY_TO_ZH as STAT_ZH } from "../role_core/types/playInfo";
 import type { DerivedStatValues } from "./protagonistDetailPayload";
 import {
   buildGongfaDetailPayload,
@@ -22,7 +26,6 @@ import {
   getEquipSlotRows,
   getHpMpBarState,
   getInventoryBagDisplaySlots,
-  getTraitSlots,
   gongfaCellName,
   displayStatInt,
   gradeToTraitRarity,
@@ -73,9 +76,28 @@ const panelAgeForDisplay = computed(() => {
 
 const cultivationUi = computed(() => getCultivationUiState(props.protagonist));
 const primaryStats = computed(() => props.protagonist?.getPrimaryStats() ?? null);
+
+/** 战斗属性区块：基础值 + 灵根 + 法宝词条 + 被动功法修正的静态汇总（与战斗初始化同源）。 */
+const combatStatRows = computed(() => {
+  const p = props.protagonist;
+  if (!p) return [];
+  const c = computePanelCombatStats(p);
+  const fmt = (v: number) => `${Math.round(v * 10) / 10}%`;
+  return [
+    { k: "暴击率", v: fmt(c.critRate), tip: "攻击造成暴击的概率，来自法宝词条与被动功法" },
+    { k: "暴击伤害", v: fmt(c.critDmg), tip: "暴击时造成的伤害倍率（基础150%，金灵根提升）" },
+    { k: "闪避率", v: fmt(c.dodgeRate), tip: "完全闪避一次攻击的概率" },
+    { k: "吸血", v: fmt(c.lifesteal), tip: "造成伤害后按比例回复血量" },
+    { k: "增伤", v: fmt(c.damageDealt), tip: "造成的最终伤害提升" },
+    { k: "减伤", v: fmt(c.damageReduction), tip: "受到的最终伤害降低" },
+    { k: "回血", v: fmt(c.hpRecoverPerTurn), tip: "战斗中每回合自动恢复最大血量的百分比（火灵根增强）" },
+    { k: "回蓝", v: fmt(c.mpRecoverPerTurn), tip: "战斗中每回合自动恢复最大法力的百分比" },
+  ];
+});
 const hpMp = computed(() => getHpMpBarState(props.protagonist, props.protagonist ? { hp: props.protagonist.maxHp, mp: props.protagonist.maxMp } : null));
 const equipSlots = computed(() => getEquipSlotRows(props.protagonist));
-const traitSlots = computed(() => getTraitSlots(props.protagonist));
+/** 天赋平铺列表：条数不再固定为 5，直接铺开主角实际持有的全部天赋。 */
+const traitRows = computed(() => props.protagonist?.traits ?? []);
 const inventoryBagDisplaySlots = computed(() =>
   props.protagonist ? getInventoryBagDisplaySlots(props.protagonist.inventorySlots) : [],
 );
@@ -92,6 +114,41 @@ const linggenTooltip = computed(() => {
     })
     .filter(Boolean)
     .join("\n");
+});
+
+/** 技艺区块：四门技艺的熟练度与当前品阶跃迁概率。 */
+const craftSkillRows = computed(() => {
+  const p = props.protagonist;
+  if (!p) return [];
+  return CRAFT_SKILL_KEYS.map((k) => {
+    const prof = p.craftSkills[k] ?? 0;
+    return {
+      k,
+      label: CRAFT_SKILL_TO_ZH[k],
+      value: prof,
+      tip: `${CRAFT_SKILL_DESC[k]}
+当前熟练度 ${prof}，品阶跃迁概率 ${(Math.round(craftUpgradeChance(prof) * 10) / 10)}%`,
+    };
+  });
+});
+
+/** 生效中的限时增益（餐食等），含剩余天数与效果文案。 */
+const activeBuffRows = computed(() => {
+  const p = props.protagonist;
+  if (!p) return [];
+  return p.getActiveTimedBuffs().map((b) => {
+    const parts = Object.entries(b.statPercents)
+      .filter(([, v]) => typeof v === "number" && v !== 0)
+      .map(([k, v]) => `${STAT_ZH[k as PrimaryStatKey]} ${(v as number) > 0 ? "+" : ""}${v}%`);
+    return {
+      id: b.id,
+      name: b.name,
+      effectText: parts.join("　"),
+      daysLeft: timedBuffDaysLeft(b, props.worldTime),
+      tip: `${b.desc}
+${parts.join("，")}`,
+    };
+  });
 });
 
 const detailOpen = ref(false);
@@ -441,22 +498,63 @@ function onSlotKeydown(e: KeyboardEvent, fn: () => void) {
           </div>
         </div>
 
+        <div class="mj-combat-stats">
+          <div class="mj-attr-section-header">
+            <h3 class="mj-attr-section-title">战斗属性</h3>
+          </div>
+          <div v-for="row in Math.ceil(combatStatRows.length / 2)" :key="row" class="mj-stat-pair-row">
+            <template v-for="col in [0, 1]" :key="col">
+              <div v-if="combatStatRows[(row - 1) * 2 + col]" class="mj-stat-cell" :class="col === 1 ? 'mj-stat-cell--right' : ''">
+                <span class="mj-stat-k mj-stat-k--tip" :data-tip="combatStatRows[(row - 1) * 2 + col].tip">{{ combatStatRows[(row - 1) * 2 + col].k }}</span>
+                <span class="mj-stat-v">{{ combatStatRows[(row - 1) * 2 + col].v }}</span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div class="mj-combat-stats">
+          <div class="mj-attr-section-header">
+            <h3 class="mj-attr-section-title">技艺</h3>
+          </div>
+          <div v-for="row in Math.ceil(craftSkillRows.length / 2)" :key="'craft-' + row" class="mj-stat-pair-row">
+            <template v-for="col in [0, 1]" :key="col">
+              <div v-if="craftSkillRows[(row - 1) * 2 + col]" class="mj-stat-cell" :class="col === 1 ? 'mj-stat-cell--right' : ''">
+                <span class="mj-stat-k mj-stat-k--tip" :data-tip="craftSkillRows[(row - 1) * 2 + col].tip">{{ craftSkillRows[(row - 1) * 2 + col].label }}</span>
+                <span class="mj-stat-v">{{ craftSkillRows[(row - 1) * 2 + col].value }}</span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div v-if="activeBuffRows.length > 0" class="mj-combat-stats">
+          <div class="mj-attr-section-header">
+            <h3 class="mj-attr-section-title">增益</h3>
+          </div>
+          <div v-for="b in activeBuffRows" :key="b.id" class="mj-stat-cell mj-buff-row" :title="b.tip">
+            <span class="mj-stat-k">{{ b.name }}</span>
+            <span class="mj-stat-v mj-buff-effect">{{ b.effectText }}</span>
+            <span class="mj-buff-days">余{{ b.daysLeft }}天</span>
+          </div>
+        </div>
+
         <div class="mj-talent-block">
           <h3 class="mj-attr-section-title">天赋</h3>
-          <div class="mj-talent-row" role="list">
+          <div class="mj-talent-row" role="list" style="flex-direction: column; gap: 2px">
             <div
-              v-for="(t, ti) in traitSlots"
+              v-for="(t, ti) in traitRows"
               :key="ti"
-              class="mj-trait-slot"
-              :class="t ? 'mj-trait-slot--filled' : 'mj-trait-slot--empty'"
-              :data-rarity="traitSlotRarity(t)"
-              :title="traitSlotTitle(t) + (t ? '\n（点击查看详情）' : '')"
+              class="mj-stat-cell"
+              :title="traitSlotTitle(t) + '\n（点击查看详情）'"
               role="listitem"
-              :tabindex="t ? 0 : -1"
-              @click="t && onTraitSlotClick(ti)"
-              @keydown="t && onSlotKeydown($event, () => onTraitSlotClick(ti))"
+              tabindex="0"
+              @click="onTraitSlotClick(ti)"
+              @keydown="onSlotKeydown($event, () => onTraitSlotClick(ti))"
             >
-              <span class="mj-trait-slot-inner">{{ traitSlotInnerText(t) }}</span>
+              <span class="mj-stat-k">{{ traitSlotInnerText(t) }}</span>
+              <span class="mj-stat-v">{{ traitSlotRarity(t) ?? "" }}</span>
+            </div>
+            <div v-if="!traitRows.length" class="mj-stat-cell">
+              <span class="mj-stat-k">暂无天赋</span>
             </div>
           </div>
         </div>
@@ -548,3 +646,24 @@ function onSlotKeydown(e: KeyboardEvent, fn: () => void) {
     @upload="onHistoryUpload"
   />
 </template>
+
+<style scoped>
+.mj-buff-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+}
+
+.mj-buff-effect {
+  flex: 1;
+  font-size: 12px;
+}
+
+.mj-buff-days {
+  font-size: 12px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+</style>
+

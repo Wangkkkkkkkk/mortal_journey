@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useFateChoice } from "./useFateChoice";
+import { useFateChoice, CUSTOM_GENDER_KEY } from "./useFateChoice";
 import type { FateChoiceResult, NarrationPerson, DifficultyLevel } from "./types";
 import type { TraitOption } from "./useFateChoice";
+import type { TraitSample } from "./traits";
 import { parseRealmFromCustomText } from "./useFateChoice";
-import { CUSTOM_REALM_MAJORS, CUSTOM_REALM_MINORS } from "./types";
+import { CUSTOM_REALM_MAJORS, CUSTOM_REALM_MINORS, LINGGEN_ELEMENT_EFFECTS } from "./types";
+import type { PrimaryStatKey } from "../role_core/types/playInfo";
+import { PRIMARY_STAT_KEYS, PRIMARY_STAT_KEY_TO_ZH } from "../role_core/types/playInfo";
 import { formatWorldLocationDash } from "../role_core/types/worldLocation";
 import TraitDetailModal from "./TraitDetailModal.vue";
 import LinggenDetailModal from "./LinggenDetailModal.vue";
@@ -19,29 +22,66 @@ const emit = defineEmits<{
 
 const {
   CREATION_BIRTHS,
-  CREATION_GENDERS,
+  CREATION_RACES,
+  CREATION_FACTIONS,
   DIFFICULTY_OPTIONS,
+  LINGGEN_ELEMENT_POOL,
+  STAT_POINT_COST,
+  STAT_PURCHASE_STEP,
+  traitsByCategory,
+  traitCost,
+  linggenCost,
   birthKeysOrdered,
+  genderKeysOrdered,
   selectedDifficulty,
   selectedBirth,
   customBirth,
   selectedGender,
+  customGender,
+  ageInput,
+  raceKeysOrdered,
+  factionKeysOrdered,
+  selectedRace,
+  selectedFaction,
   narrationPerson,
   playerName,
-  currentTraitOptions,
-  selectedLinggen,
+  pointBudgetInput,
+  pointsSpent,
+  pointsLeft,
+  selectedTraits,
+  isTraitSelected,
+  toggleTrait,
+  randomizeTraits,
+  clearTraits,
+  statPurchase,
+  buyStat,
+  sellStat,
+  linggenElements,
+  linggenType,
+  linggenPointsSpent,
+  toggleLinggenElement,
+  applyRandomLinggen,
   statusMessage,
   isReady,
   reset,
   prepareInitialRolls,
-  randomizeTraits,
-  toggleTraitLock,
-  applyRandomLinggen,
   buildPayload,
   selectBirth,
   applyCustomBirth,
   resolveBirthLocationDescFromDef,
 } = useFateChoice();
+
+/** 当前页签：基础信息 / 天赋购点。 */
+const activeTab = ref<"basics" | "talent">("basics");
+
+const TAB_ROWS = [
+  { key: "basics", title: "基础", desc: "难度、姓名、人称、性别、年龄、种族、阵营与出身。" },
+  { key: "talent", title: "天赋", desc: "点数总额、灵根、基础属性与天赋词条的自选购点。" },
+] as const;
+
+function setTab(key: string): void {
+  if (key === "basics" || key === "talent") activeTab.value = key;
+}
 
 function birthCardBlurb(birthKey: string): string {
   const bd = CREATION_BIRTHS[birthKey];
@@ -85,14 +125,16 @@ const customModalInitial = computed(() => {
   };
 });
 
-const linggenParts = computed(() => {
-  const name = selectedLinggen.value;
-  if (!name) return { type: "", elements: [] as string[] };
-  const parts = name.split(/\s+/);
-  const type = parts[0] || "";
-  const elements = parts.slice(1).map((el) => el.replace(/,/g, ""));
-  return { type, elements };
-});
+/** 切换某个元素后灵根的新报价，用于在元素卡上提示改价。 */
+function linggenCostAfterToggle(el: string): number {
+  const has = linggenElements.value.includes(el);
+  return linggenCost(has ? linggenElements.value.length - 1 : linggenElements.value.length + 1);
+}
+
+/** 词条卡在当前点数下是否买不起（已选中的始终可点，用于退选）。 */
+function traitUnaffordable(t: TraitSample): boolean {
+  return !isTraitSelected(t.name) && traitCost(t.rarity) > pointsLeft.value;
+}
 
 watch(
   () => props.visible,
@@ -100,6 +142,7 @@ watch(
     if (v) {
       reset();
       prepareInitialRolls();
+      activeTab.value = "basics";
       traitDetailTrait.value = null;
       linggenDetailOpen.value = false;
       customModalOpen.value = false;
@@ -144,7 +187,7 @@ function onCustomBirthConfirm(payload: import("./types").CustomBirthPayload): vo
 
 function onConfirm(): void {
   if (!isReady.value) {
-    statusMessage.value = "请完成姓名、叙事人称、性别、出身、灵根与天赋词条。";
+    statusMessage.value = "请完成姓名、性别与出身，并确保点数没有超支。";
     return;
   }
   const payload = buildPayload();
@@ -167,6 +210,10 @@ function setDifficulty(key: string): void {
   if (key === "简单" || key === "正常" || key === "困难") {
     selectedDifficulty.value = key as DifficultyLevel;
   }
+}
+
+function statLabel(key: PrimaryStatKey): string {
+  return PRIMARY_STAT_KEY_TO_ZH[key] ?? key;
 }
 
 function customBirthSummary(): string {
@@ -202,133 +249,305 @@ function customBirthSummary(): string {
             </div>
           </div>
 
-          <div class="creation-section-title"><i class="fas fa-skull-crossbones"></i> 难度</div>
-          <div class="creation-grid">
+          <div class="creation-grid" style="grid-template-columns: repeat(2, 1fr)">
             <div
-              v-for="opt in DIFFICULTY_OPTIONS"
-              :key="opt.key"
+              v-for="tab in TAB_ROWS"
+              :key="tab.key"
               class="creation-card"
-              :class="{ selected: selectedDifficulty === opt.key }"
+              :class="{ selected: activeTab === tab.key }"
               role="button"
               tabindex="0"
-              @click="setDifficulty(opt.key)"
-              @keydown.enter="setDifficulty(opt.key)"
+              @click="setTab(tab.key)"
+              @keydown.enter="setTab(tab.key)"
             >
-              <h4>{{ opt.title }}</h4>
-              <p>{{ opt.desc }}</p>
+              <h4>{{ tab.title }}</h4>
+              <p>{{ tab.desc }}</p>
             </div>
           </div>
 
-          <div class="creation-section-title"><i class="fas fa-user"></i> 姓名</div>
-          <div style="max-width: 620px">
-            <input
-              v-model="playerName"
-              type="text"
-              maxlength="24"
-              placeholder="请输入姓名"
-              class="fc-name-input"
-            />
-          </div>
-
-          <div class="creation-section-title"><i class="fas fa-pen-fancy"></i> 叙事人称</div>
-          <div class="creation-grid">
-            <div
-              v-for="row in [
-                { key: 'first', title: '第一人称' },
-                { key: 'second', title: '第二人称' },
-                { key: 'third', title: '第三人称' },
-              ]"
-              :key="row.key"
-              class="creation-card"
-              :class="{ selected: narrationPerson === row.key }"
-              role="button"
-              tabindex="0"
-              @click="setNarrationPerson(row.key)"
-              @keydown.enter="setNarrationPerson(row.key)"
-            >
-              <h4>{{ row.title }}</h4>
-              <p>{{ narrationDesc(row.key) }}</p>
-            </div>
-          </div>
-
-          <div class="creation-section-title"><i class="fas fa-venus-mars"></i> 性别</div>
-          <div class="creation-grid">
-            <div
-              v-for="name in CREATION_GENDERS"
-              :key="name"
-              class="creation-card"
-              :class="{ selected: selectedGender === name }"
-              role="button"
-              tabindex="0"
-              @click="selectedGender = name"
-              @keydown.enter="selectedGender = name"
-            >
-              <h4>{{ name }}</h4>
-            </div>
-          </div>
-
-          <div class="creation-section-title"><i class="fas fa-baby"></i> 选择出身</div>
-          <div class="creation-grid">
-            <template v-for="name in birthKeysOrdered" :key="name">
+          <!-- ══════════════ 页签一：基础 ══════════════ -->
+          <template v-if="activeTab === 'basics'">
+            <div class="creation-section-title"><i class="fas fa-skull-crossbones"></i> 难度</div>
+            <div class="creation-grid">
               <div
-                v-if="name === '自定义'"
+                v-for="opt in DIFFICULTY_OPTIONS"
+                :key="opt.key"
                 class="creation-card"
-                :class="{ selected: selectedBirth === '自定义' }"
+                :class="{ selected: selectedDifficulty === opt.key }"
                 role="button"
                 tabindex="0"
-                @click="onBirthCardClick('自定义')"
-                @keydown.enter="onBirthCardClick('自定义')"
+                @click="setDifficulty(opt.key)"
+                @keydown.enter="setDifficulty(opt.key)"
               >
-                <h4><span>自定义出身</span></h4>
-                <p>{{ customBirthSummary() }}</p>
+                <h4>{{ opt.title }}</h4>
+                <p>{{ opt.desc }}</p>
               </div>
+            </div>
+
+            <div class="creation-section-title"><i class="fas fa-user"></i> 姓名</div>
+            <div style="max-width: 620px">
+              <input
+                v-model="playerName"
+                type="text"
+                maxlength="24"
+                placeholder="请输入姓名"
+                class="fc-name-input"
+              />
+            </div>
+
+            <div class="creation-section-title"><i class="fas fa-pen-fancy"></i> 叙事人称</div>
+            <div class="creation-grid">
               <div
-                v-else-if="CREATION_BIRTHS[name]"
+                v-for="row in [
+                  { key: 'first', title: '第一人称' },
+                  { key: 'second', title: '第二人称' },
+                  { key: 'third', title: '第三人称' },
+                ]"
+                :key="row.key"
                 class="creation-card"
-                :class="{ selected: selectedBirth === name }"
+                :class="{ selected: narrationPerson === row.key }"
                 role="button"
                 tabindex="0"
-                @click="onBirthCardClick(name)"
-                @keydown.enter="onBirthCardClick(name)"
+                @click="setNarrationPerson(row.key)"
+                @keydown.enter="setNarrationPerson(row.key)"
+              >
+                <h4>{{ row.title }}</h4>
+                <p>{{ narrationDesc(row.key) }}</p>
+              </div>
+            </div>
+
+            <div class="creation-section-title"><i class="fas fa-venus-mars"></i> 性别</div>
+            <div class="creation-grid">
+              <div
+                v-for="name in genderKeysOrdered"
+                :key="name"
+                class="creation-card"
+                :class="{ selected: selectedGender === name }"
+                role="button"
+                tabindex="0"
+                @click="selectedGender = name"
+                @keydown.enter="selectedGender = name"
+              >
+                <h4>{{ name }}</h4>
+                <input
+                  v-if="name === CUSTOM_GENDER_KEY"
+                  v-model="customGender"
+                  type="text"
+                  maxlength="12"
+                  placeholder="自行填写性别"
+                  class="fc-name-input"
+                  style="height: 36px; font-size: 14px"
+                  @click.stop
+                  @focus="selectedGender = CUSTOM_GENDER_KEY"
+                />
+              </div>
+            </div>
+
+            <div class="creation-section-title"><i class="fas fa-hourglass-half"></i> 年龄</div>
+            <div style="max-width: 620px">
+              <input
+                v-model="ageInput"
+                type="number"
+                min="1"
+                placeholder="留空则由开局剧情按境界推定"
+                class="fc-name-input"
+              />
+            </div>
+
+            <div class="creation-section-title"><i class="fas fa-dna"></i> 种族</div>
+            <div class="creation-grid">
+              <div
+                v-for="name in raceKeysOrdered"
+                :key="name"
+                class="creation-card"
+                :class="{ selected: selectedRace === name }"
+                role="button"
+                tabindex="0"
+                @click="selectedRace = name"
+                @keydown.enter="selectedRace = name"
               >
                 <h4><span>{{ name }}</span></h4>
-                <p v-if="birthCardBlurb(name)">{{ birthCardBlurb(name) }}</p>
+                <p>{{ CREATION_RACES[name]?.desc }}</p>
               </div>
-            </template>
-          </div>
-
-          <div class="creation-section-title"><i class="fas fa-star"></i> 天赋词条</div>
-          <div class="fc-trait-stack">
-            <div class="action-buttons-grid" style="width: 100%; max-width: 620px; margin: 0 auto">
-              <button
-                type="button"
-                class="major-action-button"
-                @click="randomizeTraits()"
-              >
-                <i class="fas fa-dice"></i> 逆天改命
-              </button>
-              <p class="fc-trait-hint">点击卡片左下角 🔒 锁定想保留的词条，「逆天改命」不会替换已锁定的词条。</p>
             </div>
-            <div id="trait-options-container">
-              <template v-if="currentTraitOptions.length">
+
+            <div class="creation-section-title"><i class="fas fa-yin-yang"></i> 阵营</div>
+            <div class="creation-grid">
+              <div
+                v-for="name in factionKeysOrdered"
+                :key="name"
+                class="creation-card"
+                :class="{ selected: selectedFaction === name }"
+                role="button"
+                tabindex="0"
+                @click="selectedFaction = name"
+                @keydown.enter="selectedFaction = name"
+              >
+                <h4><span>{{ name }}</span></h4>
+                <p>{{ CREATION_FACTIONS[name]?.desc }}</p>
+              </div>
+            </div>
+
+            <div class="creation-section-title"><i class="fas fa-baby"></i> 选择出身</div>
+            <div class="creation-grid">
+              <template v-for="name in birthKeysOrdered" :key="name">
                 <div
-                  v-for="(trait, idx) in currentTraitOptions"
-                  :key="trait.name"
-                  class="trait-card"
-                  :class="{ 'trait-locked': trait.locked }"
-                  :data-rarity="trait.rarity"
-                  :data-trait-name="trait.name"
+                  v-if="name === '自定义'"
+                  class="creation-card"
+                  :class="{ selected: selectedBirth === '自定义' }"
+                  role="button"
+                  tabindex="0"
+                  @click="onBirthCardClick('自定义')"
+                  @keydown.enter="onBirthCardClick('自定义')"
                 >
-                  <div class="trait-rarity">{{ trait.rarity }}</div>
-                  <div class="trait-name">{{ trait.name }}</div>
+                  <h4><span>自定义出身</span></h4>
+                  <p>{{ customBirthSummary() }}</p>
+                </div>
+                <div
+                  v-else-if="CREATION_BIRTHS[name]"
+                  class="creation-card"
+                  :class="{ selected: selectedBirth === name }"
+                  role="button"
+                  tabindex="0"
+                  @click="onBirthCardClick(name)"
+                  @keydown.enter="onBirthCardClick(name)"
+                >
+                  <h4><span>{{ name }}</span></h4>
+                  <p v-if="birthCardBlurb(name)">{{ birthCardBlurb(name) }}</p>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <!-- ══════════════ 页签二：天赋购点 ══════════════ -->
+          <template v-else>
+            <div class="creation-section-title"><i class="fas fa-coins"></i> 点数</div>
+            <div class="creation-grid" style="grid-template-columns: repeat(2, 1fr)">
+              <div class="creation-card" style="cursor: default">
+                <h4>点数总额</h4>
+                <input
+                  v-model="pointBudgetInput"
+                  type="number"
+                  min="0"
+                  class="fc-name-input"
+                  style="height: 36px; font-size: 14px"
+                />
+              </div>
+              <div class="creation-card" style="cursor: default">
+                <h4>剩余 {{ pointsLeft }} / 已用 {{ pointsSpent }}</h4>
+                <p>随机抽取的词条与随机灵根不消耗点数；手动选购的词条、灵根与基础属性按表计价，取消选择即退还。</p>
+              </div>
+            </div>
+
+            <div class="creation-section-title"><i class="fas fa-bolt"></i> 灵根</div>
+            <div class="fc-linggen-block">
+              <div id="linggen-result-display" style="transform: scale(1.08)">
+                <div class="linggen-orb" :class="'orb-type-' + linggenType">
+                  <div class="linggen-tag" :class="'tag-type-' + linggenType">{{ linggenType }}</div>
+                  <div class="linggen-elements">{{ linggenElements.join(" ") }}</div>
                   <button
                     type="button"
-                    class="trait-lock-btn"
-                    :title="trait.locked ? '解锁' : '锁定（逆天改命时保留）'"
-                    @click.stop="toggleTraitLock(idx)"
+                    class="trait-detail-btn"
+                    title="查看灵根详情"
+                    @click.stop="linggenDetailOpen = true"
                   >
-                    <i :class="trait.locked ? 'fas fa-lock' : 'fas fa-lock-open'"></i>
+                    <i class="fas fa-info-circle"></i>
                   </button>
+                </div>
+              </div>
+              <p class="fc-trait-hint">
+                元素越少灵根越纯、点数越贵。当前消耗 {{ linggenPointsSpent }} 点{{
+                  linggenPointsSpent === 0 && linggenElements.length ? "（随机所得，免费）" : ""
+                }}。
+              </p>
+              <div class="creation-grid" style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr))">
+                <div
+                  v-for="el in LINGGEN_ELEMENT_POOL"
+                  :key="el"
+                  class="creation-card"
+                  :class="{ selected: linggenElements.includes(el) }"
+                  role="button"
+                  tabindex="0"
+                  @click="toggleLinggenElement(el)"
+                  @keydown.enter="toggleLinggenElement(el)"
+                >
+                  <h4>{{ el }}</h4>
+                  <p>{{ LINGGEN_ELEMENT_EFFECTS[el] }}</p>
+                  <p>{{ linggenElements.includes(el) ? "移除后" : "选入后" }}共 {{ linggenCostAfterToggle(el) }} 点</p>
+                </div>
+              </div>
+              <div class="action-buttons-grid fc-linggen-random-row">
+                <button type="button" class="major-action-button" @click="applyRandomLinggen()">
+                  <i class="fas fa-dice-d20"></i> 随机灵根（免费）
+                </button>
+              </div>
+            </div>
+
+            <div class="creation-section-title"><i class="fas fa-chart-simple"></i> 基础属性</div>
+            <div class="creation-grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr))">
+              <div
+                v-for="key in PRIMARY_STAT_KEYS"
+                :key="key"
+                class="creation-card"
+                :class="{ selected: (statPurchase[key] ?? 0) > 0 }"
+                style="cursor: default"
+              >
+                <h4>{{ statLabel(key) }} +{{ statPurchase[key] ?? 0 }}</h4>
+                <p>每 {{ STAT_PURCHASE_STEP }} 点消耗 {{ STAT_POINT_COST[key] * STAT_PURCHASE_STEP }} 点数</p>
+                <div style="display: flex; gap: 8px">
+                  <button
+                    type="button"
+                    class="major-action-button"
+                    :disabled="(statPurchase[key] ?? 0) <= 0"
+                    @click="sellStat(key)"
+                  >
+                    <i class="fas fa-minus"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="major-action-button"
+                    :disabled="STAT_POINT_COST[key] * STAT_PURCHASE_STEP > pointsLeft"
+                    @click="buyStat(key)"
+                  >
+                    <i class="fas fa-plus"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="creation-section-title"><i class="fas fa-star"></i> 天赋词条（已选 {{ selectedTraits.length }} 条）</div>
+            <div class="action-buttons-grid" style="width: 100%; max-width: 620px; margin: 0 auto">
+              <button type="button" class="major-action-button" @click="randomizeTraits()">
+                <i class="fas fa-dice"></i> 随机抽取（免费）
+              </button>
+              <button type="button" class="major-action-button" @click="clearTraits()">
+                <i class="fas fa-eraser"></i> 清空已选
+              </button>
+              <p class="fc-trait-hint">
+                「随机抽取」会替换当前全部已选词条，所得不消耗点数；点击下方词条卡可自行购入或退选。
+              </p>
+            </div>
+
+            <template v-for="group in traitsByCategory" :key="group.key">
+              <div class="creation-section-title">{{ group.title }}</div>
+              <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px">
+                <div
+                  v-for="trait in group.traits"
+                  :key="trait.name"
+                  class="trait-card"
+                  :class="{ selected: isTraitSelected(trait.name) }"
+                  :data-rarity="trait.rarity"
+                  :data-trait-name="trait.name"
+                  :style="traitUnaffordable(trait) ? 'opacity: 0.4' : ''"
+                  role="button"
+                  tabindex="0"
+                  @click="toggleTrait(trait)"
+                  @keydown.enter="toggleTrait(trait)"
+                >
+                  <div class="trait-rarity">{{ trait.rarity }}</div>
+                  <i v-if="isTraitSelected(trait.name)" class="fas fa-check selected-indicator"></i>
+                  <div class="trait-name">{{ trait.name }}</div>
+                  <div class="fc-trait-hint">{{ traitCost(trait.rarity) }} 点</div>
                   <button
                     type="button"
                     class="trait-detail-btn"
@@ -338,38 +557,9 @@ function customBirthSummary(): string {
                     <i class="fas fa-info-circle"></i>
                   </button>
                 </div>
-              </template>
-              <div v-else class="muted" style="text-align: center; opacity: 0.7">尚未刷新候选词条，点击「逆天改命」。</div>
-            </div>
-          </div>
-
-          <div class="creation-section-title"><i class="fas fa-bolt"></i> 灵根</div>
-          <div class="fc-linggen-block">
-            <div id="linggen-result-display" style="transform: scale(1.08)">
-              <div
-                v-if="linggenParts.type"
-                class="linggen-orb"
-                :class="'orb-type-' + linggenParts.type"
-              >
-                <div class="linggen-tag" :class="'tag-type-' + linggenParts.type">{{ linggenParts.type }}</div>
-                <div class="linggen-elements">{{ linggenParts.elements.join(" ") }}</div>
-                <button
-                  type="button"
-                  class="trait-detail-btn"
-                  title="查看灵根详情"
-                  @click.stop="linggenDetailOpen = true"
-                >
-                  <i class="fas fa-info-circle"></i>
-                </button>
               </div>
-              <div v-else style="color: #aaa">请点击「随机灵根」。</div>
-            </div>
-            <div class="action-buttons-grid fc-linggen-random-row">
-              <button type="button" class="major-action-button" @click="applyRandomLinggen()">
-                <i class="fas fa-dice-d20"></i> 随机灵根
-              </button>
-            </div>
-          </div>
+            </template>
+          </template>
 
           <div
             v-if="statusMessage"
@@ -402,8 +592,8 @@ function customBirthSummary(): string {
       <TraitDetailModal :trait="traitDetailTrait" @close="traitDetailTrait = null" />
       <LinggenDetailModal
         :open="linggenDetailOpen"
-        :type="linggenParts.type"
-        :elements="linggenParts.elements"
+        :type="linggenType"
+        :elements="linggenElements"
         @close="linggenDetailOpen = false"
       />
       <CustomBirthModal

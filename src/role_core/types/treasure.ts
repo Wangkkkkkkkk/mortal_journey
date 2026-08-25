@@ -31,6 +31,23 @@ export interface TreasureModifier {
 export interface TreasureSpecialEffect {
   name: string;
   modifiers: readonly TreasureModifier[];
+  /** 淬毒：命中敌方时施加的毒性效果。未淬毒时为空。 */
+  coating?: TreasureCoating;
+}
+
+/**
+ * 法宝淬毒涂层：命中造成伤害后，对目标叠加一层毒性 DoT。
+ *
+ * 与毒药消耗品的区别是「随攻击反复触发、层数累积」（对齐毒修功法的既有设计），
+ * 因此只支持 DoT 一种形态——延迟爆发与属性削弱适合一次性投放，若可叠层会失衡。
+ */
+export interface TreasureCoating {
+  /** 毒性名称（取自制毒命名表）。 */
+  name: string;
+  /** **每层**每回合损失目标最大血量的百分比。 */
+  tickPercent: number;
+  /** 持续回合数；每次命中刷新，决定停手后毒性残留多久。 */
+  duration: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -60,7 +77,8 @@ export const TREASURE_MODIFIER_NAMES: Readonly<Record<TreasureModifierType, stri
 // 品阶效果数量
 // ═══════════════════════════════════════════════════════════════════════════
 
-const GRADE_MODIFIER_COUNT: Readonly<Record<ItemGrade, number>> = {
+/** 各品阶法宝初始携带的词条数（精炼上限以此为基准）。 */
+export const GRADE_MODIFIER_COUNT: Readonly<Record<ItemGrade, number>> = {
   "下品": 1,
   "中品": 2,
   "上品": 3,
@@ -73,7 +91,8 @@ const GRADE_MODIFIER_COUNT: Readonly<Record<ItemGrade, number>> = {
 // 每个类型 × 每个品阶的 [min%, max%] 范围
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MODIFIER_VALUE_RANGES: Readonly<Record<TreasureModifierType, Readonly<Record<ItemGrade, readonly [number, number]>>>> = {
+/** 「词条类型 × 品阶」的数值区间 [min%, max%]。精炼的提升幅度与上限均由此派生。 */
+export const MODIFIER_VALUE_RANGES: Readonly<Record<TreasureModifierType, Readonly<Record<ItemGrade, readonly [number, number]>>>> = {
   damageDealt:  { "下品": [2, 4],  "中品": [3, 6],   "上品": [5, 9],   "极品": [7, 13],  "仙品": [10, 16], "神品": [12, 20] },
   damageTaken:  { "下品": [1, 2],  "中品": [1, 3],   "上品": [2, 4],   "极品": [3, 6],   "仙品": [5, 8],   "神品": [6, 10] },
   hpRecover:   { "下品": [1, 1],  "中品": [2, 2],   "上品": [3, 3],   "极品": [4, 4],   "仙品": [5, 5],   "神品": [6, 6] },
@@ -105,7 +124,8 @@ const MODIFIER_WEIGHTS: Readonly<Record<TreasureModifierType, number>> = {
   physDefensePenetration: 1, magDefensePenetration: 1,
 };
 
-const WEIGHTED_POOL: readonly TreasureModifierType[] = (() => {
+/** 词条类型加权池（通用词条权重高）。精炼新增词条时复用。 */
+export const WEIGHTED_POOL: readonly TreasureModifierType[] = (() => {
   const pool: TreasureModifierType[] = [];
   for (const [type, weight] of Object.entries(MODIFIER_WEIGHTS) as [TreasureModifierType, number][]) {
     for (let i = 0; i < weight; i++) pool.push(type);
@@ -132,11 +152,18 @@ export function rollTreasureFunction(grade: ItemGrade): TreasureSpecialEffect {
     modifiers.push({ modifierType: type, value });
   }
 
-  const name = modifiers
+  return { name: formatTreasureFunctionName(modifiers), modifiers };
+}
+
+/**
+ * 由词条列表拼装法宝功能名（如「增伤+5% 速度+3%」）。
+ *
+ * 词条增删改后必须用本函数重建 `name`，否则展示会与实际词条脱节。
+ */
+export function formatTreasureFunctionName(modifiers: readonly TreasureModifier[]): string {
+  return modifiers
     .map(m => `${TREASURE_MODIFIER_NAMES[m.modifierType]}+${m.value}%`)
     .join(" ");
-
-  return { name, modifiers };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

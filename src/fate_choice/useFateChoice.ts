@@ -1,23 +1,39 @@
 /**
- * @fileoverview 命运抉择：仅表单状态、灵根/词条随机与 JSON 结果构造（不计算角色属性）。
+ * @fileoverview 命运抉择：仅表单状态、购点结算与 JSON 结果构造（不计算角色属性）。
  */
 
 import { computed, ref } from "vue";
 import type { TraitRarity, TraitSample } from "./traits";
-import { traitSamples } from "./traits";
+import { traitSamples, traitsByCategory, TRAIT_RARITY_COST } from "./traits";
 import type { BirthDefinition, DifficultyLevel, TraitRarityWeightRow } from "./types";
+import type { PrimaryStatKey } from "../role_core/types/playInfo";
+import { PRIMARY_STAT_KEYS } from "../role_core/types/playInfo";
 import type { WorldLocation } from "../role_core/types/worldLocation";
 import { formatWorldLocationDash } from "../role_core/types/worldLocation";
 import {
+  CREATION_AGE_MAX,
+  CREATION_AGE_MIN,
   CREATION_BIRTHS,
+  CREATION_FACTIONS,
   CREATION_GENDERS,
+  CREATION_RACES,
   CUSTOM_REALM_MAJORS,
   CUSTOM_REALM_MINORS,
+  DEFAULT_POINT_BUDGET,
   DIFFICULTY_OPTIONS,
+  LINGGEN_ELEMENT_POOL,
+  LINGGEN_PURCHASE_COST,
   LINGGEN_TYPE_PREFIXES,
+  POINT_BUDGET_MAX,
+  POINT_BUDGET_MIN,
+  RANDOM_TRAIT_COUNT,
+  linggenTypeForElementCount,
   rollRandomLinggenName,
   START_REALM_MAJOR,
   START_REALM_STAGE,
+  STAT_POINT_COST,
+  STAT_PURCHASE_MAX,
+  STAT_PURCHASE_STEP,
   TRAIT_RARITY_WEIGHTS,
 } from "./types";
 import type { CustomBirthPayload, FateChoiceResult, NarrationPerson } from "./types";
@@ -27,9 +43,12 @@ import "./fateChoice.css";
 // 公共类型与工具函数
 // ---------------------------------------------------------------------------
 
+/** 性别卡中代表「自填」的哨兵键。 */
+export const CUSTOM_GENDER_KEY = "自定义";
+
 export interface TraitOption extends TraitSample {
-  /** 是否锁定（逆天改命时保留）。仅 UI/内部状态，不进入最终结果。 */
-  locked?: boolean;
+  /** 由「随机抽取」给出，不计入点数消耗。仅 UI/内部状态，不进入最终结果。 */
+  free?: boolean;
 }
 
 /**
@@ -116,6 +135,32 @@ export function linggenElementsArrayFromRoll(roll: string | null | undefined): s
 }
 
 // ---------------------------------------------------------------------------
+// 购点内部工具
+// ---------------------------------------------------------------------------
+
+/**
+ * 查表得到一条天赋的点数单价。
+ *
+ * @param rarity 稀有度。
+ * @return 点数；表中缺项时为 0。
+ */
+export function traitCost(rarity: TraitRarity): number {
+  const c = TRAIT_RARITY_COST[rarity];
+  return typeof c === "number" && isFinite(c) && c > 0 ? c : 0;
+}
+
+/**
+ * 查表得到指定元素个数的灵根点数消耗。
+ *
+ * @param count 五行元素个数。
+ * @return 点数；表中缺项时为 0。
+ */
+export function linggenCost(count: number): number {
+  const c = LINGGEN_PURCHASE_COST[count];
+  return typeof c === "number" && isFinite(c) && c > 0 ? c : 0;
+}
+
+// ---------------------------------------------------------------------------
 // 词条随机内部工具
 // ---------------------------------------------------------------------------
 
@@ -139,8 +184,8 @@ function rollTraitRarityFromWeights(rows: readonly TraitRarityWeightRow[]): Trai
   return rows[rows.length - 1]!.rarity || "平庸";
 }
 
-function cloneTraitForOption(t: TraitSample): TraitOption {
-  return { name: t.name, rarity: t.rarity, desc: t.desc, effect: t.effect };
+function cloneTraitForOption(t: TraitSample, free: boolean): TraitOption {
+  return { name: t.name, rarity: t.rarity, category: t.category, desc: t.desc, effect: t.effect, free };
 }
 
 function pickRandomTraits(pool: readonly TraitSample[], excludeNames: string[], count: number): TraitOption[] {
@@ -153,7 +198,7 @@ function pickRandomTraits(pool: readonly TraitSample[], excludeNames: string[], 
     const idx = Math.floor(Math.random() * pickFrom.length);
     const pickedName = pickFrom[idx]!.name;
     bag = bag.filter((x) => !x || x.name !== pickedName);
-    out.push(cloneTraitForOption(pickFrom[idx]!));
+    out.push(cloneTraitForOption(pickFrom[idx]!, true));
   }
   return out;
 }
@@ -191,8 +236,8 @@ function makePresetCustomBirth(birthKey: string): CustomBirthPayload | null {
 // ===========================================================================
 
 /**
- * 命运抉择表单与随机逻辑。
- * 内部状态按 UI 选择顺序排列：姓名 → 叙事人称 → 性别 → 出身 → 词条 → 灵根 → 提交。
+ * 命运抉择表单与购点逻辑。
+ * 内部状态分两个页签：基础（难度/姓名/人称/性别/年龄/种族/阵营/出身）与天赋（点数/灵根/属性/词条）。
  */
 export function useFateChoice() {
   // ── 0. 难度 ──────────────────────────────────────────────────────────────
@@ -204,8 +249,28 @@ export function useFateChoice() {
   // ── 2. 叙事人称 ──────────────────────────────────────────────────────────
   const narrationPerson = ref<NarrationPerson>("first");
 
-  // ── 3. 性别 ──────────────────────────────────────────────────────────────
+  // ── 3. 性别 / 年龄 / 种族 / 阵营 ─────────────────────────────────────────
+  const genderKeysOrdered = [...CREATION_GENDERS, CUSTOM_GENDER_KEY];
   const selectedGender = ref<string>(CREATION_GENDERS[0]!);
+  const customGender = ref("");
+  /** 空串表示不指定年龄，交由开局管线按境界推导。 */
+  const ageInput = ref("");
+  const raceKeysOrdered = Object.keys(CREATION_RACES);
+  const factionKeysOrdered = Object.keys(CREATION_FACTIONS);
+  const selectedRace = ref<string>(raceKeysOrdered[0] ?? "");
+  const selectedFaction = ref<string>(factionKeysOrdered[0] ?? "");
+
+  /** 最终写入结果的性别文本：自填卡时取输入框，否则取卡片名。 */
+  const effectiveGender = computed(() =>
+    selectedGender.value === CUSTOM_GENDER_KEY ? customGender.value.trim() : selectedGender.value,
+  );
+
+  /** 解析年龄输入；空串或非法值为 `null`（不指定）。 */
+  const effectiveAge = computed<number | null>(() => {
+    const n = Math.floor(Number(ageInput.value));
+    if (!Number.isFinite(n) || n < CREATION_AGE_MIN || n > CREATION_AGE_MAX) return null;
+    return n;
+  });
 
   // ── 4. 出身 ──────────────────────────────────────────────────────────────
   const birthKeysOrdered = buildOrderedBirthKeys();
@@ -276,48 +341,122 @@ export function useFateChoice() {
     return "";
   }
 
-  // ── 5. 天赋词条 ──────────────────────────────────────────────────────────
-  const currentTraitOptions = ref<TraitOption[]>([]);
+  // ── 5. 点数总额 ──────────────────────────────────────────────────────────
+  const pointBudgetInput = ref(String(DEFAULT_POINT_BUDGET));
 
-  /** 切换某条候选天赋的锁定状态（逆天改命时锁定者不会被替换）。 */
-  function toggleTraitLock(index: number): void {
-    const t = currentTraitOptions.value[index];
-    if (!t) return;
-    t.locked = !t.locked;
-  }
+  /** 解析后的点数总额；非法输入按 0 计。 */
+  const pointBudget = computed(() => {
+    const n = Math.floor(Number(pointBudgetInput.value));
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(POINT_BUDGET_MIN, Math.min(POINT_BUDGET_MAX, n));
+  });
 
-  /** 随机刷新天赋：锁定的原位保留，仅重摇未锁定的槽位。 */
-  function randomizeTraits(): void {
-    const current = currentTraitOptions.value;
-    const lockedNames = current.filter((t) => t.locked).map((t) => t.name);
-    if (lockedNames.length >= 5) return;
-    const fresh = pickRandomTraits(traitSamples, lockedNames, 5 - lockedNames.length);
-    let fi = 0;
-    currentTraitOptions.value = current.map((t) => {
-      if (t.locked) return { ...t };
-      const replacement = fresh[fi] ?? t;
-      fi += 1;
-      return { ...replacement };
-    });
-  }
+  // ── 6. 灵根（购点 / 随机） ───────────────────────────────────────────────
+  const linggenElements = ref<string[]>([]);
+  /** 由「随机灵根」得到，不计入点数消耗；手动改动元素后置 false。 */
+  const linggenFree = ref(true);
 
-  // ── 6. 灵根 ──────────────────────────────────────────────────────────────
-  const selectedLinggen = ref<string | null>(null);
+  const linggenType = computed(() => linggenTypeForElementCount(linggenElements.value.length));
+  const linggenPointsSpent = computed(() =>
+    linggenFree.value ? 0 : linggenCost(linggenElements.value.length),
+  );
 
-  /** 随机 roll 一条灵根文案。 */
+  /** 随机 roll 一条灵根（不消耗点数）。 */
   function applyRandomLinggen(): void {
-    selectedLinggen.value = rollRandomLinggenName();
+    linggenElements.value = linggenElementsArrayFromRoll(rollRandomLinggenName());
+    linggenFree.value = true;
   }
 
-  // ── 7. 状态与提交 ────────────────────────────────────────────────────────
+  // ── 7. 主属性购点 ────────────────────────────────────────────────────────
+  const statPurchase = ref<Partial<Record<PrimaryStatKey, number>>>({});
+
+  const statPointsSpent = computed(() => {
+    let sum = 0;
+    for (const key of PRIMARY_STAT_KEYS) {
+      sum += (statPurchase.value[key] ?? 0) * (STAT_POINT_COST[key] ?? 0);
+    }
+    return sum;
+  });
+
+  // ── 8. 天赋词条 ──────────────────────────────────────────────────────────
+  const selectedTraits = ref<TraitOption[]>([]);
+
+  const traitPointsSpent = computed(() => {
+    let sum = 0;
+    for (const t of selectedTraits.value) {
+      if (!t.free) sum += traitCost(t.rarity);
+    }
+    return sum;
+  });
+
+  // ── 9. 点数结算 ──────────────────────────────────────────────────────────
+  const pointsSpent = computed(
+    () => traitPointsSpent.value + statPointsSpent.value + linggenPointsSpent.value,
+  );
+  const pointsLeft = computed(() => pointBudget.value - pointsSpent.value);
+
+  function isTraitSelected(name: string): boolean {
+    return selectedTraits.value.some((t) => t.name === name);
+  }
+
+  /** 选中则取消（并退点），未选中则在点数足够时购入。 */
+  function toggleTrait(sample: TraitSample): void {
+    if (isTraitSelected(sample.name)) {
+      selectedTraits.value = selectedTraits.value.filter((t) => t.name !== sample.name);
+      return;
+    }
+    if (traitCost(sample.rarity) > pointsLeft.value) return;
+    selectedTraits.value = [...selectedTraits.value, cloneTraitForOption(sample, false)];
+  }
+
+  /** 随机抽取一整套词条替换当前选择；随机所得不消耗点数。 */
+  function randomizeTraits(): void {
+    selectedTraits.value = pickRandomTraits(traitSamples, [], RANDOM_TRAIT_COUNT);
+  }
+
+  /** 清空已选词条（退还全部词条点数）。 */
+  function clearTraits(): void {
+    selectedTraits.value = [];
+  }
+
+  /**
+   * 切换一个五行元素。灵根按「元素总数」整体计价，故先退回当前灵根消耗再校验新价。
+   */
+  function toggleLinggenElement(el: string): void {
+    const has = linggenElements.value.includes(el);
+    const next = has
+      ? linggenElements.value.filter((x) => x !== el)
+      : LINGGEN_ELEMENT_POOL.filter((x) => linggenElements.value.includes(x) || x === el);
+    const refunded = pointsLeft.value + linggenPointsSpent.value;
+    if (linggenCost(next.length) > refunded) return;
+    linggenElements.value = next;
+    linggenFree.value = false;
+  }
+
+  /** 购买一档主属性（步长见 `STAT_PURCHASE_STEP`）。 */
+  function buyStat(key: PrimaryStatKey): void {
+    const current = statPurchase.value[key] ?? 0;
+    if (current + STAT_PURCHASE_STEP > STAT_PURCHASE_MAX) return;
+    if ((STAT_POINT_COST[key] ?? 0) * STAT_PURCHASE_STEP > pointsLeft.value) return;
+    statPurchase.value = { ...statPurchase.value, [key]: current + STAT_PURCHASE_STEP };
+  }
+
+  /** 退还一档主属性。 */
+  function sellStat(key: PrimaryStatKey): void {
+    const current = statPurchase.value[key] ?? 0;
+    if (current <= 0) return;
+    statPurchase.value = { ...statPurchase.value, [key]: Math.max(0, current - STAT_PURCHASE_STEP) };
+  }
+
+  // ── 10. 状态与提交 ───────────────────────────────────────────────────────
   const statusMessage = ref("");
 
   const isReady = computed(
     () =>
+      !!playerName.value.trim() &&
+      !!effectiveGender.value &&
       !!selectedBirth.value &&
-      !!selectedGender.value &&
-      !!selectedLinggen.value &&
-      (currentTraitOptions.value?.length ?? 0) > 0,
+      pointsLeft.value >= 0,
   );
 
   /** 根据当前表单状态组装提交用的 {@link FateChoiceResult}。 */
@@ -327,19 +466,28 @@ export function useFateChoice() {
       narrationPerson.value === "first" || narrationPerson.value === "third"
         ? narrationPerson.value
         : "second";
+    const stats: Partial<Record<PrimaryStatKey, number>> = {};
+    for (const key of PRIMARY_STAT_KEYS) {
+      const v = statPurchase.value[key] ?? 0;
+      if (v > 0) stats[key] = v;
+    }
     return {
       basics: {
         playerName: String(playerName.value || "").trim() || "无限",
         narrationPerson: np,
-        gender: selectedGender.value,
+        gender: effectiveGender.value,
+        age: effectiveAge.value,
+        race: selectedRace.value,
+        faction: selectedFaction.value,
         realmMajor: er.major,
         realmMinor: er.minor == null ? null : er.minor,
         birthPlace: resolveStartBirthLocation(),
         originStory: resolveOriginStory(),
-        linggen: linggenElementsArrayFromRoll(selectedLinggen.value),
+        linggen: linggenElements.value.slice(),
         difficulty: selectedDifficulty.value,
+        statPurchase: stats,
       },
-      traits: (currentTraitOptions.value || []).map((t) => ({
+      traits: selectedTraits.value.map((t) => ({
         name: t.name,
         rarity: t.rarity,
         desc: t.desc,
@@ -356,42 +504,74 @@ export function useFateChoice() {
     playerName.value = "无限";
     narrationPerson.value = "first";
     selectedGender.value = CREATION_GENDERS[0]!;
+    customGender.value = "";
+    ageInput.value = "";
+    selectedRace.value = raceKeysOrdered[0] ?? "";
+    selectedFaction.value = factionKeysOrdered[0] ?? "";
     selectedBirth.value = DEFAULT_BIRTH_KEY;
     customBirth.value = null;
     birthLocation.value = null;
-    currentTraitOptions.value = [];
-    selectedLinggen.value = null;
+    pointBudgetInput.value = String(DEFAULT_POINT_BUDGET);
+    selectedTraits.value = [];
+    statPurchase.value = {};
+    linggenElements.value = [];
+    linggenFree.value = true;
     statusMessage.value = "";
     syncCustomBirthForCurrentSelection();
   }
 
-  /** 若尚无灵根或词条，则各执行一次随机。 */
+  /** 若尚无灵根或词条，则各执行一次随机（均不消耗点数）。 */
   function prepareInitialRolls(): void {
-    if (!selectedLinggen.value) applyRandomLinggen();
-    if (!currentTraitOptions.value.length) {
-      currentTraitOptions.value = pickRandomTraits(traitSamples, [], 5);
-    }
+    if (!linggenElements.value.length) applyRandomLinggen();
+    if (!selectedTraits.value.length) randomizeTraits();
   }
 
   return {
     CREATION_BIRTHS,
-    CREATION_GENDERS,
+    CREATION_RACES,
+    CREATION_FACTIONS,
     CUSTOM_REALM_MAJORS,
     CUSTOM_REALM_MINORS,
     DIFFICULTY_OPTIONS,
+    LINGGEN_ELEMENT_POOL,
+    STAT_POINT_COST,
+    STAT_PURCHASE_STEP,
+    traitsByCategory,
+    traitCost,
+    linggenCost,
     birthKeysOrdered,
+    genderKeysOrdered,
     selectedDifficulty,
     playerName,
     narrationPerson,
     selectedGender,
+    customGender,
+    effectiveGender,
+    ageInput,
+    raceKeysOrdered,
+    factionKeysOrdered,
+    selectedRace,
+    selectedFaction,
     selectedBirth,
     customBirth,
     selectBirth,
     applyCustomBirth,
-    currentTraitOptions,
+    pointBudgetInput,
+    pointBudget,
+    pointsSpent,
+    pointsLeft,
+    selectedTraits,
+    isTraitSelected,
+    toggleTrait,
     randomizeTraits,
-    toggleTraitLock,
-    selectedLinggen,
+    clearTraits,
+    statPurchase,
+    buyStat,
+    sellStat,
+    linggenElements,
+    linggenType,
+    linggenPointsSpent,
+    toggleLinggenElement,
     applyRandomLinggen,
     statusMessage,
     isReady,

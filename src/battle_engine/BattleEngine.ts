@@ -8,6 +8,9 @@ import type {
   ActionOptions,
   SkillActionItem,
   ElixirActionItem,
+  PoisonActionItem,
+  BattlePoison,
+  BattleEffect,
   BattleEngineLike,
 } from "./types";
 
@@ -18,6 +21,14 @@ import { DamagePipeline } from "./DamagePipeline";
 import { EffectHandler, emitDamageTrace } from "./EffectHandler";
 import { BattleAI } from "./BattleAI";
 import { NORMAL_ATTACK_COST, ELIXIR_COST, FLEE_COST, GAUGE_MAX } from "./constants";
+import { generateId as generateEffectId } from "./formulas";
+
+/** 毒药在行动栏中的效果说明。 */
+function describePoison(p: BattlePoison): string {
+  if (p.kind === "dot") return `每回合损失最大血量${p.value}%，持续${p.duration}回合`;
+  if (p.kind === "delayed") return `${p.duration}回合后毒发，损失最大血量${p.value}%`;
+  return `${p.modifierType} ${p.value > 0 ? "+" : ""}${p.value}%，持续${p.duration}回合`;
+}
 
 export class BattleEngine implements BattleEngineLike {
   readonly eventDispatcher = new EventDispatcher();
@@ -158,6 +169,9 @@ export class BattleEngine implements BattleEngineLike {
       case "skill":
         this.executeSkill(actor, action.skillIndex, action.targetId);
         break;
+      case "poison":
+        this.executePoison(actor, action.poisonIndex, action.targetId);
+        break;
       case "elixir":
         this.executeElixir(actor, action.elixirIndex);
         break;
@@ -175,7 +189,7 @@ export class BattleEngine implements BattleEngineLike {
   }
 
   private resolveTargetOverride(actor: BattleCombatant, action: BattleAction): void {
-    if (action.type === "flee" || action.type === "elixir") return;
+    if (action.type === "flee" || action.type === "elixir" || action.type === "poison") return;
     if (!("targetId" in action)) return;
 
     const taunt = this.effectManager.isTaunted(actor);
@@ -288,6 +302,45 @@ export class BattleEngine implements BattleEngineLike {
     this.gaugeManager.consumeGauge(actor, skill.actionCost);
   }
 
+  /**
+   * 使用毒药：对指定敌方施加 DoT / 延迟伤害 / 属性削弱。
+   *
+   * 毒药只影响目标身上的效果列表，不直接造成即时伤害，因此不走伤害管线。
+   */
+  private executePoison(actor: BattleCombatant, poisonIndex: number, targetId: string): void {
+    const poison = actor.poisons[poisonIndex];
+    if (!poison || poison.count <= 0) return;
+    const target = this.findCombatant(targetId);
+    if (!target || target.isDead) return;
+
+    poison.count--;
+
+    const base = {
+      id: generateEffectId(),
+      name: poison.name,
+      sourceId: actor.id,
+      remainingDuration: poison.duration,
+      stacks: 1,
+      maxStacks: 1,
+    };
+
+    let effect: BattleEffect;
+    let narrative: string;
+    if (poison.kind === "dot") {
+      effect = { ...base, category: "dot", tickValue: poison.value, tickIsPercent: true, tickResource: "hp", statusType: "poison" };
+      narrative = `${actor.name}对${target.name}施用${poison.name}，毒素蔓延（每回合损失最大血量${poison.value}%，持续${poison.duration}回合）`;
+    } else if (poison.kind === "delayed") {
+      effect = { ...base, category: "delayed", tickValue: poison.value, tickIsPercent: true, tickResource: "hp" };
+      narrative = `${actor.name}对${target.name}施用${poison.name}，毒性潜伏（${poison.duration}回合后毒发）`;
+    } else {
+      effect = { ...base, category: "modifier", modifierType: poison.modifierType, modifierValue: poison.value };
+      narrative = `${actor.name}对${target.name}施用${poison.name}，${poison.value > 0 ? "承伤加剧" : "身法受制"}（持续${poison.duration}回合）`;
+    }
+
+    target.effects.push(effect);
+    this.addLog({ turn: this.state.actionCount, actorName: actor.name, action: "使用毒药", type: "debuff", targetName: target.name, narrative, team: actor.team });
+  }
+
   private executeElixir(actor: BattleCombatant, elixirIndex: number): void {
     const elixir = actor.elixirs[elixirIndex];
     if (!elixir || elixir.count <= 0) return;
@@ -382,12 +435,12 @@ export class BattleEngine implements BattleEngineLike {
   getPlayerActionOptions(): ActionOptions {
     const actor = this.findCombatant(this.state.activeCombatantId ?? "");
     if (!actor || actor.isDead) {
-      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], elixirs: [] };
+      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], elixirs: [], poisons: [] };
     }
 
     const canAct = this.effectManager.canAct(actor);
     if (!canAct) {
-      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], elixirs: [] };
+      return { canNormalAttack: false, normalAttackCost: NORMAL_ATTACK_COST, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: ELIXIR_COST, fleeActionCost: FLEE_COST, canFlee: false, skills: [], elixirs: [], poisons: [] };
     }
 
     const canUseSkills = this.effectManager.canUseSkills(actor);
@@ -442,12 +495,25 @@ export class BattleEngine implements BattleEngineLike {
       });
     }
 
+    const poisons: PoisonActionItem[] = [];
+    for (let i = 0; i < actor.poisons.length; i++) {
+      const po = actor.poisons[i];
+      if (!po || po.count <= 0) continue;
+      poisons.push({
+        poisonIndex: i,
+        name: po.name,
+        count: po.count,
+        description: describePoison(po),
+      });
+    }
+
     return {
       canNormalAttack: true,
       normalAttackCost: NORMAL_ATTACK_COST,
       normalAttackDamage: actor.stats.physAttack,
       skillActionCost: 100,
       elixirActionCost: ELIXIR_COST,
+      poisons,
       canFlee: actor.isProtagonist,
       fleeActionCost: FLEE_COST,
       skills,

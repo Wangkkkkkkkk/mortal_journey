@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, watch } from "vue";
 import type { BattleTriggerEntry } from "../ai/state_generate";
-import type { BattleAction, BattleCombatant, BattleResult, SkillActionItem, ElixirActionItem, FloatingText, BattleEffect } from "../battle_engine/types";
+import type { BattleAction, BattleCombatant, BattleResult, SkillActionItem, ElixirActionItem, PoisonActionItem, FloatingText, BattleEffect } from "../battle_engine/types";
 import { useBattle } from "./useBattle";
 import { gameLog } from "../log/gameLog";
 import { useScrollLock } from "../composables/useScrollLock";
@@ -80,6 +80,11 @@ function onElixirSelect(item: ElixirActionItem) {
   if (currentActorId) {
     selectTarget(currentActorId);
   }
+}
+
+function onPoisonSelect(item: PoisonActionItem) {
+  // 毒药需指定敌方目标，故不自动选目标——由玩家点击敌方单位后结算。
+  selectAction({ type: "poison", poisonIndex: item.poisonIndex, targetId: "" });
 }
 
 function onFlee() {
@@ -190,15 +195,24 @@ function logIcon(type: string): string {
 
 const skillSubmenuOpen = ref(false);
 const elixirSubmenuOpen = ref(false);
+const poisonSubmenuOpen = ref(false);
 
 function toggleSkillSubmenu() {
   skillSubmenuOpen.value = !skillSubmenuOpen.value;
   elixirSubmenuOpen.value = false;
+  poisonSubmenuOpen.value = false;
 }
 
 function toggleElixirSubmenu() {
   elixirSubmenuOpen.value = !elixirSubmenuOpen.value;
   skillSubmenuOpen.value = false;
+  poisonSubmenuOpen.value = false;
+}
+
+function togglePoisonSubmenu() {
+  poisonSubmenuOpen.value = !poisonSubmenuOpen.value;
+  skillSubmenuOpen.value = false;
+  elixirSubmenuOpen.value = false;
 }
 </script>
 
@@ -265,6 +279,23 @@ function toggleElixirSubmenu() {
                         :key="item.elixirIndex"
                         class="battle__submenu-item"
                         @click="onElixirSelect(item)"
+                      >
+                        <span class="battle__submenu-name">{{ item.name }} ×{{ item.count }}</span>
+                        <span class="battle__submenu-desc">{{ item.description }}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="battle__action-group">
+                    <button class="battle__action-btn battle__action-btn--poison" :class="{ 'battle__action-btn--active': poisonSubmenuOpen }" @click="togglePoisonSubmenu" :disabled="actionOptions.poisons.length === 0">
+                      <span class="battle__action-label">🧪 施毒 {{ poisonSubmenuOpen ? '▲' : '▼' }}</span>
+                      <span class="battle__action-info">行动值:{{ actionOptions.elixirActionCost }}</span>
+                    </button>
+                    <div v-if="poisonSubmenuOpen" class="battle__submenu battle__submenu--poison">
+                      <button
+                        v-for="item in actionOptions.poisons"
+                        :key="item.poisonIndex"
+                        class="battle__submenu-item"
+                        @click="onPoisonSelect(item)"
                       >
                         <span class="battle__submenu-name">{{ item.name }} ×{{ item.count }}</span>
                         <span class="battle__submenu-desc">{{ item.description }}</span>

@@ -7,11 +7,13 @@
  *   - 丹药效果类型按 {@link ELIXIR_EFFECT_WEIGHTS} 随机（恢复类高权重）。
  *   - 效果数值由 {@link ELIXIR_GRADE_EFFECT_TABLE} 按品阶查表。
  *   - 丹药名称/简介查 {@link ELIXIR_NAME_TABLE}（72 条独立命名）。
+ *   - 产出品阶再按【医术】熟练度掷跃迁（见 `craft.ts`），命中则升一档。
  *   - 100% 出丹，无失败。
  */
 
 import type { ItemGrade } from "./types/itemInfo";
 import type { ElixirItemDefinition, ElixirEffectType } from "./types/elixir";
+import { applyCraftGradeUpgrade } from "./craft";
 import {
   rollElixirEffectType,
   rollElixirValue,
@@ -172,14 +174,18 @@ export interface AlchemyMaterialInput {
 /**
  * 炼丹核心：根据 3 份材料产出丹药定义（不写入库存）。
  *
- * 流程：rollAlchemyGrade → rollElixirEffectType → 查名表 → rollElixirValue → 组装。
+ * 流程：rollAlchemyGrade → 医术品阶跃迁 → rollElixirEffectType → 查名表 → rollElixirValue → 组装。
  *
  * @param materials 材料品阶数组（调用方应保证长度为 3）。
+ * @param proficiency 【医术】熟练度，用于掷品阶跃迁；缺省 0（不跃迁）。
  * @returns 完整的丹药物品定义（count = 1）。
  */
-export function craftElixirDef(materials: readonly AlchemyMaterialInput[]): ElixirItemDefinition {
+export function craftElixirDef(
+  materials: readonly AlchemyMaterialInput[],
+  proficiency = 0,
+): ElixirItemDefinition {
   const grades = materials.map((m) => m.grade);
-  const grade = rollAlchemyGrade(grades);
+  const grade = applyCraftGradeUpgrade(rollAlchemyGrade(grades), proficiency);
   const effectType: ElixirEffectType = rollElixirEffectType();
   const value = rollElixirValue(effectType, grade);
   const isPercent = isElixirPercent(effectType, grade);

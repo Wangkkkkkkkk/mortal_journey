@@ -191,6 +191,11 @@ export const STATE_SYSTEM_PRESET = `
     - 示例："据传源自上古力修一脉，修炼时周身气血如山岳崩裂"。
   8.4 品阶：只能是下品、中品、上品、极品、仙品、神品中的一个。
   8.5 数量：默认1，如果剧情明确提到具体数量，则根据剧情描述确定数量。
+  8.6 材料的 category 字段：类型为"材料"时必须输出，只能从药材、毒物、食材、器材四种中选择一个，须与材料名称和用途契合：
+    - 药材：可入丹方的灵草灵植、兽血兽骨等，用于炼丹。
+    - 毒物：毒虫毒草、瘴气结晶等具毒性之物，用于制毒淬毒。
+    - 食材：可供烹制的山珍鲜货、灵米灵果等，用于烹饪。
+    - 器材：灵矿灵铁、妖兽甲片等可锻之物，用于炼器。
 9. 法宝不需要输出 function 字段和 bonus 字段，法宝的特殊功能由系统根据品阶自动分配。
 10. 功法命名硬约束：
   10.1 功法名称的最后一个字必须是"功""诀""术""法"之一，禁止使用其他字结尾。
@@ -211,7 +216,8 @@ export const STATE_SYSTEM_PRESET = `
 13. 示例：
   13.1 <ITEM_ADD_TAG> [{"type":"法宝","name":"青锋剑","intro":"剑身以灵矿铸就，隐隐泛着灵光","grade":"中品","count":1}] </ITEM_ADD_TAG>
   13.2 <ITEM_ADD_TAG> [{"type":"丹药","name":"回春丹","intro":"碧绿丹丸","effectType":"恢复血量","count":1}] </ITEM_ADD_TAG>
-  13.3 <ITEM_ADD_TAG> [{"type":"功法","name":"崩山诀","intro":"据传源自上古力修一脉，修炼时周身气血如山岳崩裂","grade":"下品","bonus":"劲力","system":"体修","role":"攻击","count":1}] </ITEM_ADD_TAG>
+  13.3 <ITEM_ADD_TAG> [{"type":"材料","name":"赤炎草","intro":"叶片赤红如火，触之温热","grade":"中品","category":"药材","count":3}] </ITEM_ADD_TAG>
+  13.4 <ITEM_ADD_TAG> [{"type":"功法","name":"崩山诀","intro":"据传源自上古力修一脉，修炼时周身气血如山岳崩裂","grade":"下品","bonus":"劲力","system":"体修","role":"攻击","count":1}] </ITEM_ADD_TAG>
 
 [储物袋物品减少规则]
 1. 根据剧情描述，给储物袋减少物品。
@@ -249,7 +255,13 @@ export const STATE_SYSTEM_PRESET = `
   7.5 功法不含 grade（品阶由系统根据境界自动分配）。
 8. NPC储物袋中的丹药须含 effectType，不含 grade。
 9. NPC生成需要包含的信息：
-  9.1 基本信息：displayName（名字2-4字）、identity、gender、age、favorability（-99~99）。
+  9.1 基本信息：displayName（名字2-4字）、identity、gender、age、favorability（-99~99）、relation（与主角的关系）。
+  9.1b relation（与主角的关系）字段规则：
+    - 自由文本，2~4字，如「同门」「师尊」「弟子」「道侣」「仇敌」「亲族」「挚友」「旧识」。
+    - 描述该 NPC 相对主角的身份：NPC 是主角的师父则填「师尊」，NPC 是主角的徒弟则填「弟子」。
+    - 尚无明确关系时留空字符串 ""，不要臆造。萍水相逢、初次见面一律留空。
+    - 关系一旦确立即保持稳定，只有剧情明确交代关系确立或破裂时才改写（拜师、结为道侣、反目成仇、断绝师徒等）。
+    - relation 与 favorability 相互独立：关系是身份，好感是态度。师尊也可能好感很低，仇敌也可能好感回升。
   9.2 种族与外貌（用于文生图角色立绘，须具体可视，禁止空泛）：
     - race：种族，三选一："修仙者" / "人形妖兽" / "妖兽"。
     - appearance：外貌特征，按种族填写必含要素：
@@ -266,7 +278,7 @@ export const STATE_SYSTEM_PRESET = `
 11. NPC补充约束：
   11.1 输出时数组须列出本回合仍应在面板中可见者的完整名单。
   11.2 若本回合触发战斗，所有参战者（含新出现的敌人、妖兽）也必须在此数组中输出完整角色卡——这是战斗系统的硬性前置条件，不可省略。
-  11.3 【核心字段冻结·重要】已存在 NPC 的核心字段（realm 境界、equippedSlots 法宝、gongfaSlots 功法、inventorySlots 储物袋、race 种族、appearance 外貌、clothing 服装）默认冻结，禁止在 nearbyNpcs 里直接修改或重写——文生图要求角色长相稳定。只有以下 dynamic 字段可自由更新：identity、favorability、isDead、hpPercent、mpPercent。核心字段变化必须通过 <MJ_NPC_CORE_CHANGE_TAG> 显式声明（见「NPC核心变更规则」）。
+  11.3 【核心字段冻结·重要】已存在 NPC 的核心字段（realm 境界、equippedSlots 法宝、gongfaSlots 功法、inventorySlots 储物袋、race 种族、appearance 外貌、clothing 服装）默认冻结，禁止在 nearbyNpcs 里直接修改或重写——文生图要求角色长相稳定。只有以下 dynamic 字段可自由更新：identity、relation、favorability、isDead、hpPercent、mpPercent。核心字段变化必须通过 <MJ_NPC_CORE_CHANGE_TAG> 显式声明（见「NPC核心变更规则」）。
   11.4 新首次出现的 NPC 必须输出完整角色卡（含核心字段），并附带 npcId（首次出现时生成一个稳定的 UUID 字符串，后续所有回合对该 NPC 必须沿用同一 npcId）。
   11.4b 【currentLocation 必填·重要】每个 nearbyNpcs 条目必须携带 currentLocation 字段，表示该 NPC 当前所在地点。格式为四级地点对象 {"region":"...","country":"...","area":"...","detail":"..."}。
     - 在场者（与主角同行/同场）的 currentLocation 必须等于本回合 <mj_world_body> 的四级地点。
@@ -291,6 +303,7 @@ export const STATE_SYSTEM_PRESET = `
     "appearance": "及腰黑发以青丝带束起，鹅蛋脸，眉目清秀，肤色微白，双眸黑亮，右颊有一枚浅淡的酒窝",
     "clothing": "月白色窄袖劲装，领口与袖口绣有银色云纹，腰系青玉带，脚踏素色软底靴",
     "favorability": 12,
+    "relation": "同门",
     "gender": "女",
     "age": 16,
     "linggen": ["水"],

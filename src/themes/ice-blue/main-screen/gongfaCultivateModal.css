@@ -1,0 +1,99 @@
+/* Ice Blue Glass theme counterpart of src/main-screen/gongfaCultivateModal.css.
+ * Layout, sizing, spacing, positioning, and typography are preserved.
+ */
+.mj-cultivate-panel {
+  max-width: 380px;
+}
+
+.mj-cultivate-stone-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mj-cultivate-stepper {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid rgba(215, 234, 234, 0.2);
+  background: rgba(28, 34, 48, 0.35);
+  color: var(--mj-text, #d7eaea);
+  font-size: 1rem;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.mj-cultivate-stepper:hover:not(:disabled) {
+  border-color: rgba(215, 234, 234, 0.4);
+  background: rgba(215, 234, 234, 0.08);
+}
+
+.mj-cultivate-stepper:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.mj-cultivate-input {
+  width: 72px;
+  height: 32px;
+  text-align: center;
+  border-radius: 6px;
+  border: 1px solid rgba(215, 234, 234, 0.2);
+  background: rgba(28, 34, 48, 0.35);
+  color: var(--mj-text, #d7eaea);
+  font-size: 0.9rem;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.mj-cultivate-input::-webkit-inner-spin-button,
+.mj-cultivate-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.mj-cultivate-input:focus {
+  border-color: rgba(128, 189, 177, 0.6);
+}
+
+.mj-cultivate-max-btn {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(215, 234, 234, 0.2);
+  background: rgba(28, 34, 48, 0.35);
+  color: var(--mj-muted, #9692af);
+  font-size: 0.78rem;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.mj-cultivate-max-btn:hover {
+  border-color: rgba(215, 234, 234, 0.4);
+  background: rgba(215, 234, 234, 0.08);
+  color: var(--mj-text, #d7eaea);
+}
+
+.mj-cultivate-hint {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--mj-muted, #9692af);
+}
+
+.mj-cultivate-preview {
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+
+.mj-cultivate-preview-progress {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: rgba(128, 189, 177, 0.85);
+  font-size: 0.8rem;
+}

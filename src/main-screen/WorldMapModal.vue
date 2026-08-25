@@ -7,6 +7,7 @@ import type { WorldLocation } from "../role_core/types/worldLocation";
 import { isWorldLocationEqual, formatWorldLocation } from "../role_core/types/worldLocation";
 import type { Npc } from "../role_core/Npc";
 import { npcColorTheme } from "../role_core/npcTheme";
+import { favorBarGeometry, favorabilityLabel } from "./npcDetailPayload";
 import { useScrollLock } from "../composables/useScrollLock";
 import NpcDetailModal from "./NpcDetailModal.vue";
 import PortraitHistoryModal from "./PortraitHistoryModal.vue";
@@ -375,6 +376,7 @@ onUnmounted(() => {
                       </div>
                       <div class="map-npc-identity">
                         {{ entry.npc?.identity ?? "未知" }}
+                        <span v-if="entry.npc?.relation" class="map-npc-relation">{{ entry.npc.relation }}</span>
                       </div>
                       <div v-if="entry.npc" class="map-npc-bars">
                         <div class="map-npc-bar-row">
@@ -394,6 +396,19 @@ onUnmounted(() => {
                               :style="{ width: (entry.npc.maxMp > 0 ? Math.round(entry.npc.currentMp / entry.npc.maxMp * 100) : 0) + '%' }"
                             />
                           </div>
+                        </div>
+                        <div class="map-npc-bar-row" :title="`好感 ${entry.npc.favorability}（${favorabilityLabel(entry.npc.favorability)}）`">
+                          <span class="map-npc-bar-label">好感</span>
+                          <div class="map-npc-bar map-npc-bar--favor">
+                            <div
+                              class="map-npc-bar-fill map-npc-bar-fill--favor"
+                              :class="favorBarGeometry(entry.npc.favorability).side === 'negative'
+                                ? 'map-npc-bar-fill--favor-neg'
+                                : 'map-npc-bar-fill--favor-pos'"
+                              :style="{ width: favorBarGeometry(entry.npc.favorability).widthPct + '%' }"
+                            />
+                          </div>
+                          <span class="map-npc-favor-value">{{ entry.npc.favorability }}</span>
                         </div>
                       </div>
                     </div>

@@ -4,6 +4,7 @@ import { protagonist } from "../role_core/Protagonist";
 import type { MaterialItemDefinition, ItemGrade } from "../role_core/types/itemInfo";
 import type { ElixirItemDefinition } from "../role_core/types/elixir";
 import { computeAlchemyGradeOdds } from "../role_core/alchemy";
+import { craftUpgradeChance } from "../role_core/craft";
 import { gradeToTraitRarity } from "./protagonistPanelDisplay";
 import { useScrollLock } from "../composables/useScrollLock";
 import { writeActiveSave } from "../save/gameSave";
@@ -28,18 +29,24 @@ interface MaterialEntry {
   material: MaterialItemDefinition;
 }
 
-/** 储物袋中所有「材料」类物品（带格下标）。 */
+/** 储物袋中所有「药材」类材料（带格下标）；炼丹只吃药材。 */
 const materialEntries = computed<MaterialEntry[]>(() => {
   const p = protagonist.value;
   if (!p) return [];
   const out: MaterialEntry[] = [];
   p.inventorySlots.forEach((cell, i) => {
-    if (cell && "itemType" in cell && cell.itemType === "材料") {
+    if (cell && "itemType" in cell && cell.itemType === "材料" && cell.category === "药材") {
       out.push({ slotIndex: i, material: cell as MaterialItemDefinition });
     }
   });
   return out;
 });
+
+/** 【医术】熟练度与由此得到的品阶跃迁概率（用于界面提示）。 */
+const medicineProficiency = computed(() => protagonist.value?.craftSkills.medicine ?? 0);
+const upgradeChanceText = computed(
+  () => `${Math.round(craftUpgradeChance(medicineProficiency.value) * 10) / 10}%`,
+);
 
 /** 指定格已被选中的次数。 */
 function usageOf(slotIndex: number): number {
@@ -209,7 +216,7 @@ onUnmounted(() => {
 
               <!-- 炼丹选择界面 -->
               <template v-else>
-                <div class="alchemy-section-label">投入材料（三份）</div>
+                <div class="alchemy-section-label">投入药材（三份）</div>
                 <div class="alchemy-slots">
                   <div
                     v-for="(slotIdx, idx) in selected"
@@ -244,11 +251,15 @@ onUnmounted(() => {
                   </div>
                 </div>
 
+                <div class="alchemy-section-label">
+                  医术 {{ medicineProficiency }} · 品阶跃迁 {{ upgradeChanceText }}
+                </div>
+
                 <!-- 材料列表 -->
-                <div class="alchemy-section-label">材料储备</div>
+                <div class="alchemy-section-label">药材储备</div>
                 <div class="alchemy-material-list">
                   <template v-if="materialEntries.length === 0">
-                    <div class="alchemy-empty">储物袋中暂无材料</div>
+                    <div class="alchemy-empty">储物袋中暂无药材</div>
                   </template>
                   <template v-else>
                     <button

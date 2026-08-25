@@ -80,6 +80,6 @@ export const CULTIVATION_STORY_SYSTEM_PRESET = `
     - 功法运转的具体表现是什么？
     - 如何体现时间流逝？
     - 实际修炼了多长时间？在结尾处明确写出。
-2. <mj_cultivation_body>修炼剧情正文（约300-500字简体中文）</mj_cultivation_body>
+2. <mj_cultivation_body>剧情正文（约300-500字简体中文）</mj_cultivation_body>
 标签外禁止写任何内容；两个标签均不得省略。
 `;

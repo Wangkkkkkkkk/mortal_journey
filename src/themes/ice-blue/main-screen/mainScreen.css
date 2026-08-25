@@ -1,0 +1,609 @@
+/* Ice Blue Glass theme counterpart of src/main-screen/mainScreen.css.
+ * Layout, sizing, spacing, positioning, and typography are preserved.
+ */
+/* 游戏主界面三栏布局（主角 / 剧情对话 / 周围人物）；与启动页同系配色 */
+
+.main-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  background: var(--mj-bg-deep);
+  color: var(--mj-fg);
+  font-family: var(--mj-font-body);
+}
+
+.main-screen::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image:
+    repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(28, 34, 48, 0.2) 2px, rgba(28, 34, 48, 0.2) 3px
+    );
+  mix-blend-mode: overlay;
+}
+
+.main-screen::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 120% 80% at 20% 50%, rgba(53, 61, 82, 0.15), transparent 70%),
+    radial-gradient(ellipse 100% 60% at 80% 30%, rgba(33, 39, 55, 0.12), transparent 60%);
+}
+
+.main-screen__toolbar {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--mj-border-subtle);
+  background: linear-gradient(180deg, rgba(32, 38, 54, 0.8) 0%, rgba(31, 36, 52, 0.8) 100%);
+}
+
+.main-screen__title {
+  margin: 0;
+  font-family: "Ma Shan Zheng", "Long Cang", serif;
+  font-size: clamp(1.15rem, 3vw, 1.45rem);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--mj-gold);
+  text-shadow: 0 1px 0 rgba(28, 34, 48, 0.5);
+}
+
+.main-screen__toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.main-screen__btn {
+  padding: 6px 14px;
+  border: 1px solid var(--mj-border-subtle);
+  border-radius: 6px;
+  background: rgba(33, 39, 55, 0.72);
+  color: var(--mj-fg);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.main-screen__btn:hover {
+  border-color: var(--mj-gold-dim);
+  color: var(--mj-gold);
+}
+
+.main-screen__btn:focus-visible {
+  outline: 2px solid var(--mj-gold);
+  outline-offset: 2px;
+}
+
+.main-screen__body {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(220px, 280px);
+  grid-template-rows: 1fr;
+  gap: 0;
+}
+
+.main-screen__pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--mj-border-subtle);
+  background: var(--mj-surface);
+}
+
+.main-screen__pane:last-child {
+  border-right: none;
+}
+
+.main-screen__pane--chat {
+  background: var(--mj-chat-bg);
+}
+
+.main-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.main-panel__head {
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--mj-border-subtle);
+  background: rgba(28, 34, 48, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* 左右侧栏顶条：世界时间 / 世界地点 — 同高、文案居中 */
+.main-panel__meta-strip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--mj-border-subtle);
+  background: rgba(28, 34, 48, 0.2);
+}
+
+.main-panel__meta-strip-text {
+  margin: 0;
+  max-width: 100%;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--mj-gold-dim);
+  word-break: break-word;
+}
+
+.main-panel__title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: var(--mj-gold-dim);
+}
+
+.main-panel__location-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--mj-muted);
+}
+
+.mj-breadcrumb-seg {
+  white-space: nowrap;
+}
+
+.mj-breadcrumb-seg--detail {
+  color: var(--mj-gold-dim, #9692af);
+  font-weight: 500;
+}
+
+.mj-breadcrumb-sep {
+  color: var(--mj-border, rgba(150, 146, 175, 0.45));
+  font-size: 0.7rem;
+  margin: 0 1px;
+}
+
+.main-panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+}
+
+.main-panel__placeholder {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--mj-muted);
+}
+
+.main-panel__chat-messages {
+  min-height: 120px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border-radius: var(--mj-radius-lg);
+  border: 1px solid var(--mj-border-subtle);
+  background: rgba(28, 34, 48, 0.15);
+  box-shadow: inset 0 1px 4px rgba(28, 34, 48, 0.2);
+}
+
+/* 有地点背景图时，半透明遮罩（与图片同为容器背景，不随内容滚动）保证文字可读 */
+.main-panel__chat-messages--has-bg {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.main-panel__story-prose {
+  margin: 0;
+  font-family: var(--mj-font-story);
+  font-size: 1rem;
+  line-height: 1.9;
+  color: var(--mj-fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.main-panel__story-prose--typing::after {
+  content: "▎";
+  animation: mj-blink 0.8s step-end infinite;
+  color: var(--mj-gold);
+}
+@keyframes mj-blink {
+  50% { opacity: 0; }
+}
+
+.main-panel__story-status {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.main-panel__story-status--loading {
+  color: var(--mj-gold-dim);
+}
+
+.main-panel__story-status--error {
+  color: #b77083;
+}
+
+.main-panel__battle-entry {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 6px;
+}
+
+.main-panel__battle-entry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 28px;
+  border: 1px solid var(--mj-gold);
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(183, 112, 131, 0.35), rgba(183, 112, 131, 0.45));
+  color: var(--mj-gold);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+  box-shadow: 0 0 12px rgba(150, 146, 175, 0.15);
+}
+
+.main-panel__battle-entry-btn:hover {
+  background: linear-gradient(135deg, rgba(183, 112, 131, 0.5), rgba(183, 112, 131, 0.6));
+  box-shadow: 0 0 20px rgba(150, 146, 175, 0.3);
+  transform: translateY(-1px);
+}
+
+.main-panel__battle-entry-btn:active {
+  transform: translateY(0);
+}
+
+.main-panel__composer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* 游戏结束提示横幅（替换输入框，phase==="ended" 时显示） */
+.main-panel__gameover-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(183, 112, 131, 0.35);
+  border-radius: 8px;
+  background: rgba(34, 40, 57, 0.35);
+  color: #b77083;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+}
+
+.main-panel__input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--mj-border-subtle);
+  border-radius: 8px;
+  background: rgba(31, 36, 52, 0.72);
+  color: var(--mj-fg);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+  max-height: 120px;
+}
+
+.main-panel__input::placeholder {
+  color: var(--mj-muted);
+}
+
+.main-panel__input:focus {
+  outline: none;
+  border-color: var(--mj-gold-dim);
+}
+
+.main-panel__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ───────────────────────────────────────────────────────────────── */
+/* 快捷行动选项（激进/中庸/谨慎/最谨慎） */
+/* ───────────────────────────────────────────────────────────────── */
+.main-panel__action-options {
+  flex: 0 0 100%;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.action-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid rgba(150, 146, 175, 0.35);
+  border-radius: 6px;
+  background: rgba(31, 36, 52, 0.6);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.action-option:hover {
+  background: rgba(32, 38, 54, 0.72);
+  border-color: rgba(128, 189, 177, 0.6);
+}
+
+.action-option__text {
+  font-size: 0.8rem;
+  color: var(--mj-fg);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ───────────────────────────────────────────────────────────────── */
+/* 剧情面板布局：剧情区独立滚动，输入区固定底部（仅作用于 .main-panel--story） */
+/* ───────────────────────────────────────────────────────────────── */
+.main-panel--story .main-panel__body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-panel--story .main-panel__chat-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin-bottom: 0;
+}
+
+/* 输入区固定容器（始终可见，不随剧情滚动） */
+.main-panel__composer-area {
+  flex: 0 0 auto;
+  padding: 10px 0 2px;
+}
+
+/* AI 状态提示条（输入框上方，始终可见） */
+.main-panel__composer-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.main-panel__composer-status--loading {
+  color: var(--mj-gold);
+  background: rgba(150, 146, 175, 0.1);
+  border: 1px solid rgba(150, 146, 175, 0.3);
+}
+
+.main-panel__composer-status--error {
+  color: #b77083;
+  background: rgba(183, 112, 131, 0.1);
+  border: 1px solid rgba(183, 112, 131, 0.3);
+}
+
+.main-panel__status-pulse {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mj-gold);
+  flex-shrink: 0;
+  animation: mj-status-pulse 1s ease-in-out infinite;
+}
+
+@keyframes mj-status-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* 战斗入口在 composer-area 内替换输入框位置时居中 */
+.main-panel__battle-entry--inline {
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.main-panel__chat-item {
+  margin-bottom: 6px;
+}
+
+.main-panel__chat-item--user {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+
+.main-panel__chat-bubble {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.main-panel__chat-bubble--story {
+  background: rgba(31, 36, 52, 0.6);
+  border: 1px solid var(--mj-border-subtle);
+  color: var(--mj-fg);
+}
+
+.main-panel__chat-bubble--user {
+  background: rgba(150, 146, 175, 0.12);
+  border: 1px solid var(--mj-gold-dim);
+  color: var(--mj-fg);
+  text-align: right;
+  max-width: 80%;
+}
+
+/* 滚动大总结裁剪历史后，作为聊天栏顶部的「早期经历总纲」占位消息样式。 */
+.main-panel__chat-item--summary {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.main-panel__chat-bubble--summary {
+  background: rgba(53, 61, 82, 0.18);
+  border: 1px dashed var(--mj-gold-dim);
+  color: var(--mj-fg);
+  max-width: 92%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  word-break: break-word;
+  white-space: pre-wrap;
+  opacity: 0.92;
+}
+
+.main-panel__summary-title {
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: var(--mj-gold-dim);
+  margin-bottom: 6px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.main-panel__chat-bubble--summary .main-panel__story-prose {
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+
+.main-panel__retry-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--mj-border-subtle);
+  border-radius: 50%;
+  background: rgba(31, 36, 52, 0.6);
+  color: var(--mj-fg);
+  font-size: 0.8rem;
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.main-panel__retry-btn:hover {
+  opacity: 1;
+  background: rgba(150, 146, 175, 0.2);
+  border-color: var(--mj-gold-dim);
+}
+
+.side-btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.side-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--mj-border-subtle);
+  border-radius: 6px;
+  background: rgba(31, 36, 52, 0.5);
+  color: var(--mj-fg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.side-btn:hover {
+  background: rgba(34, 40, 57, 0.6);
+  border-color: var(--mj-gold-dim);
+}
+
+.side-btn__icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.side-btn__label {
+  flex: 1;
+  text-align: left;
+}
+
+@media (max-width: 900px) {
+  .main-screen__body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+  }
+
+  .main-screen__pane {
+    border-right: none;
+    border-bottom: 1px solid var(--mj-border-subtle);
+    max-height: min(36vh, 320px);
+  }
+
+  .main-screen__pane--chat {
+    max-height: min(48vh, 480px);
+  }
+
+  .main-screen__pane:last-child {
+    border-bottom: none;
+  }
+}
+
+/* Ice glass surface enhancement: visual properties only. */
+.main-screen__toolbar,
+.main-screen__pane,
+.main-panel {
+  backdrop-filter: blur(16px) saturate(110%);
+  -webkit-backdrop-filter: blur(16px) saturate(110%);
+}

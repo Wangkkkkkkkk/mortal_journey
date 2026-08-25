@@ -54,7 +54,27 @@ export class EffectManager {
       if (combatant.effects[i].category === "summon") continue;
       combatant.effects[i].remainingDuration--;
       if (combatant.effects[i].remainingDuration < 0) {
+        const expired = combatant.effects[i];
         combatant.effects.splice(i, 1);
+        // 延迟伤害：潜伏期内不结算，到期移除的这一刻一次性爆发。
+        if (expired.category === "delayed" && expired.tickValue != null && expired.tickValue > 0) {
+          const raw = expired.tickIsPercent
+            ? Math.round(combatant.stats.maxHp * expired.tickValue / 100)
+            : Math.round(expired.tickValue);
+          const hpLoss = Math.min(combatant.hp, raw);
+          if (hpLoss > 0) {
+            combatant.hp -= hpLoss;
+            onFloat?.(combatant.id, `-${hpLoss}`, "hp");
+            entries.push(this.logEntry(actionCount, expired.name, "毒发", combatant.name, "dot", hpLoss,
+              `${combatant.name}体内的${expired.name}毒发，骤失${hpLoss}点生命`, combatant.team));
+            if (combatant.hp <= 0) {
+              combatant.hp = 0;
+              combatant.isDead = true;
+              entries.push(this.logEntry(actionCount, combatant.name, "阵亡", undefined, "death", undefined,
+                `${combatant.name}倒下了！`, combatant.team));
+            }
+          }
+        }
       }
     }
 

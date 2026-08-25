@@ -1,0 +1,633 @@
+/* Ice Blue Glass theme counterpart of src/main-screen/mainScreenPlayerPanel.css.
+ * Layout, sizing, spacing, positioning, and typography are preserved.
+ */
+/**
+ * 主角左栏（PlayerInfoPanel）：与 mortal_journey/css/main.css 左栏 mj-* 对齐。
+ * 选择器均挂在 `.main-panel--player` 下；须在 `mainScreen.css` 之后加载。
+ */
+
+.main-panel--player.mj-pane--player {
+  --mj-player-content-font: 0.9rem;
+}
+
+.main-panel--player .mj-player-body {
+  padding-top: 10px;
+  --mj-player-content-font: 0.9rem;
+}
+
+.main-panel--player .mj-player-avatar-wrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+/* 头像行：头像 + 右侧操作按钮 */
+.main-panel--player .mj-player-avatar-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 头像区域（供 edit 图标绝对定位） */
+.main-panel--player .mj-player-avatar-area {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.main-panel--player .mj-player-name-vertical {
+  letter-spacing: 0.08em;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(172, 219, 223, 0.92);
+  line-height: 1.2;
+  text-shadow: 0 1px 2px rgba(28, 34, 48, 0.35);
+}
+
+/* 主角立绘操作按钮（生成 / 历史）——垂直排列在头像右侧 */
+.main-panel--player .mj-player-portrait-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.main-panel--player .mj-player-gen-btn,
+.main-panel--player .mj-player-history-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 0.72rem;
+  line-height: 1;
+  border-radius: 4px;
+  border: 1px solid rgba(150, 146, 175, 0.4);
+  background: rgba(28, 34, 48, 0.35);
+  color: var(--mj-gold-dim, #9692af);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.main-panel--player .mj-player-gen-btn:hover:not(:disabled),
+.main-panel--player .mj-player-history-btn:hover:not(:disabled) {
+  border-color: var(--mj-gold, #acdbdf);
+  color: var(--mj-gold, #acdbdf);
+  background: rgba(172, 219, 223, 0.1);
+}
+
+.main-panel--player .mj-player-gen-btn:disabled,
+.main-panel--player .mj-player-history-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.main-panel--player .mj-player-gen-hint {
+  margin: 2px 0 0;
+  font-size: 0.64rem;
+  color: var(--mj-muted, #9692af);
+  text-align: center;
+}
+
+.main-panel--player .mj-player-gen-error {
+  margin: 2px 0 0;
+  font-size: 0.68rem;
+  color: #b77083;
+  text-align: center;
+}
+
+.main-panel--player .mj-player-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 10px;
+  object-fit: cover;
+  object-position: top;
+  border: 1px solid var(--mj-border);
+}
+
+.main-panel--player .mj-player-avatar--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(28, 34, 48, 0.35);
+  color: var(--mj-muted);
+  font-size: 0.78rem;
+  user-select: none;
+}
+
+.main-panel--player .mj-realm-line {
+  font-size: var(--mj-player-content-font);
+  color: var(--mj-text);
+  margin: 0 0 10px;
+  text-align: center;
+}
+
+.main-panel--player .mj-player-identity {
+  margin: 12px 0 14px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(150, 146, 175, 0.25);
+}
+
+.main-panel--player .mj-combat-stats {
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.main-panel--player .mj-resource-row {
+  margin-bottom: 10px;
+}
+
+.main-panel--player .mj-cultivation-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.main-panel--player .mj-resource-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--mj-player-content-font);
+  color: var(--mj-muted);
+  margin-bottom: 4px;
+}
+
+.main-panel--player .mj-resource-label--cultivation {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.main-panel--player .mj-major-breakthrough-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  border: 1px solid rgba(150, 146, 175, 0.55);
+  background: rgba(28, 34, 48, 0.4);
+  color: var(--mj-gold);
+  cursor: pointer;
+}
+
+.main-panel--player .mj-major-breakthrough-btn:hover {
+  border-color: rgba(172, 219, 223, 0.85);
+  background: rgba(150, 146, 175, 0.12);
+}
+
+.main-panel--player .mj-resource-nums {
+  font-size: 1em;
+  color: var(--mj-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.main-panel--player .mj-bar {
+  height: 10px;
+  background: rgba(28, 34, 48, 0.45);
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(215, 234, 234, 0.08);
+}
+
+.main-panel--player .mj-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.main-panel--player .mj-bar-fill--cultivation {
+  background: linear-gradient(90deg, rgba(150, 146, 175, 0.8), var(--mj-gold));
+}
+
+.main-panel--player .mj-bar-fill--hp {
+  background: linear-gradient(90deg, rgba(183, 112, 131, 0.8), rgba(183, 112, 131, 0.8));
+}
+
+.main-panel--player .mj-bar-fill--mp {
+  background: linear-gradient(90deg, rgba(150, 146, 175, 0.8), #acdbdf);
+}
+
+.main-panel--player .mj-attr-section-title {
+  margin: 16px 0 10px;
+  padding-bottom: 6px;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--mj-gold);
+  border-bottom: 1px solid var(--mj-border);
+}
+
+.main-panel--player .mj-attr-section-title--first {
+  margin-top: 4px;
+}
+
+.main-panel--player .mj-attr-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 16px 0 10px;
+  border-bottom: 1px solid var(--mj-border);
+}
+
+.main-panel--player .mj-attr-section-header:first-child {
+  margin-top: 4px;
+}
+
+.main-panel--player .mj-attr-section-header .mj-attr-section-title {
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: none;
+}
+
+.main-panel--player .mj-stat-pair-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  padding: 7px 0;
+  font-size: var(--mj-player-content-font);
+  border-bottom: 1px solid rgba(215, 234, 234, 0.05);
+  align-items: start;
+}
+
+.main-panel--player .mj-stat-cell {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  position: relative;
+}
+
+.main-panel--player .mj-stat-k {
+  font-size: 1em;
+  color: var(--mj-muted);
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.main-panel--player .mj-stat-k--tip {
+  cursor: help;
+}
+
+.main-panel--player .mj-stat-k--tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 100;
+  padding: 5px 10px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--mj-text, #acdbdf);
+  background: var(--mj-panel-bg, rgba(34, 40, 57, 0.72));
+  border: 1px solid rgba(172, 219, 223, 0.3);
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.main-panel--player .mj-stat-cell--right .mj-stat-k--tip::after {
+  left: auto;
+  right: 0;
+}
+
+.main-panel--player .mj-stat-k--tip:hover::after {
+  opacity: 1;
+}
+
+.main-panel--player .mj-stat-v {
+  font-size: 1em;
+  color: var(--mj-text);
+  text-align: right;
+  word-break: break-word;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.main-panel--player .mj-player-info-hint {
+  margin: -4px 0 8px;
+  font-size: 0.72rem;
+  color: var(--mj-muted);
+}
+
+.main-panel--player .mj-player-info-muted {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: var(--mj-muted);
+}
+
+.main-panel--player .mj-talent-block {
+  margin-top: 2px;
+  padding-top: 0;
+}
+
+.main-panel--player .mj-talent-row {
+  display: flex;
+  flex-direction: row;
+  gap: 5px;
+  width: 100%;
+  align-items: flex-start;
+}
+
+.main-panel--player .mj-trait-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 1;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 3px;
+  border-radius: 6px;
+  border: 1px solid rgba(150, 146, 175, 0.45);
+  background: rgba(28, 34, 48, 0.28);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.main-panel--player .mj-trait-slot--empty {
+  border-style: dashed;
+  opacity: 0.75;
+}
+
+.main-panel--player .mj-trait-slot--empty .mj-trait-slot-inner {
+  color: var(--mj-muted);
+  font-size: var(--mj-player-content-font);
+}
+
+.main-panel--player .mj-trait-slot-inner {
+  font-size: var(--mj-player-content-font);
+  line-height: 1.2;
+  text-align: center;
+  color: var(--mj-text);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.main-panel--player .mj-trait-slot[data-rarity] {
+  border-color: var(--mj-rarity-active);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mj-rarity-active) 25%, transparent);
+}
+
+.main-panel--player .mj-equip-block {
+  margin-top: 8px;
+}
+
+.main-panel--player .mj-equip-block .mj-attr-section-title {
+  margin-top: 14px;
+  margin-bottom: 10px;
+}
+
+.main-panel--player .mj-treasure-grid .mj-inventory-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 5px;
+  box-sizing: border-box;
+}
+
+.main-panel--player .mj-treasure-slot-label {
+  width: 100%;
+  max-height: 100%;
+  font-size: var(--mj-player-content-font);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  color: var(--mj-text);
+}
+
+.main-panel--player .mj-treasure-grid .mj-inventory-slot.mj-treasure-slot--filled {
+  border-style: solid;
+}
+
+.main-panel--player .mj-treasure-grid .mj-inventory-slot.mj-treasure-slot--filled[data-rarity] {
+  border-color: var(--mj-rarity-active);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mj-rarity-active) 25%, transparent);
+}
+
+.main-panel--player .mj-player-bag-stack {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(150, 146, 175, 0.22);
+}
+
+.main-panel--player .mj-bag-grid-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin-bottom: 4px;
+  scrollbar-gutter: stable;
+}
+
+/** 储物袋：格数随 `getInventoryBagDisplaySlots` 增长（不足 12 补空，超过则多行），与功法区一样不单独做内部滚动条。 */
+.main-panel--player .mj-bag-grid-scroll--inventory {
+  overflow: visible;
+  scrollbar-gutter: auto;
+}
+
+.main-panel--player .mj-bag-grid-scroll--gongfa {
+  max-height: none;
+  overflow: visible;
+}
+
+.main-panel--player .mj-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.main-panel--player .mj-inventory-slot {
+  aspect-ratio: 1;
+  min-height: 36px;
+  border: 1px dashed rgba(150, 146, 175, 0.4);
+  border-radius: 6px;
+  background: rgba(28, 34, 48, 0.22);
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 5px 18px;
+  box-sizing: border-box;
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot-label {
+  font-size: var(--mj-player-content-font);
+  line-height: 1.15;
+  text-align: center;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  color: var(--mj-text);
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--empty .mj-inventory-slot-label {
+  color: transparent;
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot-qty {
+  position: absolute;
+  bottom: 3px;
+  right: 4px;
+  font-size: var(--mj-player-content-font);
+  font-weight: 600;
+  color: var(--mj-gold-dim);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(28, 34, 48, 0.9);
+  pointer-events: none;
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--lingshi {
+  border-style: solid;
+  border-color: rgba(150, 146, 175, 0.45);
+  background: rgba(172, 219, 223, 0.06);
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--lingshi .mj-inventory-slot-label {
+  color: var(--mj-text);
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--filled {
+  border-style: solid;
+}
+
+.main-panel--player #mj-inventory-grid .mj-inventory-slot--filled[data-rarity] {
+  border-color: var(--mj-rarity-active);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mj-rarity-active) 25%, transparent);
+}
+
+.main-panel--player .mj-gongfa-grid .mj-inventory-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 5px;
+  box-sizing: border-box;
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-height: 100%;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-label {
+  width: 100%;
+  max-height: 100%;
+  font-size: var(--mj-player-content-font);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  color: var(--mj-text);
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-type {
+  font-size: 0.62rem;
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--mj-muted);
+  max-width: 100%;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-type--support {
+  color: #80bdb1;
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-type--attack {
+  color: #b77083;
+}
+
+.main-panel--player .mj-gongfa-grid .mj-gongfa-slot-type--other {
+  color: var(--mj-gold-dim);
+}
+
+.main-panel--player .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled {
+  border-style: solid;
+}
+
+.main-panel--player .mj-gongfa-grid .mj-inventory-slot.mj-gongfa-slot--filled[data-rarity] {
+  border-color: var(--mj-rarity-active);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mj-rarity-active) 25%, transparent);
+}
+
+/* 可点击槽位（详情弹窗） */
+.main-panel--player .mj-talent-block .mj-trait-slot--filled,
+.main-panel--player .mj-treasure-grid .mj-inventory-slot.mj-treasure-slot--filled,
+.main-panel--player .mj-inventory-slot.mj-gongfa-slot--filled,
+.main-panel--player .mj-inventory-grid:not(.mj-gongfa-grid) .mj-inventory-slot--filled {
+  cursor: pointer;
+}
+
+.main-panel--player .mj-talent-block .mj-trait-slot--filled:focus-visible,
+.main-panel--player .mj-treasure-grid .mj-inventory-slot.mj-treasure-slot--filled:focus-visible,
+.main-panel--player .mj-inventory-slot.mj-gongfa-slot--filled:focus-visible,
+.main-panel--player .mj-inventory-grid:not(.mj-gongfa-grid) .mj-inventory-slot--filled:focus-visible {
+  outline: 2px solid var(--mj-gold, #acdbdf);
+  outline-offset: 1px;
+}
+
+/* 功法熟练度角标 */
+.main-panel--player .mj-gongfa-slot-mastery {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 0.65rem;
+  color: var(--mj-gold-dim, #9692af);
+  opacity: 0.85;
+}
+
+/* 寿元警告 */
+.main-panel--player .mj-stat-v--danger {
+  color: #b77083;
+  font-weight: bold;
+}
+
+.main-panel--player .mj-stat-v--warning {
+  color: #9692af;
+}
+
+/* 修炼速度小字 */
+.main-panel--player .mj-stat-v--sm {
+  font-size: 0.78em;
+  opacity: 0.8;
+}
+

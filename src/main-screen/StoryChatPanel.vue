@@ -382,6 +382,9 @@ async function applyStateResult(stateResult: StateParsed, linggen: string[]): Pr
         const delta = stateResult.timeAdvance;
         newWorldTime = advanceWorldTime(props.worldTime, delta);
         emit("update:worldTime", newWorldTime);
+        // 时间推进后清理已到期的限时增益（餐食等）。到期判定本身是惰性的，
+        // 此处只做物理移除，避免失效项在存档中无限堆积。
+        current.purgeExpiredBuffs();
 
         // 寿元耗尽检查：当前年龄 = 开局档案年龄 + 自基线起经过的整年数。
         if (getActiveDifficulty() !== "简单" && newWorldTime) {
@@ -758,13 +761,15 @@ function formatNpcFullLine(npc: Npc): string {
   const dead = npc.isDead ? " [已故]" : "";
   const cur = npc.currentLocation ? formatWorldLocationDash(npc.currentLocation) : "未知";
   const race = npc.race && npc.race !== "修仙者" ? `，${npc.race}` : "";
-  return `${npc.displayName}（npcId:${npc.id}，${npc.identity}${race}，${Character.formatRealm(npc.realm)}，当前:${cur}，好感${favor}，HP ${hp}，MP ${mp}）${dead}`;
+  const rel = npc.relation ? `，关系:${npc.relation}` : "";
+  return `${npc.displayName}（npcId:${npc.id}，${npc.identity}${race}${rel}，${Character.formatRealm(npc.realm)}，当前:${cur}，好感${favor}，HP ${hp}，MP ${mp}）${dead}`;
 }
 
 function formatNpcBriefLine(npc: Npc): string {
   const lastSeen = npc.lastSeenWorldTime ? formatWorldTimeZhDisplay(npc.lastSeenWorldTime) : "未知";
   const cur = npc.currentLocation ? formatWorldLocationDash(npc.currentLocation) : "未知";
-  return `${npc.displayName}（npcId:${npc.id}，${npc.identity}，${Character.formatRealm(npc.realm)}，当前:${cur}，好感${npc.favorability}，上次见面:${lastSeen}）`;
+  const rel = npc.relation ? `，关系:${npc.relation}` : "";
+  return `${npc.displayName}（npcId:${npc.id}，${npc.identity}${rel}，${Character.formatRealm(npc.realm)}，当前:${cur}，好感${npc.favorability}，上次见面:${lastSeen}）`;
 }
 
 function buildNpcSnapshot(): string {

@@ -6,6 +6,8 @@ import type {
   ModifierType,
 } from "./types";
 import type { EffectManager } from "./EffectManager";
+import { generateId } from "./formulas";
+import { COATING_MAX_STACKS } from "../role_core/poison";
 import type { EventDispatcher } from "./EventDispatcher";
 import { calcDefenseReduction, checkCrit, checkDodge } from "./formulas";
 
@@ -246,6 +248,28 @@ export class DamagePipeline {
       if (lifestealMod > 0) {
         lifestealHeal = Math.round(hpLost * lifestealMod / 100);
         trace.push(`  吸血: ${lifestealMod}% → 恢复${lifestealHeal}点生命`);
+      }
+      // 淬毒涂层：造成实际掉血后，按已装备法宝的涂层对目标叠加一层 DoT。
+      // 走 addEffect 而非直接 push，由其统一处理叠层与持续回合刷新——
+      // 层数上限对齐毒修功法的 maxStacks 约定，靠反复命中累积威力。
+      for (const coat of ctx.source.coatings ?? []) {
+        this.effectManager.addEffect(ctx.target, {
+          id: generateId(),
+          name: coat.name,
+          sourceId: ctx.source.id,
+          category: "dot",
+          remainingDuration: coat.duration,
+          stacks: 1,
+          maxStacks: COATING_MAX_STACKS,
+          tickValue: coat.tickPercent,
+          tickIsPercent: true,
+          tickResource: "hp",
+          statusType: "poison",
+        });
+        const cur = ctx.target.effects.find(
+          e => e.category === "dot" && e.name === coat.name && e.sourceId === ctx.source.id,
+        );
+        trace.push(`  淬毒: ${coat.name} → ${cur?.stacks ?? 1}层，每层每回合最大血量${coat.tickPercent}%`);
       }
     }
 

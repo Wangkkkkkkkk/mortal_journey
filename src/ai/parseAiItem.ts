@@ -17,6 +17,7 @@ import type {
 } from "../role_core/types/itemInfo";
 import { GRADE_DROP_TABLE } from "../role_core/types/itemInfo";
 import { rollTreasureFunction, rollTreasureSpecialEffect } from "../role_core/types/treasure";
+import { parseMaterialCategory } from "../role_core/craft";
 import { rollGongfaFunction, normalizeGongfaSystem, normalizeGongfaRole, type GongfaRole } from "../role_core/types/gongfa";
 import {
   parseElixirEffectType,
@@ -180,7 +181,7 @@ export function parseStorageObject(e: unknown, realmMajor: string, realmMinor: s
       return { itemType: "丹药" as const, name, desc, grade, count, effectType, effects: { value, isPercent: isElixirPercent(effectType, grade) } };
     }
     case "材料":
-      return { itemType: "材料", name, desc, grade, count } as MaterialItemDefinition;
+      return { itemType: "材料", name, desc, grade, count, category: parseMaterialCategory(obj.category) } as MaterialItemDefinition;
     case "杂物":
     default:
       return { itemType: "杂物", name, desc, grade, count } as MiscItemDefinition;

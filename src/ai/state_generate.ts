@@ -68,6 +68,8 @@ export interface ItemAddEntry {
   role?: unknown;
   function?: unknown;
   bonus?: unknown;
+  /** 材料分类（药材/毒物/食材/器材）。仅 type==="材料" 时由状态 AI 输出。 */
+  category?: unknown;
 }
 
 export interface ItemRemoveEntry {
@@ -79,6 +81,8 @@ export interface NpcNearbyEntry {
   npcId?: string;
   displayName: string;
   identity: string;
+  /** 与主角的关系（自由文本，如「同门」「师尊」「道侣」「仇敌」）。 */
+  relation?: string;
   isDead: boolean;
   favorability: number;
   race: NpcRace;
@@ -254,6 +258,7 @@ function parseNearbyNpcs(raw: string): NpcNearbyEntry[] {
         npcId: npcIdRaw || undefined,
         displayName,
         identity: String(o.identity || ""),
+        relation: typeof o.relation === "string" ? o.relation.trim() : undefined,
         isDead: o.isDead === true,
         favorability: typeof o.favorability === "number" ? o.favorability : 0,
         race: sanitizeRace(o.race),
@@ -513,6 +518,7 @@ export function parseStateAiResponse(raw: string): StateParsed {
         ...(o.role != null ? { role: o.role } : {}),
         ...(o.function != null ? { function: o.function } : {}),
         ...(o.bonus != null ? { bonus: o.bonus } : {}),
+        ...(o.category != null ? { category: o.category } : {}),
       } as ItemAddEntry;
     })
     .filter((e): e is ItemAddEntry => e !== null);

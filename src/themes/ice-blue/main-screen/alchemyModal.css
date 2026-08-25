@@ -1,0 +1,247 @@
+/* Ice Blue Glass theme counterpart of src/main-screen/alchemyModal.css.
+ * Layout, sizing, spacing, positioning, and typography are preserved.
+ */
+/* 炼丹弹窗样式（全局，类名以 .alchemy- 前缀隔离） */
+
+.side-modal--alchemy {
+  width: min(90vw, 460px);
+}
+
+.alchemy-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.alchemy-section-label {
+  font-size: 0.8rem;
+  color: var(--mj-muted, #9692af);
+  margin-bottom: 2px;
+}
+
+.alchemy-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.alchemy-slot {
+  min-height: 56px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px dashed rgba(215, 234, 234, 0.18);
+  background: rgba(28, 34, 48, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.alchemy-slot--empty {
+  color: var(--mj-muted, #9692af);
+}
+
+.alchemy-slot--disabled {
+  opacity: 0.4;
+}
+
+.alchemy-slot--filled {
+  cursor: pointer;
+  border-style: solid;
+  border-color: rgba(128, 189, 177, 0.55);
+  background: rgba(128, 189, 177, 0.08);
+  color: var(--mj-text, #d7eaea);
+  position: relative;
+}
+
+.alchemy-slot--filled:hover {
+  background: rgba(128, 189, 177, 0.16);
+}
+
+.alchemy-slot__name {
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alchemy-slot__grade {
+  font-size: 0.72rem;
+  color: var(--mj-muted, #9692af);
+}
+
+.alchemy-slot__remove {
+  position: absolute;
+  top: 2px;
+  right: 5px;
+  font-size: 0.85rem;
+  color: var(--mj-muted, #9692af);
+}
+
+.alchemy-preview {
+  border-top: 1px solid rgba(215, 234, 234, 0.08);
+  padding-top: 10px;
+}
+
+.alchemy-odds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.alchemy-odds-item {
+  font-size: 0.8rem;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(28, 34, 48, 0.3);
+  border: 1px solid rgba(215, 234, 234, 0.12);
+}
+
+.alchemy-preview-note {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--mj-muted, #9692af);
+}
+
+.alchemy-material-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.alchemy-material {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(215, 234, 234, 0.14);
+  background: rgba(28, 34, 48, 0.3);
+  color: var(--mj-text, #d7eaea);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.alchemy-material:hover:not(:disabled) {
+  border-color: rgba(215, 234, 234, 0.32);
+  background: rgba(215, 234, 234, 0.06);
+}
+
+.alchemy-material:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.alchemy-material__name {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alchemy-material__grade {
+  font-size: 0.74rem;
+  color: var(--mj-muted, #9692af);
+  flex-shrink: 0;
+}
+
+.alchemy-material__count {
+  font-size: 0.74rem;
+  color: var(--mj-muted, #9692af);
+  flex-shrink: 0;
+}
+
+.alchemy-empty {
+  text-align: center;
+  color: var(--mj-muted, #9692af);
+  font-size: 0.82rem;
+  padding: 20px 0;
+}
+
+.alchemy-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  border-top: 1px solid rgba(215, 234, 234, 0.08);
+  padding-top: 10px;
+}
+
+.alchemy-btn {
+  padding: 7px 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(215, 234, 234, 0.2);
+  background: rgba(28, 34, 48, 0.35);
+  color: var(--mj-text, #d7eaea);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.alchemy-btn:hover:not(:disabled) {
+  border-color: rgba(215, 234, 234, 0.4);
+  background: rgba(215, 234, 234, 0.08);
+}
+
+.alchemy-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.alchemy-btn--primary {
+  background: rgba(128, 189, 177, 0.22);
+  border-color: rgba(128, 189, 177, 0.55);
+  color: #80bdb1;
+}
+
+.alchemy-btn--primary:hover:not(:disabled) {
+  background: rgba(128, 189, 177, 0.34);
+}
+
+.alchemy-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(215, 234, 234, 0.18);
+  background: linear-gradient(180deg, rgba(128, 189, 177, 0.1), rgba(28, 34, 48, 0.25));
+  text-align: center;
+}
+
+.alchemy-result__title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #d7eaea;
+}
+
+.alchemy-result__grade {
+  font-size: 0.82rem;
+  color: var(--mj-muted, #9692af);
+}
+
+.alchemy-result__effect {
+  font-size: 0.9rem;
+  color: rgba(128, 189, 177, 0.9);
+  font-weight: 600;
+}
+
+.alchemy-result__desc {
+  font-size: 0.8rem;
+  color: var(--mj-text, #d7eaea);
+  line-height: 1.6;
+  opacity: 0.85;
+}
+
+.alchemy-result__hint {
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--mj-muted, #9692af);
+}

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import ThemeSwitcher from "./theme/ThemeSwitcher.vue";
 import DebugLogPanel from "./log/DebugLogPanel.vue";
 import StartFrame from "./start_frame/StartFrame.vue";
 import FateChoiceScreen from "./fate_choice/FateChoiceScreen.vue";
@@ -158,6 +159,7 @@ function onGameOver(reason: string): void {
 </script>
 
 <template>
+  <ThemeSwitcher />
   <DebugLogPanel />
 
   <Transition name="mj-fade">

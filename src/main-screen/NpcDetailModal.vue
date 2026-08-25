@@ -28,6 +28,7 @@ import ProtagonistDetailModal from "./ProtagonistDetailModal.vue";
 import { useScrollLock } from "../composables/useScrollLock";
 import { writeActiveSave } from "../save/gameSave";
 import { npcStore } from "../role_core/npcStore";
+import { favorBarGeometry, favorabilityLabel } from "./npcDetailPayload";
 import { npcColorTheme } from "../role_core/npcTheme";
 import { generateNpcPortrait, isImageApiConfigured } from "../image_generate";
 import PortraitHistoryModal from "./PortraitHistoryModal.vue";
@@ -253,6 +254,7 @@ onUnmounted(() => {
             </h4>
             <div class="mj-trait-modal-rarity">
               {{ npc.identity }} · {{ Character.formatRealm(npc.realm) }}
+              <span v-if="npc.relation" class="mj-npc-relation-tag">{{ npc.relation }}</span>
             </div>
 
             <div class="mj-npc-layout">
@@ -307,6 +309,14 @@ onUnmounted(() => {
                     <span class="mj-stat-k">寿元</span>
                     <span class="mj-stat-v">{{ npc.shouyuan }}</span>
                   </div>
+                  <div class="mj-stat-cell">
+                    <span class="mj-stat-k">关系</span>
+                    <span class="mj-stat-v">{{ npc.relation || '—' }}</span>
+                  </div>
+                  <div class="mj-stat-cell">
+                    <span class="mj-stat-k">相遇</span>
+                    <span class="mj-stat-v">{{ npc.encounterCount }} 次</span>
+                  </div>
                 </div>
 
                 <div class="mj-npc-hpmp-row">
@@ -330,6 +340,23 @@ onUnmounted(() => {
                     <div
                       class="mj-bar-fill mj-bar-fill--mp"
                       :style="{ width: (npc.maxMp > 0 ? Math.round(npc.currentMp / npc.maxMp * 100) : 0) + '%' }"
+                    />
+                  </div>
+                </div>
+                <div class="mj-npc-hpmp-row">
+                  <div class="mj-resource-label">
+                    <span>好感</span>
+                    <span class="mj-resource-nums">
+                      {{ favorabilityLabel(npc.favorability) }} · {{ npc.favorability }}
+                    </span>
+                  </div>
+                  <div class="mj-bar mj-bar--favor">
+                    <div
+                      class="mj-bar-fill mj-bar-fill--favor"
+                      :class="favorBarGeometry(npc.favorability).side === 'negative'
+                        ? 'mj-bar-fill--favor-neg'
+                        : 'mj-bar-fill--favor-pos'"
+                      :style="{ width: favorBarGeometry(npc.favorability).widthPct + '%' }"
                     />
                   </div>
                 </div>
@@ -428,6 +455,49 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 好感度双向条：中点为 0，向右填好感、向左填敌意。 */
+.mj-bar--favor {
+  position: relative;
+  overflow: visible;
+}
+
+.mj-bar--favor::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  bottom: -1px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.35);
+  transform: translateX(-0.5px);
+  z-index: 1;
+}
+
+.mj-bar-fill--favor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 0;
+}
+
+.mj-bar-fill--favor-pos {
+  left: 50%;
+  background: linear-gradient(90deg, #b98a3a, #f0c674);
+}
+
+.mj-bar-fill--favor-neg {
+  right: 50%;
+  background: linear-gradient(270deg, #5c4b8a, #9b6bd6);
+}
+
+.mj-npc-relation-tag {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 0.78em;
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .mj-trait-modal.mj-npc-detail-panel {
   max-width: 670px;
   max-height: min(82vh, 680px);

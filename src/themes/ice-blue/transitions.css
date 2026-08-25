@@ -1,0 +1,66 @@
+/* Ice Blue Glass theme counterpart of src/transitions.css.
+ * Layout, sizing, spacing, positioning, and typography are preserved.
+ */
+.mj-fade-enter-active,
+.mj-fade-leave-active {
+  transition: opacity 0.35s ease;
+}
+.mj-fade-enter-from,
+.mj-fade-leave-to {
+  opacity: 0;
+}
+
+.mj-slide-up-enter-active {
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mj-slide-up-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.mj-slide-up-enter-from {
+  opacity: 0;
+  transform: translateY(30px);
+}
+.mj-slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
+.mj-main-enter-active {
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mj-main-leave-active {
+  transition: opacity 0.2s ease;
+}
+.mj-main-enter-from {
+  opacity: 0;
+  transform: scale(0.97);
+}
+.mj-main-leave-to {
+  opacity: 0;
+}
+
+.mj-modal-enter-active {
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mj-modal-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.mj-modal-enter-from {
+  opacity: 0;
+  transform: scale(0.95) translateY(10px);
+}
+.mj-modal-leave-to {
+  opacity: 0;
+  transform: scale(0.97);
+}
+
+.mj-backdrop-enter-active {
+  transition: opacity 0.25s ease;
+}
+.mj-backdrop-leave-active {
+  transition: opacity 0.15s ease;
+}
+.mj-backdrop-enter-from,
+.mj-backdrop-leave-to {
+  opacity: 0;
+}

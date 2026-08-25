@@ -5,6 +5,7 @@ import { Protagonist } from "../role_core/Protagonist";
 import type { ProtagonistPlayInfo, NarrationPerson, TraitEntry } from "../role_core/types/playInfo";
 import { formatWorldLocationDash } from "../role_core/types/worldLocation";
 import type { WorldLocation } from "../role_core/types/worldLocation";
+import { originTagLines } from "../fate_choice/types";
 
 export interface InitStoryApiConfig {
   apiUrl: string;
@@ -89,6 +90,7 @@ export function buildInitStoryUserContent(protagonist: ProtagonistPlayInfo, user
     "",
     `姓名：${p.displayName}`,
     `性别：${p.gender || "—"}`,
+    ...originTagLines(p.race ?? "", p.faction ?? ""),
     narrationPersonLine(p.narrationPerson),
     `境界：${Protagonist.formatRealm(p.realm)}`,
     `灵根：${Protagonist.formatLinggenElements(p.linggen)}`,

@@ -22,6 +22,9 @@ import { resolveGongfaEffectDisplay } from "../role_core/types/gongfa";
 import { gradeToTraitRarity, getGongfaMasteryProgress } from "./protagonistPanelDisplay";
 import { GONGFA_MASTERY_COMBAT_MULT, GONGFA_MASTERY_ATTRI_MULT, getItemSellPrice } from "../role_core/types/gameConstants";
 import type { ItemGrade } from "../role_core/types/itemInfo";
+import type { FoodItemDefinition } from "../role_core/cooking";
+import type { PoisonItemDefinition } from "../role_core/poison";
+import { formatPoisonEffect } from "../role_core/poison";
 import { describeTraitEffect } from "../fate_choice/traitEffect";
 
 export interface DerivedStatValues {
@@ -145,6 +148,7 @@ export type ProtagonistDetailAction =
   | { id: "equipWearFromBag"; inventoryIndex: number }
   | { id: "equipGongfaFromBag"; inventoryIndex: number }
   | { id: "consumeElixir"; inventoryIndex: number }
+  | { id: "consumeFood"; inventoryIndex: number }
   | { id: "cultivateGongfa"; gongfaIndex: number }
   | { id: "sellFromBag"; inventoryIndex: number; count: number };
 
@@ -458,6 +462,14 @@ export function buildGongfaDetailPayload(
  * @param el - 丹药定义，读取 `effects.recover`。
  * @returns 可读药效字符串；无有效恢复效果时返回 `undefined`。
  */
+/** 餐食效果文案：主属性百分比增减，正负各自标注。 */
+function formatFoodEffect(food: FoodItemDefinition): string {
+  const parts = Object.entries(food.statPercents)
+    .filter(([, v]) => typeof v === "number" && v !== 0)
+    .map(([k, v]) => `${PRIMARY_STAT_KEY_TO_ZH[k as PrimaryStatKey]} ${(v as number) > 0 ? "+" : ""}${v}%`);
+  return parts.join("，") || "无";
+}
+
 function formatElixirEffect(el: ElixirItemDefinition): string {
   const { effectType, effects } = el;
   const suffix = effects.isPercent ? "%" : "";
@@ -546,11 +558,48 @@ export function buildInventoryStackDetailPayload(
       };
       break;
     }
+    case "餐食": {
+      const food = it as FoodItemDefinition;
+      const sections: ProtagonistDetailSection[] = [];
+      pushSec(sections, "简介", food.desc);
+      pushSec(sections, "品级", food.grade);
+      pushSec(sections, "效果", formatFoodEffect(food));
+      pushSec(sections, "持续", `${food.durationDays} 天`);
+      pushSec(sections, "数量", food.count);
+      const actions: ProtagonistDetailActionButton[] = [];
+      if (bagIndex != null && food.count > 0) {
+        actions.push({ label: "食用", action: { id: "consumeFood", inventoryIndex: bagIndex }, primary: true });
+      }
+      payload = {
+        title: food.name,
+        subtitle: `餐食 · ${food.foodType}`,
+        sections,
+        dataRarity: gradeToTraitRarity(food.grade),
+        actions: actions.length > 0 ? actions : undefined,
+      };
+      break;
+    }
+    case "毒药": {
+      const po = it as PoisonItemDefinition;
+      const sections: ProtagonistDetailSection[] = [];
+      pushSec(sections, "简介", po.desc);
+      pushSec(sections, "品级", po.grade);
+      pushSec(sections, "毒性", formatPoisonEffect(po));
+      pushSec(sections, "数量", po.count);
+      payload = {
+        title: po.name,
+        subtitle: `毒药 · ${po.poisonType}`,
+        sections,
+        dataRarity: gradeToTraitRarity(po.grade),
+      };
+      break;
+    }
     case "材料": {
       const m = it as MaterialItemDefinition;
       const sections: ProtagonistDetailSection[] = [];
       pushSec(sections, "简介", m.desc);
       pushSec(sections, "品级", m.grade);
+      pushSec(sections, "分类", m.category);
       pushSec(sections, "数量", m.count);
       payload = {
         title: m.name,

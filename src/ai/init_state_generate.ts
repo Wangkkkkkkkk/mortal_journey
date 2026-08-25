@@ -16,6 +16,7 @@ import {
 import { formatWorldLocationDash, parseWorldLocationFromDash } from "../role_core/types/worldLocation";
 import type { NpcNearbyEntry, ActionSuggestions } from "./state_generate";
 import { parseActionOptions } from "./state_generate";
+import { originTagLines } from "../fate_choice/types";
 
 export interface InitStateApiConfig {
   apiUrl: string;
@@ -223,6 +224,7 @@ function buildInitStateUserContent(input: InitStateGenerateInput): string {
     "【主角初始状态】",
     `姓名：${p.displayName}`,
     `性别：${p.gender || "—"}`,
+    ...originTagLines(p.race ?? "", p.faction ?? ""),
     `境界：${p.realm.major}${p.realm.minor}`,
     `灵根：${p.linggen.join("") || "无"}`,
     `出身地点：${p.birthPlace ? formatWorldLocationDash(p.birthPlace) : "—"}`,

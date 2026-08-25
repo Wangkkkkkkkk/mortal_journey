@@ -42,6 +42,8 @@ export class Npc extends Character {
   readonly role = "npc" as const;
   identity: string;
   favorability: number;
+  /** 与主角的关系（自由文本）。空串表示尚无明确关系。 */
+  relation: string;
   isDead: boolean;
   powerTier: PowerTier;
   /** 种族：决定外貌/服装的文生图要素清单。 */
@@ -67,6 +69,7 @@ export class Npc extends Character {
     super(data);
     this.identity = data.identity;
     this.favorability = data.favorability;
+    this.relation = typeof data.relation === "string" ? data.relation.trim() : "";
     this.isDead = data.isDead;
     this.powerTier = data.powerTier;
     this.race = data.race;
@@ -161,6 +164,7 @@ export class Npc extends Character {
       equippedSlots,
       identity: entry.identity ?? "",
       favorability: entry.favorability ?? 0,
+      relation: typeof entry.relation === "string" ? entry.relation.trim() : "",
       isDead: entry.isDead ?? false,
       powerTier: parsePowerTier(entry.powerTier),
       race: parseRace(entry.race),
@@ -206,6 +210,9 @@ export class Npc extends Character {
     if (this.isDead) return;
 
     if (entry.identity) this.identity = entry.identity;
+    if (typeof entry.relation === "string" && entry.relation.trim()) {
+      this.relation = entry.relation.trim().slice(0, 8);
+    }
     if (typeof entry.favorability === "number") this.favorability = Math.max(-99, Math.min(99, entry.favorability));
     if (entry.isDead === true) {
       this.isDead = true;
@@ -353,6 +360,7 @@ export class Npc extends Character {
       role: "npc",
       identity: this.identity,
       favorability: this.favorability,
+      relation: this.relation,
       isDead: this.isDead,
       powerTier: this.powerTier,
       race: this.race,
@@ -433,6 +441,7 @@ export class Npc extends Character {
       equippedSlots: Npc.normalizeEquippedSlots(o.equippedSlots),
       identity: typeof o.identity === "string" ? o.identity : "",
       favorability: typeof o.favorability === "number" ? o.favorability : 0,
+      relation: typeof o.relation === "string" ? o.relation : "",
       isDead: o.isDead === true,
       powerTier: parsePowerTier(o.powerTier),
       race: parseRace(o.race),

@@ -15,6 +15,8 @@ import type {
 } from "./itemInfo";
 import type { WorldLocation } from "./worldLocation";
 import type { WorldTime } from "../worldTime";
+import type { CraftSkillState } from "../craft";
+import type { TimedBuff } from "../timedBuff";
 
 import {
   REALM_PRIMARY_STATS_TABLE,
@@ -207,6 +209,10 @@ export interface CharacterPlayInfoCommon {
 export interface ProtagonistPlayInfo extends CharacterPlayInfoCommon {
   role: "protagonist";
   narrationPerson: NarrationPerson;
+  /** 种族（命运抉择所选；旧存档缺省为空串）。 */
+  race?: string;
+  /** 阵营（命运抉择所选；旧存档缺省为空串）。 */
+  faction?: string;
   birthPlace: WorldLocation;
   originStory: string;
   traits: TraitEntry[];
@@ -215,6 +221,10 @@ export interface ProtagonistPlayInfo extends CharacterPlayInfoCommon {
   breakthroughStatus: BreakthroughStatus;
   /** 立绘候选池（dataURL）。旧存档缺省为空。 */
   avatarCandidates?: string[];
+  /** 四门技艺（医术/毒术/烹饪/锻造）的累计熟练度。 */
+  craftSkills?: CraftSkillState;
+  /** 限时增益（餐食等）。 */
+  timedBuffs?: TimedBuff[];
 }
 
 export type PowerTier = "小怪" | "精英怪" | "小boss" | "大boss" | "普通NPC";
@@ -240,6 +250,11 @@ export interface NpcPlayInfo extends CharacterPlayInfoCommon {
   role: "npc";
   identity: string;
   favorability: number;
+  /**
+   * 与主角的关系（自由文本，如「同门」「师尊」「道侣」「仇敌」）。
+   * 由状态 AI 在剧情明确确立/改变关系时维护；空串表示尚无明确关系。
+   */
+  relation?: string;
   isDead: boolean;
   powerTier: PowerTier;
   /** 种族：决定外貌/服装的文生图要素清单。旧存档缺省视为"修仙者"。 */
@@ -270,6 +285,7 @@ export type ProtagonistDetailAction =
   | { id: "equipWearFromBag"; inventoryIndex: number }
   | { id: "equipGongfaFromBag"; inventoryIndex: number }
   | { id: "consumeElixir"; inventoryIndex: number }
+  | { id: "consumeFood"; inventoryIndex: number }
   | { id: "cultivateGongfa"; gongfaIndex: number }
   | { id: "sellFromBag"; inventoryIndex: number; count: number };
 

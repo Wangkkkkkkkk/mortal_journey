@@ -1,0 +1,697 @@
+/* Ice Blue Glass theme counterpart of src/fate_choice/fateChoice.css.
+ * Layout, sizing, spacing, positioning, and typography are preserved.
+ */
+/* 命运抉择（Vue）：视觉对齐 mortal_journey creation.css / main.css 片段 */
+
+.fc-screen {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: 100dvh;
+  background: rgba(31, 37, 52, 0.72);
+  z-index: 3500;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  box-sizing: border-box;
+  font-family: var(--mj-font-body);
+  color: var(--mj-text);
+}
+
+.fc-screen .creation-container {
+  width: 90%;
+  max-width: 1200px;
+  background: var(--mj-panel-bg);
+  border-radius: var(--mj-radius-lg);
+  padding: 22px 24px;
+  box-shadow: 0 12px 40px rgba(28, 34, 48, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(95vh, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--mj-border);
+  box-sizing: border-box;
+  backdrop-filter: blur(6px);
+}
+
+.fc-screen .creation-content {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 10px;
+}
+
+.fc-screen .creation-content::-webkit-scrollbar {
+  width: 6px;
+}
+.fc-screen .creation-content::-webkit-scrollbar-thumb {
+  background: rgba(150, 146, 175, 0.35);
+  border-radius: 4px;
+}
+.fc-screen .creation-content::-webkit-scrollbar-track {
+  background: rgba(28, 34, 48, 0.2);
+}
+
+.fc-screen .creation-nav {
+  flex-shrink: 0;
+}
+
+.fc-screen .creation-step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  margin-left: -6px;
+  margin-right: -6px;
+  border-bottom: 1px solid var(--mj-border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: linear-gradient(180deg, rgba(33, 39, 56, 0.8), rgba(32, 38, 53, 0.8));
+  box-shadow: 0 4px 12px rgba(28, 34, 48, 0.35);
+  border-radius: 6px 6px 0 0;
+}
+
+.fc-screen .creation-step-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--mj-gold);
+  letter-spacing: 0.06em;
+}
+
+.fc-screen .creation-step-title i {
+  font-size: 1em;
+  opacity: 0.88;
+  color: var(--mj-gold-dim);
+}
+
+.fc-screen .creation-step-subtitle {
+  color: var(--mj-muted);
+  font-size: 0.8rem;
+  margin-top: 4px;
+  font-weight: normal;
+}
+
+.fc-screen .creation-section-title {
+  margin: 16px 0 10px;
+  padding-bottom: 6px;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--mj-gold);
+  border-bottom: 1px solid var(--mj-border);
+}
+
+.fc-screen .creation-section-title:first-of-type {
+  margin-top: 4px;
+}
+
+.fc-screen .creation-section-title i {
+  margin-right: 8px;
+  color: var(--mj-gold-dim);
+  font-size: 0.95em;
+}
+
+.fc-screen .creation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.fc-screen .creation-card {
+  background: var(--mj-chat-bg);
+  border: 1px solid var(--mj-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fc-screen .creation-card:hover {
+  border-color: rgba(172, 219, 223, 0.35);
+  background: rgba(28, 34, 48, 0.38);
+  box-shadow: 0 2px 12px rgba(28, 34, 48, 0.35);
+}
+
+.fc-screen .creation-card.selected {
+  background: rgba(172, 219, 223, 0.08);
+  border-color: var(--mj-gold);
+  box-shadow: 0 0 0 1px rgba(172, 219, 223, 0.2);
+}
+
+.fc-screen .creation-card.selected::after {
+  content: "\f00c";
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: var(--mj-gold);
+  font-size: 0.95em;
+}
+
+.fc-screen .creation-card h4 {
+  margin: 0;
+  color: var(--mj-text);
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.fc-screen .creation-card.selected h4 {
+  color: var(--mj-gold);
+}
+
+.fc-screen .creation-card p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--mj-muted);
+  line-height: 1.5;
+}
+
+.fc-screen .fc-name-input {
+  width: 100%;
+  height: 48px;
+  border-radius: 10px;
+  border: 1px solid rgba(215, 234, 234, 0.18);
+  background: rgba(28, 34, 48, 0.28);
+  color: #d7eaea;
+  padding: 0 14px;
+  font-size: 16px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.fc-screen .major-action-button {
+  width: 100%;
+  padding: 10px 15px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: rgba(28, 34, 48, 0.28);
+  border: 1px solid var(--mj-border);
+  color: var(--mj-gold-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+.fc-screen .major-action-button:hover:not(:disabled) {
+  background: rgba(150, 146, 175, 0.18);
+  border-color: rgba(172, 219, 223, 0.45);
+  color: var(--mj-gold);
+}
+
+.fc-screen .major-action-button:disabled {
+  border-color: rgba(105, 119, 155, 0.5);
+  color: var(--mj-muted);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.fc-screen .creation-nav-enhanced {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 14px;
+  border-top: 1px solid var(--mj-border);
+  gap: 12px;
+}
+
+.fc-screen .creation-nav-enhanced .nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 20px;
+  font-size: 0.95rem;
+  border-radius: 6px;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  width: auto;
+}
+
+.fc-screen .creation-nav-enhanced .nav-btn-back {
+  background: transparent;
+  border: 1px solid var(--mj-border);
+  color: var(--mj-muted);
+}
+
+.fc-screen .creation-nav-enhanced .nav-btn-back:hover {
+  background: rgba(28, 34, 48, 0.22);
+  color: var(--mj-text);
+  border-color: rgba(150, 146, 175, 0.55);
+}
+
+.fc-screen .creation-nav-enhanced .nav-btn-next {
+  background: rgba(172, 219, 223, 0.1);
+  border: 1px solid rgba(172, 219, 223, 0.4);
+  color: var(--mj-gold);
+}
+
+.fc-screen .creation-nav-enhanced .nav-btn-next:hover:not(:disabled) {
+  background: rgba(172, 219, 223, 0.16);
+  border-color: var(--mj-gold);
+}
+
+.fc-screen .creation-nav-enhanced .nav-btn-next:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.fc-screen #trait-options-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.fc-screen .trait-card {
+  width: 148px;
+  height: 148px;
+  background: var(--mj-chat-bg);
+  border: 2px solid;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.fc-screen .trait-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(28, 34, 48, 0.4);
+}
+
+.fc-screen .trait-card.selected {
+  transform: scale(1.02);
+  box-shadow: 0 0 0 1px rgba(172, 219, 223, 0.25);
+}
+
+.fc-screen .trait-card.trait-locked {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 16px rgba(28, 34, 48, 0.45);
+}
+
+.fc-screen .trait-card .trait-lock-btn {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  background: none;
+  border: none;
+  color: var(--mj-muted);
+  cursor: pointer;
+  font-size: 1em;
+}
+
+.fc-screen .trait-card .trait-lock-btn:hover {
+  color: var(--mj-gold-dim);
+}
+
+.fc-screen .trait-card.trait-locked .trait-lock-btn {
+  color: var(--mj-gold);
+}
+
+.fc-screen .trait-card .trait-rarity {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  font-size: 0.68em;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+.fc-screen .trait-card .trait-name {
+  font-size: 0.98em;
+  font-weight: 600;
+  margin-top: 22px;
+  color: var(--mj-text);
+}
+
+.fc-screen .trait-card .trait-detail-btn {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: none;
+  border: none;
+  color: var(--mj-muted);
+  cursor: pointer;
+  font-size: 1em;
+}
+
+.fc-screen .trait-card .trait-detail-btn:hover {
+  color: var(--mj-gold-dim);
+}
+
+.fc-screen .trait-card[data-rarity] { border-color: var(--mj-rarity-active); }
+.fc-screen .trait-card[data-rarity] .trait-rarity { background: var(--mj-rarity-active); color: #d7eaea; }
+
+.fc-screen .action-buttons-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.fc-screen .fc-trait-hint {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--mj-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.fc-screen .trait-card .selected-indicator {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  color: var(--mj-gold);
+  font-size: 0.95em;
+}
+
+.fc-screen #linggen-result-display {
+  min-height: 170px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--mj-text);
+}
+
+.fc-screen .linggen-orb {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border: 2px solid rgba(150, 146, 175, 0.5);
+  box-shadow: inset 0 0 20px rgba(28, 34, 48, 0.5), 0 4px 16px rgba(28, 34, 48, 0.35);
+  transition: transform 0.25s ease;
+}
+
+.fc-screen .linggen-orb .trait-detail-btn {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  background: none;
+  border: none;
+  color: var(--mj-muted);
+  cursor: pointer;
+  font-size: 1em;
+}
+
+.fc-screen .linggen-orb .trait-detail-btn:hover {
+  color: var(--mj-gold-dim);
+}
+
+.fc-screen .linggen-tag {
+  position: absolute;
+  top: -14px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.78em;
+  font-weight: bold;
+  color: #d7eaea;
+  text-shadow: 0 1px 2px #1c2230;
+}
+
+.fc-screen .linggen-elements {
+  font-size: 1.05em;
+  text-align: center;
+  color: #d7eaea;
+  text-shadow: 0 0 5px #1c2230;
+}
+
+.fc-screen .orb-type-天灵根 {
+  background: radial-gradient(circle, #d7eaea, #9692af);
+  border-color: #9692af;
+}
+.fc-screen .tag-type-天灵根 { background: #9692af; }
+.fc-screen .orb-type-真灵根 {
+  background: radial-gradient(circle, #d7eaea, #acdbdf);
+  border-color: #9692af;
+}
+.fc-screen .tag-type-真灵根 { background: rgba(150, 146, 175, 0.72); }
+.fc-screen .orb-type-伪灵根 {
+  background: radial-gradient(circle, #d7eaea, #acdbdf);
+  border-color: #9692af;
+}
+.fc-screen .tag-type-伪灵根 { background: rgba(150, 146, 175, 0.72); }
+.fc-screen .orb-type-无灵根 {
+  background: radial-gradient(circle, rgba(105, 119, 155, 0.8), rgba(33, 39, 56, 0.8));
+  border-color: #9692af;
+}
+.fc-screen .tag-type-无灵根 { background: rgba(150, 146, 175, 0.72); }
+
+.fc-screen .muted {
+  color: var(--mj-muted);
+}
+
+.fc-screen .fc-trait-stack,
+.fc-screen .fc-linggen-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fc-screen .fc-linggen-block .fc-linggen-random-row {
+  width: 100%;
+  max-width: 520px;
+  margin-inline: auto;
+}
+
+.fc-screen .fc-linggen-block .creation-linggen-hint {
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.85;
+  max-width: 520px;
+  margin-inline: auto;
+  padding: 6px 12px 0;
+  text-align: left;
+}
+
+/* 弹窗（与 main.css 对齐） */
+.fc-screen .mj-trait-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.fc-screen .mj-trait-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(28, 34, 48, 0.55);
+  cursor: pointer;
+}
+
+.fc-screen .mj-trait-modal {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 380px;
+  max-height: min(72vh, 520px);
+  overflow: auto;
+  padding: 18px 20px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--mj-border);
+  background: linear-gradient(180deg, rgba(34, 40, 56, 0.8), rgba(31, 37, 53, 0.8));
+  box-shadow: 0 16px 48px rgba(28, 34, 48, 0.5);
+  color: var(--mj-text);
+}
+
+.fc-screen .mj-custom-birth-dialog {
+  max-width: 420px;
+}
+
+.fc-screen .mj-custom-birth-body {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.fc-screen .mj-custom-birth-loc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+
+.fc-screen .mj-trait-modal-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(215, 234, 234, 0.06);
+  color: var(--mj-muted);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fc-screen .mj-trait-modal-close:hover {
+  color: var(--mj-text);
+  background: rgba(215, 234, 234, 0.1);
+}
+
+.fc-screen .mj-trait-modal-title {
+  margin: 0 36px 6px 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--mj-gold);
+  line-height: 1.35;
+}
+
+.fc-screen .mj-trait-modal-rarity {
+  font-size: 0.78rem;
+  color: var(--mj-gold-dim);
+  margin-bottom: 12px;
+}
+
+.fc-screen .mj-trait-modal-body {
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--mj-text);
+}
+
+.fc-screen .mj-trait-modal-section {
+  margin-top: 12px;
+}
+.fc-screen .mj-trait-modal-section:first-child {
+  margin-top: 0;
+}
+
+.fc-screen .mj-trait-modal-k {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--mj-muted);
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.fc-screen .mj-trait-modal-v {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.fc-screen .mj-trait-modal[data-rarity] {
+  border-color: var(--mj-rarity-active);
+}
+.fc-screen .mj-trait-modal[data-rarity] .mj-trait-modal-title {
+  color: var(--mj-rarity-active);
+}
+
+.fc-screen .mj-custom-birth-label {
+  display: block;
+  color: #acdbdf;
+  font-size: 13px;
+  margin: 10px 0 4px;
+}
+.fc-screen .mj-custom-birth-label:first-of-type {
+  margin-top: 0;
+}
+
+.fc-screen .mj-custom-birth-input,
+.fc-screen .mj-custom-birth-select,
+.fc-screen .mj-custom-birth-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid var(--mj-form-border);
+  background: var(--mj-form-bg);
+  color: var(--mj-form-text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.fc-screen .mj-custom-birth-input {
+  height: 40px;
+  padding: 0 12px;
+}
+
+.fc-screen .mj-custom-birth-select {
+  height: 40px;
+  padding: 0 10px;
+  flex: 1;
+  min-width: 100px;
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+.fc-screen .mj-custom-birth-realm-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.fc-screen .mj-custom-birth-realm-minor-wrap {
+  flex: 1;
+  min-width: 100px;
+}
+
+.fc-screen .mj-custom-birth-textarea {
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.fc-screen .mj-custom-birth-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.fc-screen .mj-custom-birth-actions .major-action-button {
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 100px;
+}
+
+@media (max-width: 640px) {
+  .fc-screen .creation-container {
+    width: 96%;
+    padding: 16px 14px;
+  }
+  .fc-screen .creation-nav-enhanced {
+    flex-direction: column;
+  }
+  .fc-screen .creation-nav-enhanced .nav-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Ice glass surface enhancement: visual properties only. */
+.fc-screen .creation-container,
+.fc-screen .trait-modal {
+  backdrop-filter: blur(20px) saturate(114%);
+  -webkit-backdrop-filter: blur(20px) saturate(114%);
+}

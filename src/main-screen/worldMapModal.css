@@ -399,6 +399,59 @@
   background: linear-gradient(90deg, #1565c0, #4fc3f7);
 }
 
+/* 好感度双向条：中点为 0，向右填好感、向左填敌意。 */
+.map-npc-bar--favor {
+  position: relative;
+  overflow: visible;
+}
+
+/* 中点刻度线，标出好感 0 的位置。 */
+.map-npc-bar--favor::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  bottom: -1px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.35);
+  transform: translateX(-0.5px);
+  z-index: 1;
+}
+
+.map-npc-bar-fill--favor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 0;
+}
+
+.map-npc-bar-fill--favor-pos {
+  left: 50%;
+  background: linear-gradient(90deg, #b98a3a, #f0c674);
+}
+
+.map-npc-bar-fill--favor-neg {
+  right: 50%;
+  background: linear-gradient(270deg, #5c4b8a, #9b6bd6);
+}
+
+.map-npc-relation {
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 7px;
+  font-size: 0.72rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--mj-muted, #8a9088);
+}
+
+.map-npc-favor-value {
+  font-size: 0.72rem;
+  color: var(--mj-muted, #8a9088);
+  width: 34px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
 .map-panel__empty {
   font-size: 0.9rem;
   color: var(--main-muted);

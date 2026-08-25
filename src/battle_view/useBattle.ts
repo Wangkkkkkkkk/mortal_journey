@@ -67,7 +67,7 @@ export function useBattle() {
 
   function getPlayerActionOptions(): ActionOptions {
     const e = engine.value;
-    if (!e) return { canNormalAttack: false, normalAttackCost: 50, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: 30, fleeActionCost: 100, canFlee: false, skills: [], elixirs: [] };
+    if (!e) return { canNormalAttack: false, normalAttackCost: 50, normalAttackDamage: 0, skillActionCost: 100, elixirActionCost: 30, fleeActionCost: 100, canFlee: false, skills: [], elixirs: [], poisons: [] };
     return e.getPlayerActionOptions();
   }
 

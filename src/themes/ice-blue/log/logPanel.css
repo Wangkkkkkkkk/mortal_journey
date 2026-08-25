@@ -1,0 +1,196 @@
+/* Ice Blue Glass theme counterpart of src/log/logPanel.css.
+ * Layout, sizing, spacing, positioning, and typography are preserved.
+ */
+/* 调试日志面板（自 mortal_journey/css/logPanel.css） */
+#mj-log-panel {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 99999;
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(48vh, 420px);
+  display: flex;
+  flex-direction: column;
+  font-family: "Consolas", "Cascadia Mono", "Noto Sans SC", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #d7eaea;
+  background: rgba(31, 36, 52, 0.72);
+  border: 1px solid rgba(172, 219, 223, 0.45);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(28, 34, 48, 0.55);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+#mj-log-panel.mj-log-panel--collapsed #mj-log-body,
+#mj-log-panel.mj-log-panel--collapsed #mj-log-toolbar {
+  display: none;
+}
+
+#mj-log-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(28, 34, 48, 0.35);
+  border-bottom: 1px solid rgba(172, 219, 223, 0.25);
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+#mj-log-header-title {
+  flex: 1;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #acdbdf;
+}
+
+#mj-log-toggle {
+  border: none;
+  background: transparent;
+  color: #acdbdf;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+#mj-log-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(215, 234, 234, 0.08);
+  flex-shrink: 0;
+}
+
+#mj-log-toolbar button {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(172, 219, 223, 0.4);
+  background: rgba(28, 34, 48, 0.35);
+  color: #acdbdf;
+  cursor: pointer;
+}
+
+#mj-log-toolbar button:hover {
+  border-color: rgba(172, 219, 223, 0.65);
+  color: #d7eaea;
+}
+
+#mj-log-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #acdbdf;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+#mj-log-body {
+  flex: 1;
+  min-height: 120px;
+  overflow: auto;
+  padding: 6px 8px 10px;
+  word-break: break-word;
+}
+
+#mj-log-panel.mj-log-panel--collapsed {
+  max-height: none;
+  width: 150px;
+}
+
+.mj-log-line {
+  margin: 0 0 4px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(215, 234, 234, 0.04);
+}
+
+.mj-log-line:last-child {
+  border-bottom: none;
+}
+
+.mj-log-time {
+  color: #80bdb1;
+  margin-right: 6px;
+}
+
+.mj-log-level {
+  display: inline-block;
+  min-width: 3.2em;
+  margin-right: 6px;
+  font-weight: 600;
+}
+
+.mj-log-level--log,
+.mj-log-level--info {
+  color: #acdbdf;
+}
+
+.mj-log-level--debug {
+  color: #acdbdf;
+}
+
+.mj-log-level--warn {
+  color: #acdbdf;
+}
+
+.mj-log-level--error {
+  color: #b77083;
+}
+
+.mj-log-msg {
+  color: #d7eaea;
+  white-space: pre-wrap;
+}
+
+.mj-log-line--ai {
+  cursor: pointer;
+}
+
+.mj-log-ai-toggle {
+  color: #acdbdf;
+  font-weight: 600;
+  user-select: none;
+}
+
+.mj-log-ai-toggle:hover {
+  color: #d7eaea;
+}
+
+.mj-log-ai-content {
+  color: #acdbdf;
+  white-space: pre-wrap;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: rgba(28, 34, 48, 0.3);
+  border-radius: 4px;
+  border: 1px solid rgba(215, 234, 234, 0.06);
+  font-size: 11px;
+  line-height: 1.4;
+  max-height: 300px;
+  overflow: auto;
+  word-break: break-all;
+}
+
+.mj-log-line--ai-expanded {
+  border-bottom: 1px solid rgba(172, 219, 223, 0.15) !important;
+}
+
+@media (max-width: 480px) {
+  #mj-log-panel {
+    right: 8px;
+    bottom: 8px;
+    width: calc(100vw - 16px);
+    max-height: 40vh;
+  }
+}
+
+/* Ice glass surface enhancement: visual properties only. */
+#mj-log-panel {
+  backdrop-filter: blur(18px) saturate(112%);
+  -webkit-backdrop-filter: blur(18px) saturate(112%);
+}

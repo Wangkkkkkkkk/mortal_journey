@@ -1,7 +1,7 @@
-import type { BattleCombatant, BattleSkill, BattleElixir, BattleEffect, SkillEffect, DamageType, ModifierType, CcType, StatusType, SummonTrigger } from "./types";
+import type { BattleCombatant, BattleSkill, BattleElixir, BattlePoison, BattleCoating, BattleEffect, SkillEffect, DamageType, ModifierType, CcType, StatusType, SummonTrigger, CombatantStats } from "./types";
 import type { BattleTriggerEntry } from "../ai/state_generate";
 import type { GongfaSlotsState, EquippedSlotsState } from "../role_core/types/playInfo";
-import type { InventoryStackItem, ElixirItemDefinition } from "../role_core/types/itemInfo";
+import type { InventoryStackItem, ElixirItemDefinition, PoisonItemDefinition } from "../role_core/types/itemInfo";
 import type { GongfaBattleEffect, LayerValue } from "../role_core/types/gongfa";
 import type { PrimaryStatKey } from "../role_core/types/playInfo";
 import { atLayer, atLayerFloat, resolveGongfaBattleEffectDesc } from "../role_core/types/gongfa";
@@ -230,7 +230,7 @@ function convertBattleEffectToInitEffect(
   }
 }
 
-function extractPassiveEffects(
+export function extractPassiveEffects(
   gongfaSlots: GongfaSlotsState,
   getStat: (key: string) => number,
   combatantId: string,
@@ -253,7 +253,7 @@ function extractPassiveEffects(
   return effects;
 }
 
-function extractTreasurePassiveEffects(
+export function extractTreasurePassiveEffects(
   equippedSlots: EquippedSlotsState,
   combatantId: string,
 ): BattleEffect[] {
@@ -283,6 +283,31 @@ function extractTreasurePassiveEffects(
   return effects;
 }
 
+/**
+ * 由主属性 + 灵根加成组装战斗单位的基础属性块。
+ * 暴击率基础为 0，暴伤基础 {@link BASE_CRIT_DMG}% + 金灵根加成；
+ * 暴击/闪避/吸血/回血等的实际来源是法宝词条与被动功法的修正 effect。
+ * 战斗初始化与主界面面板（`panelStats.ts`）共用此函数，保证两处数值同源。
+ */
+export function buildCombatantBaseStats(
+  primaryStats: Record<string, number>,
+  maxHp: number,
+  maxMp: number,
+  critDmgBonus: number,
+): CombatantStats {
+  return {
+    maxHp,
+    maxMp,
+    speed: primaryStats.agility ?? 0,
+    physAttack: primaryStats.strength ?? 0,
+    magAttack: primaryStats.perception ?? 0,
+    physDefense: primaryStats.guard ?? 0,
+    magDefense: primaryStats.resistance ?? 0,
+    critRate: 0,
+    critDmg: BASE_CRIT_DMG + critDmgBonus,
+  };
+}
+
 function extractRecoveryElixirs(inventorySlots: Array<InventoryStackItem | null>): BattleElixir[] {
   const result: BattleElixir[] = [];
   for (const slot of inventorySlots) {
@@ -301,6 +326,37 @@ function extractRecoveryElixirs(inventorySlots: Array<InventoryStackItem | null>
     }
   }
   return result;
+}
+
+/** 从储物袋提取可在战斗中使用的毒药。 */
+function extractBattlePoisons(inventorySlots: Array<InventoryStackItem | null>): BattlePoison[] {
+  const result: BattlePoison[] = [];
+  for (const slot of inventorySlots) {
+    if (!slot) continue;
+    if ("itemType" in slot && slot.itemType === "毒药") {
+      const p = slot as PoisonItemDefinition;
+      result.push({
+        name: p.name,
+        desc: p.desc,
+        kind: p.kind,
+        value: p.value,
+        modifierType: p.modifierType,
+        duration: p.duration,
+        count: p.count,
+      });
+    }
+  }
+  return result;
+}
+
+/** 汇总已装备法宝的淬毒涂层。 */
+function extractCoatings(equippedSlots: EquippedSlotsState): BattleCoating[] {
+  const out: BattleCoating[] = [];
+  for (const tr of equippedSlots) {
+    const c = tr?.function && "coating" in tr.function ? tr.function.coating : undefined;
+    if (c) out.push({ name: c.name, tickPercent: c.tickPercent, duration: c.duration });
+  }
+  return out;
 }
 
 function createProtagonistCombatant(): BattleCombatant | null {
@@ -324,17 +380,7 @@ function createProtagonistCombatant(): BattleCombatant | null {
     isProtagonist: true,
     isPlayerControlled: true,
 
-    stats: {
-      maxHp: p.maxHp,
-      maxMp: p.maxMp,
-      speed: primaryStats.agility ?? 0,
-      physAttack: primaryStats.strength ?? 0,
-      magAttack: primaryStats.perception ?? 0,
-      physDefense: primaryStats.guard ?? 0,
-      magDefense: primaryStats.resistance ?? 0,
-      critRate: 0,
-      critDmg: BASE_CRIT_DMG + linggenBonus.critDmgBonus,
-    },
+    stats: buildCombatantBaseStats(primaryStats, p.maxHp, p.maxMp, linggenBonus.critDmgBonus),
 
     hp: p.currentHp,
     mp: p.currentMp,
@@ -346,6 +392,8 @@ function createProtagonistCombatant(): BattleCombatant | null {
     skills,
     cooldowns: new Array(Math.max(GONGFA_SLOT_COUNT, skills.length)).fill(0),
     elixirs,
+    poisons: extractBattlePoisons(p.inventorySlots),
+    coatings: extractCoatings(p.equippedSlots),
 
     effects: passiveEffects,
     linggenHealMult: linggenBonus.healMult,
@@ -376,6 +424,8 @@ function createNpcCombatant(
   const m = team === "enemy" ? enemyStatMult : 1;
   const scale = (v: number): number => Math.round(v * m);
 
+  const base = buildCombatantBaseStats(primaryStats, npc.maxHp, npc.maxMp, linggenBonus.critDmgBonus);
+
   return {
     id,
     name: npc.displayName,
@@ -384,15 +434,14 @@ function createNpcCombatant(
     isPlayerControlled: false,
 
     stats: {
-      maxHp: scale(npc.maxHp),
-      maxMp: scale(npc.maxMp),
-      speed: scale(primaryStats.agility ?? 0),
-      physAttack: scale(primaryStats.strength ?? 0),
-      magAttack: scale(primaryStats.perception ?? 0),
-      physDefense: scale(primaryStats.guard ?? 0),
-      magDefense: scale(primaryStats.resistance ?? 0),
-      critRate: 0,
-      critDmg: BASE_CRIT_DMG + linggenBonus.critDmgBonus,
+      ...base,
+      maxHp: scale(base.maxHp),
+      maxMp: scale(base.maxMp),
+      speed: scale(base.speed),
+      physAttack: scale(base.physAttack),
+      magAttack: scale(base.magAttack),
+      physDefense: scale(base.physDefense),
+      magDefense: scale(base.magDefense),
     },
 
     hp: scale(npc.currentHp),
@@ -405,6 +454,9 @@ function createNpcCombatant(
     skills,
     cooldowns: new Array(Math.max(GONGFA_SLOT_COUNT, skills.length)).fill(0),
     elixirs,
+    // NPC 不使用毒药（制毒是主角技艺）。
+    poisons: [],
+    coatings: extractCoatings(npc.equippedSlots),
 
     effects: passiveEffects,
     linggenHealMult: linggenBonus.healMult,

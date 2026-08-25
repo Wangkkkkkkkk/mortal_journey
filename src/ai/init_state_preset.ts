@@ -74,6 +74,7 @@ export const INIT_STATE_SYSTEM_PRESET = `
 
 [储物袋开局配置规则]
 1. 主角储物袋开局配置：可以生成灵石、丹药、材料、杂物等。
+  1.1 类型为"材料"时必须输出 category 字段，只能从药材、毒物、食材、器材四种中选择一个（药材用于炼丹，毒物用于制毒，食材用于烹饪，器材用于炼器），须与材料名称契合。
   2. 灵石生成规则：
     2.1 灵石不区分品阶（无上品灵石、中品灵石之分），统一称为"灵石"。
     2.2 数量与主角身份和境界对应：
@@ -103,7 +104,8 @@ export const INIT_STATE_SYSTEM_PRESET = `
   4.4 功法不含 grade（品阶由系统根据境界自动分配）。
   4.5 NPC储物袋中的丹药须含 effectType，不含 grade。
 5. NPC生成需要包含的信息：
-  5.1 基本信息：displayName（2-4字）、identity、gender、age、favorability。
+  5.1 基本信息：displayName（2-4字）、identity、gender、age、favorability、relation。
+  5.1b relation（与主角的关系）：自由文本2~4字，如「同门」「师尊」「弟子」「道侣」「仇敌」「亲族」，描述该 NPC 相对主角的身份（NPC 是主角师父则填「师尊」）。开局尚无明确关系者留空字符串 ""，不要臆造。
   5.2 种族与外貌（用于文生图角色立绘，须具体可视，禁止空泛）：
     - race：种族，三选一："修仙者" / "人形妖兽" / "妖兽"。
     - appearance：外貌特征，按种族填写必含要素：
@@ -126,6 +128,7 @@ export const INIT_STATE_SYSTEM_PRESET = `
     "appearance": "及腰黑发以青丝带束起，鹅蛋脸，眉目清秀，肤色微白，双眸黑亮，右颊有一枚浅淡的酒窝",
     "clothing": "月白色窄袖劲装，领口与袖口绣有银色云纹，腰系青玉带，脚踏素色软底靴",
     "favorability": 12,
+    "relation": "同门",
     "gender": "女",
     "age": 16,
     "linggen": ["水"],

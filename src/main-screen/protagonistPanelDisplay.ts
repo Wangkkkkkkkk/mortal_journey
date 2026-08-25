@@ -264,22 +264,6 @@ export function treasureCellName(cell: TreasureItemDefinition | null): string {
   return cell.name;
 }
 
-/** 天赋展示固定槽位数。 */
-const TRAIT_SLOT_COUNT = 5;
-
-/**
- * 将主角 `traits` 截断/填充为固定长度槽位列表。
- *
- * @param p - 主角信息；`null` 时返回全 `null` 占位数组。
- * @returns 长度恒为 `TRAIT_SLOT_COUNT` 的数组。
- */
-export function getTraitSlots(p: ProtagonistPlayInfo | null): (TraitEntry | null)[] {
-  if (!p) return Array.from({ length: TRAIT_SLOT_COUNT }, () => null);
-  const out: (TraitEntry | null)[] = [];
-  for (let i = 0; i < TRAIT_SLOT_COUNT; i++) out.push(p.traits[i] ?? null);
-  return out;
-}
-
 /**
  * 天赋槽 `title` 属性用文案：空槽、字符串天赋、或「名称（稀有度）」加可选换行描述。
  *

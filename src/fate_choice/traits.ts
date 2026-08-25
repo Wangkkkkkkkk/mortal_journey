@@ -20,28 +20,74 @@ import { PRIMARY_STAT_KEYS } from "../role_core/types/playInfo";
 /** 词条稀有度。 */
 export type TraitRarity = "平庸" | "普通" | "稀有" | "史诗" | "传说" | "神迹";
 
-/** 单条天赋样本：名称、稀有度、描述、具体效果。 */
+/** 天赋类别键；即 {@link TRAIT_CATEGORIES} 的键。 */
+export type TraitCategory = string;
+
+/**
+ * 天赋类别表：键为类别标识，值为购点界面上小板块的标题。
+ * 表内顺序即界面上板块的排列顺序。
+ *
+ * 占位：8 个主属性类别沿用 `PrimaryStatKey`（单属性加成天赋自动归入对应类别），
+ * 其余天赋暂全部归入 `fortune`。补充新类别时在此加行即可，
+ * 再在词条行上写 `category: "<新键>"`。
+ */
+export const TRAIT_CATEGORIES: Readonly<Record<TraitCategory, string>> = {
+  physique: "体魄",
+  spirit: "灵力",
+  strength: "劲力",
+  perception: "神识",
+  guard: "护体",
+  resistance: "灵御",
+  agility: "身法",
+  insight: "悟性",
+  fortune: "机缘",
+};
+
+/** 未标注类别的词条归入的兜底类别。 */
+const DEFAULT_TRAIT_CATEGORY: TraitCategory = "fortune";
+
+/**
+ * 购点开局：各稀有度天赋的点数单价（占位数值，按需自行调整）。
+ */
+export const TRAIT_RARITY_COST: Readonly<Record<TraitRarity, number>> = {
+  平庸: 5,
+  普通: 10,
+  稀有: 20,
+  史诗: 35,
+  传说: 60,
+  神迹: 100,
+};
+
+/** 单条天赋样本：名称、稀有度、类别、描述、具体效果。 */
 export interface TraitSample {
   name: string;
   rarity: TraitRarity;
+  category: TraitCategory;
   desc: string;
   effect: TraitEffect;
 }
 
 /**
  * 合并为 {@link TraitSample} 时使用的行数据（不含 `rarity`，由分组函数注入）。
+ * `category` 缺省时落到 {@link DEFAULT_TRAIT_CATEGORY}。
  */
-type TraitRow = Pick<TraitSample, "name" | "desc" | "effect">;
+type TraitRow = Pick<TraitSample, "name" | "desc" | "effect"> & { category?: TraitCategory };
 
 /**
- * 为同一稀有度下的多行批量补上 `rarity` 字段。
+ * 为同一稀有度下的多行批量补上 `rarity` 与缺省 `category` 字段。
  *
  * @param rarity 该组词条的稀有度。
- * @param rows 仅含名称、描述、效果的行列表。
+ * @param rows 仅含名称、描述、效果（及可选类别）的行列表。
  * @return 只读的 {@link TraitSample} 列表。
  */
 function defineTraits(rarity: TraitRarity, rows: readonly TraitRow[]): readonly TraitSample[] {
-  return rows.map((row) => ({ name: row.name, desc: row.desc, effect: row.effect, rarity }));
+  return rows.map((row) => ({
+    name: row.name,
+    desc: row.desc,
+    effect: row.effect,
+    category: row.category ?? DEFAULT_TRAIT_CATEGORY,
+    rarity,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -181,6 +227,7 @@ function defineStatTraits(rarity: TraitRarity): readonly TraitRow[] {
     return {
       name: STAT_TRAIT_NAMES[key][idx],
       desc: STAT_TRAIT_FLAVOR[key][idx],
+      category: key,
       effect: { kind: "statBonus", stats } as TraitEffect,
     };
   });
@@ -195,7 +242,10 @@ function defineStatTraits(rarity: TraitRarity): readonly TraitRow[] {
 export const traitSamplesPingyong = defineTraits("平庸", [
   { name: "囊中羞涩", desc: "出身清贫，随身仅有几十颗灵石，聊作盘缠。", effect: { kind: "spiritStones", count: 20 } },
   { name: "意外之财", desc: "行路时捡得一只旧钱袋，倒出几十颗灵石。", effect: { kind: "spiritStones", count: 80 } },
-  { name: "采药童子", desc: "自幼随长辈进山采药，识得几味下品灵草。", effect: { kind: "materials", grade: "下品", count: 9 } },
+  { name: "采药童子", desc: "自幼随长辈进山采药，识得几味下品灵草。", effect: { kind: "materials", category: "药材", grade: "下品", count: 9 } },
+  { name: "杂毒小囊", desc: "随身带着一只小布囊，装有几份山野采来的下品毒物草石。", effect: { kind: "materials", category: "毒物", grade: "下品", count: 9 } },
+  { name: "粗铁碎石", desc: "行囊里收纳着几块下品矿石与旧料，勉强可充作锻造器材。", effect: { kind: "materials", category: "器材", grade: "下品", count: 9 } },
+  { name: "野味干粮", desc: "包裹里备有几份初阶灵谷与干制野味，可供果腹烹饪。", effect: { kind: "materials", category: "食材", grade: "下品", count: 9 } },
   { name: "伤药一瓶", desc: "怀中常备一瓶粗制的伤药，危急时可救急。", effect: { kind: "elixir", grade: "下品", count: 1, effectType: "恢复血量" } },
   { name: "凝气散方", desc: "得来一散低阶丹方，服之可稍聚灵气。", effect: { kind: "elixir", grade: "下品", count: 1, effectType: "恢复法力" } },
   { name: "乡野把式", desc: "跟乡间老叟学过几手粗浅的通用吐纳法门。", effect: { kind: "gongfa", system: "通用", grade: "下品" } },
@@ -211,7 +261,10 @@ export const traitSamplesPingyong = defineTraits("平庸", [
 /** 普通词条池（对应「中品」量级）。 */
 export const traitSamplesPutong = defineTraits("普通", [
   { name: "小有积蓄", desc: "多年攒下些许身家，随身带有数百灵石。", effect: { kind: "spiritStones", count: 50 } },
-  { name: "药田收成", desc: "家中有一小片灵药田，此番收成几份中品灵草。", effect: { kind: "materials", grade: "中品", count: 6 } },
+  { name: "药田收成", desc: "家中有一小片灵药田，此番收成几份中品灵草。", effect: { kind: "materials", category: "药材", grade: "中品", count: 6 } },
+  { name: "百毒囊袋", desc: "自密林深处收集到几份中品毒液与毒虫残蜕，毒性渐显。", effect: { kind: "materials", category: "毒物", grade: "中品", count: 6 } },
+  { name: "精铁矿材", desc: "偶得几块中品百炼精铁与灵木干料，可用于打造趁手器物。", effect: { kind: "materials", category: "器材", grade: "中品", count: 6 } },
+  { name: "灵谷鲜蔬", desc: "随身备有几份沾染了地脉灵气的中品食材，烹饪滋味颇佳。", effect: { kind: "materials", category: "食材", grade: "中品", count: 6 } },
   { name: "筑基丹方", desc: "偶得一份筑基丹方，服之可助凝练真元、增进修为。", effect: { kind: "elixir", grade: "中品", count: 1, effectType: "提升修为" } },
   { name: "锻体秘方", desc: "得传一份锻体丹方，服之可强筋健骨、增长体魄。", effect: { kind: "elixir", grade: "中品", count: 1, effectType: "提升体魄" } },
   { name: "通灵丹方", desc: "手握一份通灵丹方，服之可通达灵台、增益灵力。", effect: { kind: "elixir", grade: "中品", count: 1, effectType: "提升灵力" } },
@@ -228,7 +281,10 @@ export const traitSamplesPutong = defineTraits("普通", [
 /** 稀有词条池（对应「上品」量级）。 */
 export const traitSamplesXiyou = defineTraits("稀有", [
   { name: "灵石矿脉", desc: "名下有一处小型灵石矿脉，变卖后得数百灵石。", effect: { kind: "spiritStones", count: 100 } },
-  { name: "珍稀药草", desc: "机缘之下采得几份上品珍稀灵草，药香扑鼻。", effect: { kind: "materials", grade: "上品", count: 6 } },
+  { name: "珍稀药草", desc: "机缘之下采得几份上品珍稀灵草，药香扑鼻。", effect: { kind: "materials", category: "药材", grade: "上品", count: 6 } },
+  { name: "幽冥毒萃", desc: "在毒沼秘境中采得几份上品阴毒奇材，散发着森森寒意。", effect: { kind: "materials", category: "毒物", grade: "上品", count: 6 } },
+  { name: "寒铁灵金", desc: "游历时寻得几份上品深海寒铁与星曜矿石，乃铸器良材。", effect: { kind: "materials", category: "器材", grade: "上品", count: 6 } },
+  { name: "异兽珍馐", desc: "斩获并封存了几份上品妖兽里脊与灵芝仙笋，灵气醇厚。", effect: { kind: "materials", category: "食材", grade: "上品", count: 6 } },
   { name: "益寿丹方", desc: "得一份上品益寿丹方，服之可延寿百年、固本培元。", effect: { kind: "elixir", grade: "上品", count: 1, effectType: "提升寿元" } },
   { name: "淬体秘药", desc: "手中有一份上品淬体秘药，服之脱胎换骨、体魄大增。", effect: { kind: "elixir", grade: "上品", count: 1, effectType: "提升体魄" } },
   { name: "寻缘法器", desc: "游历时寻得一件上品法器，灵光隐现，颇有不凡。", effect: { kind: "treasure", grade: "上品" } },
@@ -244,7 +300,10 @@ export const traitSamplesXiyou = defineTraits("稀有", [
 /** 史诗词条池（对应「极品」量级）。 */
 export const traitSamplesShishi = defineTraits("史诗", [
   { name: "家底丰厚", desc: "家底殷实，随身的储物袋中沉甸甸满是灵石。", effect: { kind: "spiritStones", count: 200 } },
-  { name: "灵药满匣", desc: "怀揣一只满载极品灵药的药匣，药香四溢。", effect: { kind: "materials", grade: "极品", count: 3 } },
+  { name: "灵药满匣", desc: "怀揣一只满载极品灵药的药匣，药香四溢。", effect: { kind: "materials", category: "药材", grade: "极品", count: 3 } },
+  { name: "九幽煞髓", desc: "怀揣一只封灵玉匣，内盛几份极品地煞奇毒，触之即溃经脉。", effect: { kind: "materials", category: "毒物", grade: "极品", count: 3 } },
+  { name: "天外玄晶", desc: "机缘所得几块极品玄天精金与凤栖灵木，灵光流转不息。", effect: { kind: "materials", category: "器材", grade: "极品", count: 3 } },
+  { name: "龙髓凤胶", desc: "珍藏着几份极品大妖精华与万年地乳，乃世间难寻的顶级食材。", effect: { kind: "materials", category: "食材", grade: "极品", count: 3 } },
   { name: "凝煞丹方", desc: "得一份极品凝煞丹方，服之修为大涨、直指金丹。", effect: { kind: "elixir", grade: "极品", count: 1, effectType: "提升修为" } },
   { name: "明心秘药", desc: "手中有一份极品明心丹方，服之灵台洞开、悟性暴涨。", effect: { kind: "elixir", grade: "极品", count: 1, effectType: "提升悟性" } },
   { name: "机缘法宝", desc: "大机缘之下得了一件极品法宝，灵韵深远、威能不凡。", effect: { kind: "treasure", grade: "极品" } },
@@ -260,7 +319,10 @@ export const traitSamplesShishi = defineTraits("史诗", [
 /** 传说词条池（对应「仙品」量级）。 */
 export const traitSamplesChuanshuo = defineTraits("传说", [
   { name: "灵石宝库", desc: "继承了一处上古灵石宝库，一夜之间富甲一方。", effect: { kind: "spiritStones", count: 500 } },
-  { name: "仙草灵根", desc: "于秘境中采得几株仙品灵根，仙气氤氲不散。", effect: { kind: "materials", grade: "仙品", count: 3 } },
+  { name: "仙草灵根", desc: "于秘境中采得几株仙品灵根，仙气氤氲不散。", effect: { kind: "materials", category: "药材", grade: "仙品", count: 3 } },
+  { name: "黄泉仙蛊", desc: "自上古仙冢中起获几份仙品剧毒本源，仙人沾染亦生机涣散。", effect: { kind: "materials", category: "毒物", grade: "仙品", count: 3 } },
+  { name: "九天仙金", desc: "继承了一处仙家矿藏，得几块仙品混元神铁与大罗仙金。", effect: { kind: "materials", category: "器材", grade: "仙品", count: 3 } },
+  { name: "蟠桃玉髓", desc: "于仙山胜地摘得几份仙品灵根灵肉，烹之香飘九霄、灵光漫溢。", effect: { kind: "materials", category: "食材", grade: "仙品", count: 3 } },
   { name: "元婴丹方", desc: "得一份仙品元婴丹方，服之一粒抵数十年苦修。", effect: { kind: "elixir", grade: "仙品", count: 1, effectType: "提升修为" } },
   { name: "松鹤秘药", desc: "手中有一份仙品松鹤丹方，服之寿逾千载、松鹤延年。", effect: { kind: "elixir", grade: "仙品", count: 1, effectType: "提升寿元" } },
   { name: "仙家遗宝", desc: "有缘得了一件仙家遗落的命名法宝，仙韵流转、威力惊人。", effect: { kind: "treasure", grade: "仙品" } },
@@ -276,7 +338,10 @@ export const traitSamplesChuanshuo = defineTraits("传说", [
 /** 神迹词条池（对应「神品」量级）。 */
 export const traitSamplesShenji = defineTraits("神迹", [
   { name: "富可敌国", desc: "坐拥一处上古神石宝库，灵石之多富可敌国。", effect: { kind: "spiritStones", count: 1000 } },
-  { name: "神材天降", desc: "天降一份神品天材，神韵流转、近乎不朽。", effect: { kind: "materials", grade: "神品", count: 3 } },
+  { name: "神材天降", desc: "天降一份神品天材，神韵流转、近乎不朽。", effect: { kind: "materials", category: "药材", grade: "神品", count: 3 } },
+  { name: "寂灭神煞", desc: "天降几份孕育自混沌初开的神品寂灭毒源，道韵崩坏、无物不化。", effect: { kind: "materials", category: "毒物", grade: "神品", count: 3 } },
+  { name: "鸿蒙神铁", desc: "手握几块太古神明开天遗留的神品神石精粹，可铸灭世神器。", effect: { kind: "materials", category: "器材", grade: "神品", count: 3 } },
+  { name: "混沌道宴", desc: "坐拥几份神品天地母气灵肉与造化神果，食之如纳诸天道韵。", effect: { kind: "materials", category: "食材", grade: "神品", count: 3 } },
   { name: "造化神丹", desc: "得一颗夺天地造化的神品神丹，一步登天、修为暴涨。", effect: { kind: "elixir", grade: "神品", count: 1, effectType: "提升修为" } },
   { name: "与天同寿", desc: "手中有一颗神品与天同寿丹，服之寿元无穷、近乎不死。", effect: { kind: "elixir", grade: "神品", count: 1, effectType: "提升寿元" } },
   { name: "神界至宝", desc: "有缘得了一件神界流传的命名至宝，神光万丈、举世无双。", effect: { kind: "treasure", grade: "神品" } },
@@ -310,6 +375,25 @@ export const traitsByRarity: Record<TraitRarity, readonly TraitSample[]> = {
  * 全量词条池：按 {@link TRAIT_RARITY_ORDER} 拼接各档。
  */
 export const traitSamples: readonly TraitSample[] = TRAIT_RARITY_ORDER.flatMap((r) => [...traitsByRarity[r]]);
+
+/** 购点界面上的一个类别小板块。 */
+export interface TraitCategoryGroup {
+  key: TraitCategory;
+  title: string;
+  traits: readonly TraitSample[];
+}
+
+/**
+ * 按 {@link TRAIT_CATEGORIES} 的键顺序分组的词条池，供购点界面逐块渲染。
+ * 组内顺序沿用 {@link traitSamples}（稀有度从低到高）；空类别不出现。
+ */
+export const traitsByCategory: readonly TraitCategoryGroup[] = Object.keys(TRAIT_CATEGORIES)
+  .map((key) => ({
+    key,
+    title: TRAIT_CATEGORIES[key]!,
+    traits: traitSamples.filter((t) => t.category === key),
+  }))
+  .filter((g) => g.traits.length > 0);
 
 /**
  * 与主工程 `global.MjTraitSamples` 同构的只读别名，便于对照旧脚本命名。
